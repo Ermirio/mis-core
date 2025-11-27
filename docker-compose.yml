@@ -1,0 +1,41 @@
+version: '3.8'
+
+services:
+  influxdb:
+    image: influxdb:1.8
+    container_name: influxdb-industrial
+    ports:
+      - "8086:8086"
+    environment:
+      - INFLUXDB_DB=industrial_db
+      - INFLUXDB_ADMIN_USER=admin
+      - INFLUXDB_ADMIN_PASSWORD=admin123
+      - INFLUXDB_HTTP_AUTH_ENABLED=false
+    volumes:
+      - influxdb-data:/var/lib/influxdb
+    networks:
+      - industrial-network
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:15
+    container_name: postgres-industrial
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_DB=django_industrial
+      - POSTGRES_USER=django_user
+      - POSTGRES_PASSWORD=django_pass123
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      - industrial-network
+    restart: unless-stopped
+
+volumes:
+  influxdb-data:
+  postgres-data:
+
+networks:
+  industrial-network:
+    driver: bridge

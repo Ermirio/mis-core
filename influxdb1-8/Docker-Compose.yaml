@@ -1,0 +1,60 @@
+version: '3.8'
+
+services:
+  influxdb:
+    image: influxdb:1.8
+    container_name: influxdb_1_8
+    ports:
+      - "8086:8086"
+    environment:
+      # Variáveis de admin do InfluxDB
+      - INFLUXDB_HTTP_AUTH_ENABLED=true
+      - INFLUXDB_ADMIN_USER=admin
+      - INFLUXDB_ADMIN_PASSWORD=admin123
+    volumes:
+      - influxdb-data:/var/lib/influxdb
+    restart: always
+
+  chronograf:
+    image: chronograf:1.8 
+    container_name: chronograf_1_8
+    ports:
+      - "8888:8888" 
+    environment:
+      # Diz ao Chronograf onde encontrar o InfluxDB
+      - INFLUXDB_URL=http://influxdb:8086
+      - INFLUXDB_USERNAME=admin
+      - INFLUXDB_PASSWORD=admin123
+    depends_on:
+      - influxdb 
+      - kapacitor # O Chronograf também pode gerenciar o Kapacitor
+    restart: always
+    
+  # 🚀 NOVO SERVIÇO: KAPACITOR 🚀
+  kapacitor:
+    image: kapacitor:1.5 # Escolhendo a versão 1.x para compatibilidade com InfluxDB 1.8
+    container_name: kapacitor_1_5
+    ports:
+      - "9092:9092" # Porta padrão da API do Kapacitor
+    environment:
+      # --- Configuração de Conexão com o InfluxDB ---
+      # Permite que o Kapacitor se conecte ao InfluxDB
+      - KAPACITOR_INFLUXDB_0_URLS=http://influxdb:8086
+      - KAPACITOR_INFLUXDB_0_USERNAME=admin
+      - KAPACITOR_INFLUXDB_0_PASSWORD=admin123
+      
+      # --- Configuração de Alerta com o Chronograf ---
+      # Permite que o Chronograf configure e monitore o Kapacitor
+      - KAPACITOR_URL=http://kapacitor:9092
+      
+    volumes:
+      - kapacitor-data:/var/lib/kapacitor
+    depends_on:
+      - influxdb # Kapacitor depende que o InfluxDB esteja rodando
+    restart: always
+
+
+volumes:
+  influxdb-data:
+  chronograf-data: # Este volume não é estritamente necessário para o Chronograf, mas é uma boa prática.
+  kapacitor-data: # Novo volume para persistir dados e tarefas do Kapacitor

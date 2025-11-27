@@ -1,0 +1,24 @@
+.main-layout {
+  display: flex;
+  width: 100%;
+}
+
+.main-content {
+  margin-left: 240px;
+  padding: 20px;
+  width: calc(100% - 240px);
+  min-height: 100vh;
+
+  /* Compatível com ThemeProvider */
+  background-color: var(--background);
+}
+
+/* Light Theme */
+:root {
+  --background: #f5f6fa;
+}
+
+/* Dark Theme */
+.dark {
+  --background: #0e1117;
+}
