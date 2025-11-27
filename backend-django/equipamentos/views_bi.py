@@ -68,7 +68,9 @@ class OrdemProducaoViewSet(viewsets.ModelViewSet):
             "codigo_op": "OP-123",
             "codigo_linha": "L1",
             "codigo_sku": "SKU-001",
-            "formato_gramas": 2200.0
+            "formato_gramas": 2200.0,
+            "descricao": "Produto Especial",
+            "meta_producao": 5000
         }
         """
         from equipamentos.models import Produto
@@ -78,6 +80,8 @@ class OrdemProducaoViewSet(viewsets.ModelViewSet):
         codigo_linha = request.data.get('codigo_linha')
         codigo_sku = request.data.get('codigo_sku')
         formato_gramas = request.data.get('formato_gramas', 0)
+        descricao = request.data.get('descricao', '')
+        meta_producao = request.data.get('meta_producao', 0)
         
         if not codigo_op or not codigo_linha:
             return Response(
@@ -107,27 +111,36 @@ class OrdemProducaoViewSet(viewsets.ModelViewSet):
         # Buscar ou criar produto
         produto = None
         if codigo_sku:
+            produto_defaults = {
+                'peso_unitario': formato_gramas or 0,
+                'ativo': True
+            }
+            if descricao:
+                produto_defaults['descricao'] = descricao
+            else:
+                produto_defaults['descricao'] = f'Produto {codigo_sku}'
+                
             produto, _ = Produto.objects.get_or_create(
                 codigo=codigo_sku,
-                defaults={
-                    'descricao': f'Produto {codigo_sku}',
-                    'peso_unitario': formato_gramas or 0,
-                    'ativo': True
-                }
+                defaults=produto_defaults
             )
+        
+        # Definir metas (prioridade: payload > linha > default)
+        meta_total = meta_producao if meta_producao and float(meta_producao) > 0 else 10000
+        meta_turno = linha.meta_producao_turno if linha.meta_producao_turno else (meta_total / 3) # Estima turno como 1/3 do total se não tiver meta
         
         # Criar OP
         op = OrdemProducao.objects.create(
             codigo=codigo_op,
             linha=linha,
-            produto=produto if produto else linha.equipamentos.first().tags_coleta.first().equipamento.linha.historico_skus.first().produto if linha.historico_skus.exists() else None,
-            meta_total=10000,  # Meta padrão
-            meta_turno=linha.meta_producao_turno if linha.meta_producao_turno else 3000,
+            produto=produto,
+            meta_total=meta_total,
+            meta_turno=meta_turno,
             formato_gramas=formato_gramas or (produto.peso_unitario if produto else 0),
             status='PRODUZINDO',
             data_planejada_inicio=timezone.now(),
             data_inicio_real=timezone.now(),
-            descricao=f'OP auto-criada em {timezone.now().date()}'
+            descricao=descricao if descricao else f'OP auto-criada em {timezone.now().date()}'
         )
         
         return Response({

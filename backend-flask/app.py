@@ -288,9 +288,20 @@ def inserir_dados():
     try:
         data = request.json
         
+        # Log do payload para debug
+        # logger.info(f"Payload recebido: {json.dumps(data)}")
+        
         equipamento_codigo = data.get('equipamento_codigo') or data.get('equipamento')
         linha_codigo = data.get('linha_codigo', '')
+        
+        # Normalização de código de linha (Fix temporário para compatibilidade)
+        if linha_codigo == '1':
+            linha_codigo = 'L01'
+        elif linha_codigo == '2':
+            linha_codigo = 'L02'
+            
         medicoes = data.get('medicoes', {})
+
         timestamp = data.get('timestamp')
         
         # Garante tipos corretos
@@ -329,6 +340,10 @@ def inserir_dados():
         # ===== AUTO-CRIAÇÃO DE OP NO MYSQL (NOVO) =====
         if ordem_producao and ordem_producao != '':
             try:
+                # Extrair dados adicionais se disponíveis
+                descricao_op = medicoes.get('descricao', '') or medicoes.get('produto_descricao', '')
+                meta_producao = medicoes.get('meta_producao') or medicoes.get('meta', 0)
+                
                 # Tentar criar OP no Django automaticamente
                 response = requests.post(
                     f"{DJANGO_API_URL}/bi/ordens-producao/auto_create_or_get/",
@@ -336,7 +351,9 @@ def inserir_dados():
                         'codigo_op': ordem_producao,
                         'codigo_linha': linha_codigo,
                         'codigo_sku': sku_codigo,
-                        'formato_gramas': formato_gramas
+                        'formato_gramas': formato_gramas,
+                        'descricao': descricao_op,
+                        'meta_producao': meta_producao
                     },
                     timeout=2  # Timeout curto para não atrasar coleta
                 )
