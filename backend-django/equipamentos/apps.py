@@ -19,15 +19,14 @@ class EquipamentosConfig(AppConfig):
         
         logger.info("🔧 Equipamentos App iniciado")
         
-        # DESABILITADO: Agregador automático (não existe agregador_service)
-        # self.start_agregador_thread()
-
-        # Inicia o scheduler (mantido do original)
+        # Inicia o scheduler de consolidação automática
         try:
-            from .scheduler import iniciar_scheduler
-            iniciar_scheduler()
+            from .schedulers import start_scheduler
+            start_scheduler()
+            logger.info("✅ Scheduler de consolidação automática iniciado")
         except Exception as e:
-            print(f"Erro ao iniciar scheduler: {e}")
+            logger.error(f"❌ Erro ao iniciar scheduler: {e}")
+
     
     def start_agregador_thread(self):
         """Inicia thread do agregador em background"""
