@@ -163,6 +163,89 @@ class ProductionCounter:
 production_counter = ProductionCounter()
 
 
+# ===== DETECTOR DE MUDANÇA DE TURNO =====
+class ShiftDetector:
+    """Detecta mudanças de turno e dispara consolidação automática"""
+    
+    def __init__(self):
+        # Estado: { 'linha_codigo': { 'turno_atual': 'A', 'ultimo_check': timestamp } }
+        self.shift_states = {}
+        self.consolidation_in_progress = set()  # Evita consolidações duplicadas
+    
+    def detect_and_consolidate(self, linha_codigo, turno_atual):
+        """
+        Detecta mudança de turno e dispara consolidação do turno anterior
+        
+        Args:
+            linha_codigo: Código da linha
+            turno_atual: Turno atual detectado nos dados
+        
+        Returns:
+            bool: True se houve mudança de turno
+        """
+        if not turno_atual or not linha_codigo:
+            return False
+        
+        # Buscar estado anterior
+        state = self.shift_states.get(linha_codigo, {})
+        turno_anterior = state.get('turno_atual')
+        
+        # Primeira vez vendo esta linha - só registra
+        if not turno_anterior:
+            self.shift_states[linha_codigo] = {
+                'turno_atual': turno_atual,
+                'ultimo_check': datetime.now()
+            }
+            return False
+        
+        # Mudança de turno detectada!
+        if turno_anterior != turno_atual:
+            logger.info(f"[SHIFT CHANGE] Linha {linha_codigo}: {turno_anterior} → {turno_atual}")
+            
+            # Atualiza estado
+            self.shift_states[linha_codigo] = {
+                'turno_atual': turno_atual,
+                'ultimo_check': datetime.now()
+            }
+            
+            # Dispara consolidação do turno anterior (async, não bloqueia coleta)
+            consolidation_key = f"{linha_codigo}_{turno_anterior}_{datetime.now().date()}"
+            
+            if consolidation_key not in self.consolidation_in_progress:
+                self.consolidation_in_progress.add(consolidation_key)
+                
+                try:
+                    # Chamar endpoint Django para consolidar turno anterior
+                    response = requests.post(
+                        f"{DJANGO_API_URL}/bi/consolidar-turno/",
+                        json={
+                            'linha_codigo': linha_codigo,
+                            'turno_codigo': turno_anterior,
+                            'data': datetime.now().date().isoformat()
+                        },
+                        timeout=2
+                    )
+                    
+                    if response.status_code == 200:
+                        logger.info(f"[CONSOLIDAÇÃO] ✓ Turno {turno_anterior} consolidado")
+                    else:
+                        logger.warning(f"[CONSOLIDAÇÃO] ⚠ Erro {response.status_code}")
+                        
+                except Exception as e:
+                    logger.warning(f"[CONSOLIDAÇÃO] ⚠ Erro ao consolidar: {e}")
+                finally:
+                    # Remove do lock após 60s (evita acúmulo infinito)
+                    from threading import Timer
+                    Timer(60, lambda: self.consolidation_in_progress.discard(consolidation_key)).start()
+                
+                return True
+        
+        return False
+
+# Instância global
+shift_detector = ShiftDetector()
+
+
 
 
 # ===== ROTAS DE API =====
@@ -266,6 +349,23 @@ def inserir_dados():
             except Exception as e:
                 # Não falha a coleta se auto-criação de OP falhar
                 logger.warning(f"[OP AUTO] Erro ao auto-criar OP {ordem_producao}: {e}")
+        
+        # ===== DETECÇÃO REATIVA DE MUDANÇA DE TURNO =====
+        # Detectar turno atual baseado no horário
+        hora_atual = datetime.now().hour
+        
+        # Turnos padrão (ajuste conforme sua configuração)
+        # A: 06:00-14:00, B: 14:00-22:00, C: 22:00-06:00
+        if 6 <= hora_atual < 14:
+            turno_atual = 'A'
+        elif 14 <= hora_atual < 22:
+            turno_atual = 'B'
+        else:
+            turno_atual = 'C'
+        
+        # Detectar mudança de turno e disparar consolidação
+        if linha_codigo:
+            shift_detector.detect_and_consolidate(linha_codigo, turno_atual)
         
         # ===== EXTRAI TAGS DO MEDICOES =====
         # CRÍTICO: Extrai DEPOIS de calcular producao_acumulada_op/sku

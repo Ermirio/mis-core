@@ -202,7 +202,162 @@ class ProducaoBIViewSet(viewsets.ViewSet):
     - GET /api/bi/producao/fabrica/ - Visão total da fábrica
     - GET /api/bi/producao/tecnologia/ - Visão por tecnologia/área
     - GET /api/bi/producao/linha/ - Visão por linha
+    - POST /api/bi/consolidar-turno/ - Consolidação reativa de turno
     """
+    
+    @action(detail=False, methods=['post'])
+    def consolidar_turno(self, request):
+        """
+        Consolida um turno específico IMEDIATAMENTE (reativo)
+        Chamado pelo Flask quando detecta mudança de turno
+        
+        Payload:
+        {
+            "linha_codigo": "L1",
+            "turno_codigo": "A",
+            "data": "2025-11-27"
+        }
+        """
+        from influxdb import InfluxDBClient
+        from equipamentos.models import TurnoProducao, Produto
+        
+        linha_codigo = request.data.get('linha_codigo')
+        turno_codigo = request.data.get('turno_codigo')
+        data_str = request.data.get('data')
+        
+        if not linha_codigo or not turno_codigo or not data_str:
+            return Response(
+                {'error': 'linha_codigo, turno_codigo e data são obrigatórios'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            data = datetime.strptime(data_str, '%Y-%m-%d').date()
+        except ValueError:
+            return Response(
+                {'error': 'data inválida (use YYYY-MM-DD)'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Buscar linha e turno
+        try:
+            linha = LinhaProducao.objects.get(codigo=linha_codigo)
+            turno = TurnoProducao.objects.get(codigo=turno_codigo)
+        except (LinhaProducao.DoesNotExist, TurnoProducao.DoesNotExist) as e:
+            return Response(
+                {'error': f'Linha ou turno não encontrado: {e}'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        # Buscar OP ativa para esta linha
+        op = OrdemProducao.objects.filter(
+            linha=linha,
+            status__in=['PRODUZINDO', 'PAUSADA']
+        ).first()
+        
+        if not op:
+            return Response(
+                {'message': 'Nenhuma OP ativa encontrada para esta linha'},
+                status=status.HTTP_200_OK
+            )
+        
+        # Verificar se já foi consolidado
+        if RegistroProducaoTurno.objects.filter(
+            ordem_producao=op,
+            data=data,
+            turno=turno
+        ).exists():
+            return Response(
+                {'message': 'Turno já consolidado'},
+                status=status.HTTP_200_OK
+            )
+        
+        # Conectar ao InfluxDB e buscar dados
+        try:
+            influx_client = InfluxDBClient(
+                host='127.0.0.1',
+                port=8086,
+                database='industrial_db',
+                username='admin',
+                password='admin123'
+            )
+            
+            # Calcular intervalo do turno
+            inicio_turno = datetime.combine(data, turno.hora_inicio)
+            if turno.hora_fim < turno.hora_inicio:
+                fim_turno = datetime.combine(data + timedelta(days=1), turno.hora_fim)
+            else:
+                fim_turno = datetime.combine(data, turno.hora_fim)
+            
+            # Query para buscar dados
+            query = f"""
+            SELECT 
+                SUM(contagem_saida) as producao_unidades,
+                SUM(descarte) as refugo_unidades
+            FROM producao
+            WHERE 
+                linha_codigo = '{linha.codigo}'
+                AND ordem_producao = '{op.codigo}'
+                AND time >= '{inicio_turno.isoformat()}Z'
+                AND time < '{fim_turno.isoformat()}Z'
+            """
+            
+            result = influx_client.query(query)
+            points = list(result.get_points())
+            
+            if points and points[0].get('producao_unidades'):
+                dados = points[0]
+                producao_un = int(dados.get('producao_unidades') or 0)
+                refugo_un = int(dados.get('refugo_unidades') or 0)
+                
+                # Calcular toneladas
+                producao_ton = (producao_un * op.formato_gramas) / 1000000.0
+                refugo_kg = (refugo_un * op.formato_gramas) / 1000.0
+                
+                # Criar registro
+                registro = RegistroProducaoTurno.objects.create(
+                    ordem_producao=op,
+                    linha=linha,
+                    produto=op.produto,
+                    data=data,
+                    turno=turno,
+                    producao_unidades=producao_un,
+                    producao_toneladas=producao_ton,
+                    refugo_unidades=refugo_un,
+                    refugo_kg=refugo_kg,
+                    tempo_programado_min=turno.duracao_horas * 60,
+                    tempo_disponivel_min=turno.duracao_horas * 60,
+                    tempo_producao_min=turno.duracao_horas * 60 * 0.8,
+                    tempo_parado_min=turno.duracao_horas * 60 * 0.1,
+                    tempo_setup_min=turno.duracao_horas * 60 * 0.1,
+                    velocidade_planejada=linha.velocidade_planejada or 0,
+                    observacoes='Consolidação reativa (mudança de turno detectada)'
+                )
+                
+                influx_client.close()
+                
+                return Response({
+                    'message': 'Turno consolidado com sucesso',
+                    'consolidado': {
+                        'op': op.codigo,
+                        'linha': linha.codigo,
+                        'turno': turno.codigo,
+                        'producao_unidades': producao_un,
+                        'oee': registro.oee
+                    }
+                })
+            else:
+                influx_client.close()
+                return Response(
+                    {'message': 'Sem dados de produção para este turno'},
+                    status=status.HTTP_200_OK
+                )
+                
+        except Exception as e:
+            return Response(
+                {'error': f'Erro ao consolidar: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
     
     @action(detail=False, methods=['get'])
     def fabrica(self, request):
