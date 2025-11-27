@@ -13,10 +13,6 @@ class EquipamentosConfig(AppConfig):
     
     def ready(self):
         """Executado quando o Django carrega o app"""
-        # Evita execução dupla durante reload do development server
-        if os.environ.get('RUN_MAIN') != 'true':
-            return
-        
         logger.info("🔧 Equipamentos App iniciado")
         
         # Inicia o scheduler de consolidação automática
@@ -25,7 +21,8 @@ class EquipamentosConfig(AppConfig):
             start_scheduler()
             logger.info("✅ Scheduler de consolidação automática iniciado")
         except Exception as e:
-            logger.error(f"❌ Erro ao iniciar scheduler: {e}")
+            logger.error(f"❌ Erro ao iniciar scheduler: {e}", exc_info=True)
+
 
     
     def start_agregador_thread(self):
