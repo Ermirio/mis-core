@@ -1,0 +1,3 @@
+Commit ID: 5af14bb
+Tag: v-pre-mysql-refactor
+Mensagem: "Estado estável antes da refatoração do modelo de dados MySQL - 27/11/2025"

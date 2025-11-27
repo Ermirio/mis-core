@@ -130,6 +130,17 @@ class LinhaProducao(models.Model):
     
     def __str__(self):
         return f'{self.codigo} - {self.nome}'
+    
+    # ===== ALIASES PARA CONSULTAS DE BI =====
+    @property
+    def site(self):
+        """Alias para fabrica (via area) - facilita queries de BI"""
+        return self.area.fabrica if self.area else None
+    
+    @property
+    def tecnologia(self):
+        """Alias para area - facilita queries de BI"""
+        return self.area
 
 class HistoricoSKU(models.Model):
     """Histórico de SKUs rodando na linha"""
@@ -157,6 +168,138 @@ class HistoricoSKU(models.Model):
 
     def __str__(self):
         return f'{self.linha.codigo} - {self.produto.codigo} ({self.data_inicio})'
+
+# ===== ORDEM DE PRODUÇÃO (PLANEJAMENTO) =====
+
+class OrdemProducao(models.Model):
+    """Ordem de Produção - Planejamento e Controle"""
+    
+    STATUS_CHOICES = [
+        ('PLANEJADA', 'Planejada'),
+        ('PRODUZINDO', 'Em Produção'),
+        ('PAUSADA', 'Pausada'),
+        ('CONCLUIDA', 'Concluída'),
+        ('CANCELADA', 'Cancelada'),
+    ]
+    
+    # Identificação
+    codigo = models.CharField(
+        max_length=50, 
+        unique=True, 
+        verbose_name='Código da OP',
+        db_index=True
+    )
+    
+    # Relacionamentos
+    linha = models.ForeignKey(
+        LinhaProducao,
+        on_delete=models.CASCADE,
+        related_name='ordens_producao',
+        verbose_name='Linha de Produção'
+    )
+    produto = models.ForeignKey(
+        Produto,
+        on_delete=models.CASCADE,
+        related_name='ordens_producao',
+        verbose_name='Produto (SKU)'
+    )
+    
+    # Planejamento
+    meta_total = models.IntegerField(
+        validators=[MinValueValidator(0)],
+        verbose_name='Meta Total',
+        help_text='Meta total de produção para esta OP'
+    )
+    meta_turno = models.IntegerField(
+        validators=[MinValueValidator(0)],
+        verbose_name='Meta por Turno',
+        help_text='Meta de produção por turno'
+    )
+    
+    # Formato e Custos
+    formato_gramas = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        verbose_name='Formato (gramas)',
+        help_text='Peso unitário do produto em gramas'
+    )
+    cuc = models.DecimalField(
+        max_digits=10,
+        decimal_places=4,
+        null=True,
+        blank=True,
+        verbose_name='CUC',
+        help_text='Custo Unitário de Conversão'
+    )
+    eficiencia_planejada = models.FloatField(
+        validators=[MinValueValidator(0), MaxValueValidator(100)],
+        default=85.0,
+        verbose_name='Eficiência Planejada (%)'
+    )
+    
+    # Status e Controle
+    status = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default='PLANEJADA',
+        verbose_name='Status'
+    )
+    
+    # Datas
+    data_planejada_inicio = models.DateTimeField(
+        verbose_name='Data Planejada de Início'
+    )
+    data_inicio_real = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name='Data Real de Início'
+    )
+    data_fim_real = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name='Data Real de Término'
+    )
+    
+    # Informações adicionais
+    descricao = models.TextField(
+        blank=True,
+        verbose_name='Descrição'
+    )
+    observacoes = models.TextField(
+        blank=True,
+        verbose_name='Observações'
+    )
+    
+    # Metadados
+    criado_em = models.DateTimeField(auto_now_add=True)
+    atualizado_em = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        verbose_name = 'Ordem de Produção'
+        verbose_name_plural = 'Ordens de Produção'
+        ordering = ['-data_planejada_inicio']
+        indexes = [
+            models.Index(fields=['codigo']),
+            models.Index(fields=['status']),
+            models.Index(fields=['linha', 'status']),
+        ]
+    
+    def __str__(self):
+        return f'{self.codigo} - {self.produto.codigo} ({self.get_status_display()})'
+    
+    @property
+    def producao_total_realizada(self):
+        """Soma da produção de todos os turnos desta OP"""
+        return self.registros_turno.aggregate(
+            total=models.Sum('producao_unidades')
+        )['total'] or 0
+    
+    @property
+    def percentual_conclusao(self):
+        """Percentual de conclusão da OP"""
+        if self.meta_total > 0:
+            return min(100, (self.producao_total_realizada / self.meta_total) * 100)
+        return 0
 
 # ===== CONEXÕES OPC =====
 
@@ -861,6 +1004,255 @@ class MetricaProducao(models.Model):
         self.oee = (self.disponibilidade * self.performance * self.qualidade) / 10000
         
         super().save(*args, **kwargs)
+
+# ===== REGISTRO DE PRODUÇÃO POR TURNO (TABELA DE BI) =====
+
+class RegistroProducaoTurno(models.Model):
+    """
+    Fotografia consolidada de produção por turno - TABELA DE BI
+    
+    Esta tabela é populada por um script de consolidação que lê dados
+    do InfluxDB ao fim de cada turno e grava aqui para análises estratégicas.
+    """
+    
+    # Chaves (Relacionamentos)
+    ordem_producao = models.ForeignKey(
+        'OrdemProducao',
+        on_delete=models.CASCADE,
+        related_name='registros_turno',
+        verbose_name='Ordem de Produção'
+    )
+    linha = models.ForeignKey(
+        LinhaProducao,
+        on_delete=models.CASCADE,
+        related_name='registros_turno',
+        verbose_name='Linha',
+        help_text='Redundante mas útil para performance de queries'
+    )
+    produto = models.ForeignKey(
+        Produto,
+        on_delete=models.CASCADE,
+        related_name='registros_turno',
+        verbose_name='Produto'
+    )
+    
+    # Período
+    data = models.DateField(
+        db_index=True,
+        verbose_name='Data (Dia Contábil)'
+    )
+    turno = models.ForeignKey(
+        TurnoProducao,
+        on_delete=models.CASCADE,
+        related_name='registros_producao',
+        verbose_name='Turno'
+    )
+    
+    # Produção Realizada
+    producao_unidades = models.IntegerField(
+        default=0,
+        validators=[MinValueValidator(0)],
+        verbose_name='Produção (unidades)',
+        help_text='Total de unidades produzidas no turno'
+    )
+    producao_toneladas = models.DecimalField(
+        max_digits=12,
+        decimal_places=3,
+        default=0,
+        verbose_name='Produção (toneladas)',
+        help_text='Total de toneladas produzidas no turno'
+    )
+    
+    # Refugo
+    refugo_unidades = models.IntegerField(
+        default=0,
+        validators=[MinValueValidator(0)],
+        verbose_name='Refugo (unidades)'
+    )
+    refugo_kg = models.DecimalField(
+        max_digits=10,
+        decimal_places=3,
+        default=0,
+        verbose_name='Refugo (kg)'
+    )
+    
+    # Tempos (em minutos)
+    tempo_programado_min = models.FloatField(
+        validators=[MinValueValidator(0)],
+        verbose_name='Tempo Programado (min)',
+        help_text='Tempo total programado para o turno'
+    )
+    tempo_disponivel_min = models.FloatField(
+        validators=[MinValueValidator(0)],
+        verbose_name='Tempo Disponível (min)',
+        help_text='Tempo programado - tempo não programado'
+    )
+    tempo_producao_min = models.FloatField(
+        validators=[MinValueValidator(0)],
+        verbose_name='Tempo Produção (min)',
+        help_text='Tempo efetivo em produção (estado RUN)'
+    )
+    tempo_parado_min = models.FloatField(
+        default=0,
+        validators=[MinValueValidator(0)],
+        verbose_name='Tempo Parado (min)',
+        help_text='Tempo de paradas não planejadas'
+    )
+    tempo_setup_min = models.FloatField(
+        default=0,
+        validators=[MinValueValidator(0)],
+        verbose_name='Tempo Setup (min)',
+        help_text='Tempo de setup/troca de SKU'
+    )
+    
+    # KPIs Consolidados
+    disponibilidade = models.FloatField(
+        default=0,
+        validators=[MinValueValidator(0), MaxValueValidator(100)],
+        verbose_name='Disponibilidade (%)',
+        help_text='A = (Tempo Produção / Tempo Disponível) × 100'
+    )
+    performance = models.FloatField(
+        default=0,
+        validators=[MinValueValidator(0), MaxValueValidator(100)],
+        verbose_name='Performance (%)',
+        help_text='P = (Produção Real / Produção Planejada) × 100'
+    )
+    qualidade = models.FloatField(
+        default=0,
+        validators=[MinValueValidator(0), MaxValueValidator(100)],
+        verbose_name='Qualidade (%)',
+        help_text='Q = (Produção Boa / Produção Total) × 100'
+    )
+    oee = models.FloatField(
+        default=0,
+        validators=[MinValueValidator(0), MaxValueValidator(100)],
+        verbose_name='OEE (%)',
+        help_text='OEE = (A × P × Q) / 10000'
+    )
+    eficiencia = models.FloatField(
+        default=0,
+        validators=[MinValueValidator(0), MaxValueValidator(100)],
+        verbose_name='Eficiência (%)',
+        help_text='Razão entre produção real e meta'
+    )
+    
+    # Velocidades
+    velocidade_media = models.FloatField(
+        default=0,
+        validators=[MinValueValidator(0)],
+        verbose_name='Velocidade Média (unid/min)',
+        help_text='Velocidade média durante o turno'
+    )
+    velocidade_planejada = models.FloatField(
+        default=0,
+        validators=[MinValueValidator(0)],
+        verbose_name='Velocidade Planejada (unid/min)'
+    )
+    
+    # Metadados
+    consolidado_em = models.DateTimeField(
+        auto_now_add=True,
+        verbose_name='Consolidado em',
+        help_text='Timestamp de quando este registro foi criado'
+    )
+    observacoes = models.TextField(
+        blank=True,
+        verbose_name='Observações'
+    )
+    
+    class Meta:
+        verbose_name = 'Registro de Produção por Turno'
+        verbose_name_plural = 'Registros de Produção por Turno'
+        ordering = ['-data', 'turno']
+        unique_together = ['ordem_producao', 'data', 'turno']
+        indexes = [
+            models.Index(fields=['data', 'turno']),
+            models.Index(fields=['linha', 'data']),
+            models.Index(fields=['ordem_producao']),
+            models.Index(fields=['data', 'linha', 'turno']),
+        ]
+    
+    def __str__(self):
+        return f'OP {self.ordem_producao.codigo} - {self.data} - Turno {self.turno.codigo}'
+    
+    def save(self, *args, **kwargs):
+        """Calcula KPIs automaticamente antes de salvar"""
+        
+        # Calcula Disponibilidade (A)
+        if self.tempo_disponivel_min > 0:
+            self.disponibilidade = min(100, (self.tempo_producao_min / self.tempo_disponivel_min) * 100)
+        else:
+            self.disponibilidade = 0.0
+        
+        # Calcula Performance (P)
+        if self.tempo_producao_min > 0 and self.velocidade_planejada > 0:
+            producao_teorica = self.velocidade_planejada * self.tempo_producao_min
+            if producao_teorica > 0:
+                self.performance = min(100, (self.producao_unidades / producao_teorica) * 100)
+            else:
+                self.performance = 0.0
+        else:
+            self.performance = 0.0
+        
+        # Calcula Qualidade (Q)
+        total_producao = self.producao_unidades + self.refugo_unidades
+        if total_producao > 0:
+            self.qualidade = min(100, (self.producao_unidades / total_producao) * 100)
+        else:
+            self.qualidade = 100.0  # Se não há produção, considera qualidade perfeita
+        
+        # Calcula OEE
+        self.oee = (self.disponibilidade * self.performance * self.qualidade) / 10000
+        
+        # Calcula Eficiência (vs meta da OP)
+        if self.ordem_producao and self.ordem_producao.meta_turno > 0:
+            self.eficiencia = min(100, (self.producao_unidades / self.ordem_producao.meta_turno) * 100)
+        else:
+            self.eficiencia = 0.0
+        
+        # Calcula Velocidade Média
+        if self.tempo_producao_min > 0:
+            self.velocidade_media = self.producao_unidades / self.tempo_producao_min
+        else:
+            self.velocidade_media = 0.0
+        
+        super().save(*args, **kwargs)
+    
+    @classmethod
+    def criar_de_influxdb(cls, ordem_producao, data, turno, dados_influx):
+        """
+        Método auxiliar para criar registro a partir de dados do InfluxDB
+        
+        Args:
+            ordem_producao: instância de OrdemProducao
+            data: date do turno
+            turno: instância de TurnoProducao
+            dados_influx: dict com dados agregados do InfluxDB
+        
+        Returns:
+            instância de RegistroProducaoTurno criada
+        """
+        registro = cls(
+            ordem_producao=ordem_producao,
+            linha=ordem_producao.linha,
+            produto=ordem_producao.produto,
+            data=data,
+            turno=turno,
+            producao_unidades=dados_influx.get('producao_unidades', 0),
+            producao_toneladas=dados_influx.get('producao_toneladas', 0),
+            refugo_unidades=dados_influx.get('refugo_unidades', 0),
+            refugo_kg=dados_influx.get('refugo_kg', 0),
+            tempo_programado_min=dados_influx.get('tempo_programado_min', turno.duracao_horas * 60),
+            tempo_disponivel_min=dados_influx.get('tempo_disponivel_min', 0),
+            tempo_producao_min=dados_influx.get('tempo_producao_min', 0),
+            tempo_parado_min=dados_influx.get('tempo_parado_min', 0),
+            tempo_setup_min=dados_influx.get('tempo_setup_min', 0),
+            velocidade_planejada=ordem_producao.linha.velocidade_planejada,
+        )
+        registro.save()
+        return registro
+
 
 # ===== DEFEITOS =====
 

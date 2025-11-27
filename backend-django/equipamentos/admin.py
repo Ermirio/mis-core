@@ -4,7 +4,7 @@ from .models import (
     LinhaProducao, Equipamento, Sensor, MetricaProducao, 
     Defeito, ConexaoOPC, TagColeta,
     TurnoProducao, CalendarioProducao, EventoEstadoEquipamento,
-    Fabrica, Area, Produto, HistoricoSKU
+    Fabrica, Area, Produto, HistoricoSKU, OrdemProducao, RegistroProducaoTurno
 )
 
 from import_export.admin import ImportExportModelAdmin
@@ -478,3 +478,155 @@ class DefeitoAdmin(admin.ModelAdmin):
             return f'Linha {obj.linha.codigo}'
         return '-'
     get_local.short_description = 'Local'
+
+
+# ==============================
+# ORDEM DE PRODUÇÃO
+# ==============================
+
+@admin.register(OrdemProducao)
+class OrdemProducaoAdmin(admin.ModelAdmin):
+    list_display = [
+        'codigo', 'linha', 'produto', 'status_badge',
+        'meta_total', 'producao_realizada_display', 'percentual_display',
+        'data_planejada_inicio'
+    ]
+    list_filter = ['status', 'linha', 'criado_em']
+    search_fields = ['codigo', 'produto__codigo', 'descricao']
+    date_hierarchy = 'data_planejada_inicio'
+    autocomplete_fields = ['linha', 'produto']
+    
+    fieldsets = (
+        ('Identificação', {
+            'fields': ('codigo', 'linha', 'produto', 'status')
+        }),
+        ('Planejamento', {
+            'fields': ('meta_total', 'meta_turno', 'eficiencia_planejada')
+        }),
+        ('Formato e Custos', {
+            'fields': ('formato_gramas', 'cuc')
+        }),
+        ('Datas', {
+            'fields': ('data_planejada_inicio', 'data_inicio_real', 'data_fim_real')
+        }),
+        ('Informações Adicionais', {
+            'fields': ('descricao', 'observacoes'),
+            'classes': ('collapse',)
+        }),
+    )
+    
+    readonly_fields = ['criado_em', 'atualizado_em']
+    
+    def status_badge(self, obj):
+        cores = {
+            'PLANEJADA': 'blue',
+            'PRODUZINDO': 'green',
+            'PAUSADA': 'orange',
+            'CONCLUIDA': 'gray',
+            'CANCELADA': 'red',
+        }
+        cor = cores.get(obj.status, 'gray')
+        return format_html(
+            '<span style="background-color: {}; color: white; padding: 3px 8px; border-radius: 3px;">{}</span>',
+            cor,
+            obj.get_status_display()
+        )
+    status_badge.short_description = 'Status'
+    
+    def producao_realizada_display(self, obj):
+        return f'{obj.producao_total_realizada:,}'
+    producao_realizada_display.short_description = 'Produzido'
+    
+    def percentual_display(self, obj):
+        perc = obj.percentual_conclusao
+        if perc >= 100:
+            color = 'green'
+        elif perc >= 80:
+            color = 'blue'
+        elif perc >= 50:
+            color = 'orange'
+        else:
+            color = 'red'
+        return format_html(
+            '<span style="color: {}; font-weight: bold;">{:.1f}%</span>',
+            color, perc
+        )
+    percentual_display.short_description = 'Conclusão'
+
+
+# ==============================
+# REGISTRO DE PRODUÇÃO POR TURNO (BI)
+# ==============================
+
+@admin.register(RegistroProducaoTurno)
+class RegistroProducaoTurnoAdmin(admin.ModelAdmin):
+    list_display = [
+        'ordem_producao', 'linha', 'data', 'turno',
+        'producao_unidades', 'producao_toneladas',
+        'oee_badge', 'eficiencia_badge',
+        'consolidado_em'
+    ]
+    list_filter = ['data', 'turno', 'linha', 'ordem_producao__status']
+    search_fields = ['ordem_producao__codigo', 'linha__codigo', 'produto__codigo']
+    date_hierarchy = 'data'
+    autocomplete_fields = ['ordem_producao', 'linha', 'produto', 'turno']
+    
+    fieldsets = (
+        ('Identificação', {
+            'fields': ('ordem_producao', 'linha', 'produto', 'data', 'turno')
+        }),
+        ('Produção', {
+            'fields': ('producao_unidades', 'producao_toneladas', 'refugo_unidades', 'refugo_kg')
+        }),
+        ('Tempos (minutos)', {
+            'fields': (
+                'tempo_programado_min', 'tempo_disponivel_min',
+                'tempo_producao_min', 'tempo_parado_min', 'tempo_setup_min'
+            )
+        }),
+        ('KPIs (%)', {
+            'fields': ('disponibilidade', 'performance', 'qualidade', 'oee', 'eficiencia')
+        }),
+        ('Velocidades', {
+            'fields': ('velocidade_media', 'velocidade_planejada')
+        }),
+        ('Metadados', {
+            'fields': ('consolidado_em', 'observacoes'),
+            'classes': ('collapse',)
+        }),
+    )
+    
+    readonly_fields = [
+        'disponibilidade', 'performance', 'qualidade', 'oee',
+        'eficiencia', 'velocidade_media', 'consolidado_em'
+    ]
+    
+    def oee_badge(self, obj):
+        val = obj.oee
+        if val >= 85:
+            color = 'green'
+        elif val >= 70:
+            color = 'orange'
+        else:
+            color = 'red'
+        return format_html(
+            '<span style="color: {}; font-weight: bold;">{:.1f}%</span>',
+            color, val
+        )
+    oee_badge.short_description = 'OEE'
+    
+    def eficiencia_badge(self, obj):
+        val = obj.eficiencia
+        if val >= 100:
+            color = 'green'
+        elif val >= 80:
+            color = 'blue'
+        elif val >= 60:
+            color = 'orange'
+        else:
+            color = 'red'
+        return format_html(
+            '<span style="color: {}; font-weight: bold;">{:.1f}%</span>',
+            color, val
+        )
+    eficiencia_badge.short_description = 'Eficiência'
