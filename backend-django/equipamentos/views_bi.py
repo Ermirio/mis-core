@@ -78,14 +78,15 @@ class OrdemProducaoViewSet(viewsets.ModelViewSet):
         
         codigo_op = request.data.get('codigo_op')
         codigo_linha = request.data.get('codigo_linha')
+        codigo_equipamento = request.data.get('codigo_equipamento')
         codigo_sku = request.data.get('codigo_sku')
         formato_gramas = request.data.get('formato_gramas', 0)
         descricao = request.data.get('descricao', '')
         meta_producao = request.data.get('meta_producao', 0)
         
-        if not codigo_op or not codigo_linha:
+        if not codigo_op:
             return Response(
-                {'error': 'codigo_op e codigo_linha são obrigatórios'},
+                {'error': 'codigo_op é obrigatório'},
                 status=status.HTTP_400_BAD_REQUEST
             )
         
@@ -99,12 +100,28 @@ class OrdemProducaoViewSet(viewsets.ModelViewSet):
         except OrdemProducao.DoesNotExist:
             pass
         
-        # Buscar linha
-        try:
-            linha = LinhaProducao.objects.get(codigo=codigo_linha)
-        except LinhaProducao.DoesNotExist:
+        # Resolver Linha
+        linha = None
+        
+        # 1. Tentar pelo código da linha
+        if codigo_linha:
+            try:
+                linha = LinhaProducao.objects.get(codigo=codigo_linha)
+            except LinhaProducao.DoesNotExist:
+                pass
+        
+        # 2. Se não achou, tentar pelo código do equipamento
+        if not linha and codigo_equipamento:
+            from equipamentos.models import Equipamento
+            try:
+                equipamento = Equipamento.objects.get(codigo=codigo_equipamento)
+                linha = equipamento.linha
+            except Equipamento.DoesNotExist:
+                pass
+        
+        if not linha:
             return Response(
-                {'error': f'Linha {codigo_linha} não encontrada'},
+                {'error': f'Linha não encontrada (cod_linha={codigo_linha}, cod_equip={codigo_equipamento})'},
                 status=status.HTTP_404_NOT_FOUND
             )
         

@@ -293,15 +293,7 @@ def inserir_dados():
         
         equipamento_codigo = data.get('equipamento_codigo') or data.get('equipamento')
         linha_codigo = data.get('linha_codigo', '')
-        
-        # Normalização de código de linha (Fix temporário para compatibilidade)
-        if linha_codigo == '1':
-            linha_codigo = 'L01'
-        elif linha_codigo == '2':
-            linha_codigo = 'L02'
-            
         medicoes = data.get('medicoes', {})
-
         timestamp = data.get('timestamp')
         
         # Garante tipos corretos
@@ -350,6 +342,7 @@ def inserir_dados():
                     json={
                         'codigo_op': ordem_producao,
                         'codigo_linha': linha_codigo,
+                        'codigo_equipamento': equipamento_codigo,
                         'codigo_sku': sku_codigo,
                         'formato_gramas': formato_gramas,
                         'descricao': descricao_op,
