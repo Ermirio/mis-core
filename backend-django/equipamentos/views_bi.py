@@ -54,6 +54,87 @@ class OrdemProducaoViewSet(viewsets.ModelViewSet):
         ops = self.get_queryset().filter(status='CONCLUIDA')
         serializer = self.get_serializer(ops, many=True)
         return Response(serializer.data)
+    
+    @action(detail=False, methods=['post'])
+    def auto_create_or_get(self, request):
+        """
+        Auto-cria ou retorna OP existente
+        
+        Usado pelo Flask quando detecta nova OP nos dados do coletor.
+        Se a OP já existe, retorna. Se não existe, cria automaticamente.
+        
+        Payload:
+        {
+            "codigo_op": "OP-123",
+            "codigo_linha": "L1",
+            "codigo_sku": "SKU-001",
+            "formato_gramas": 2200.0
+        }
+        """
+        from equipamentos.models import Produto
+        from django.utils import timezone
+        
+        codigo_op = request.data.get('codigo_op')
+        codigo_linha = request.data.get('codigo_linha')
+        codigo_sku = request.data.get('codigo_sku')
+        formato_gramas = request.data.get('formato_gramas', 0)
+        
+        if not codigo_op or not codigo_linha:
+            return Response(
+                {'error': 'codigo_op e codigo_linha são obrigatórios'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Verificar se OP já existe
+        try:
+            op = OrdemProducao.objects.get(codigo=codigo_op)
+            return Response({
+                'created': False,
+                'op': OrdemProducaoSerializer(op).data
+            })
+        except OrdemProducao.DoesNotExist:
+            pass
+        
+        # Buscar linha
+        try:
+            linha = LinhaProducao.objects.get(codigo=codigo_linha)
+        except LinhaProducao.DoesNotExist:
+            return Response(
+                {'error': f'Linha {codigo_linha} não encontrada'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        # Buscar ou criar produto
+        produto = None
+        if codigo_sku:
+            produto, _ = Produto.objects.get_or_create(
+                codigo=codigo_sku,
+                defaults={
+                    'descricao': f'Produto {codigo_sku}',
+                    'peso_unitario': formato_gramas or 0,
+                    'ativo': True
+                }
+            )
+        
+        # Criar OP
+        op = OrdemProducao.objects.create(
+            codigo=codigo_op,
+            linha=linha,
+            produto=produto if produto else linha.equipamentos.first().tags_coleta.first().equipamento.linha.historico_skus.first().produto if linha.historico_skus.exists() else None,
+            meta_total=10000,  # Meta padrão
+            meta_turno=linha.meta_producao_turno if linha.meta_producao_turno else 3000,
+            formato_gramas=formato_gramas or (produto.peso_unitario if produto else 0),
+            status='PRODUZINDO',
+            data_planejada_inicio=timezone.now(),
+            data_inicio_real=timezone.now(),
+            descricao=f'OP auto-criada em {timezone.now().date()}'
+        )
+        
+        return Response({
+            'created': True,
+            'op': OrdemProducaoSerializer(op).data
+        }, status=status.HTTP_201_CREATED)
+
 
 
 class RegistroProducaoTurnoViewSet(viewsets.ReadOnlyModelViewSet):

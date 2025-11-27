@@ -243,6 +243,30 @@ def inserir_dados():
         
         logger.info(f"[PROD] OP={ordem_producao}: {acc_op:.3f} ton | SKU={sku_codigo}: {acc_sku:.3f} ton")
         
+        # ===== AUTO-CRIAÇÃO DE OP NO MYSQL (NOVO) =====
+        if ordem_producao and ordem_producao != '':
+            try:
+                # Tentar criar OP no Django automaticamente
+                response = requests.post(
+                    f"{DJANGO_API_URL}/bi/ordens-producao/auto_create_or_get/",
+                    json={
+                        'codigo_op': ordem_producao,
+                        'codigo_linha': linha_codigo,
+                        'codigo_sku': sku_codigo,
+                        'formato_gramas': formato_gramas
+                    },
+                    timeout=2  # Timeout curto para não atrasar coleta
+                )
+                
+                if response.status_code in [200, 201]:
+                    op_data = response.json()
+                    if op_data.get('created'):
+                        logger.info(f"[OP AUTO-CRIADA] OP {ordem_producao} criada no MySQL")
+                    # Se já existia, não loga (evita spam)
+            except Exception as e:
+                # Não falha a coleta se auto-criação de OP falhar
+                logger.warning(f"[OP AUTO] Erro ao auto-criar OP {ordem_producao}: {e}")
+        
         # ===== EXTRAI TAGS DO MEDICOES =====
         # CRÍTICO: Extrai DEPOIS de calcular producao_acumulada_op/sku
         # ordem_producao, sku_codigo e formato_gramas devem ser TAGS, não fields
