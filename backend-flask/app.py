@@ -330,11 +330,17 @@ def inserir_dados():
         logger.info(f"[PROD] OP={ordem_producao}: {acc_op:.3f} ton | SKU={sku_codigo}: {acc_sku:.3f} ton")
         
         # ===== AUTO-CRIAÇÃO DE OP NO MYSQL (NOVO) =====
-        if ordem_producao and ordem_producao != '':
+        # Cache simples para evitar DDoS interno no Django
+        op_anterior = cache_ops_equipamento.get(equipamento_codigo)
+        
+        # Só chama o Django se a OP mudou ou se é a primeira vez
+        if ordem_producao and ordem_producao != '' and ordem_producao != op_anterior:
             try:
                 # Extrair dados adicionais se disponíveis
                 descricao_op = medicoes.get('descricao', '') or medicoes.get('produto_descricao', '')
                 meta_producao = medicoes.get('meta_producao') or medicoes.get('meta', 0)
+                
+                logger.info(f"[OP CHECK] Nova OP detectada no equip {equipamento_codigo}: {op_anterior} -> {ordem_producao}")
                 
                 # Tentar criar OP no Django automaticamente
                 response = requests.post(
@@ -348,17 +354,20 @@ def inserir_dados():
                         'descricao': descricao_op,
                         'meta_producao': meta_producao
                     },
-                    timeout=2  # Timeout curto para não atrasar coleta
+                    timeout=5  # Timeout aumentado para segurança
                 )
                 
                 if response.status_code in [200, 201]:
-                    op_data = response.json()
-                    if op_data.get('created'):
-                        logger.info(f"[OP AUTO-CRIADA] OP {ordem_producao} criada no MySQL")
-                    # Se já existia, não loga (evita spam)
+                    # SUCESSO: Atualiza o cache
+                    cache_ops_equipamento[equipamento_codigo] = ordem_producao
+                    logger.info(f"[OP SYNC] Django confirmou OP: {ordem_producao}")
+                else:
+                    # ERRO: Loga detalhe e NÃO atualiza cache (tenta de novo depois)
+                    logger.error(f"[OP SYNC ERROR] Status: {response.status_code}, Body: {response.text}")
+                    
             except Exception as e:
                 # Não falha a coleta se auto-criação de OP falhar
-                logger.warning(f"[OP AUTO] Erro ao auto-criar OP {ordem_producao}: {e}")
+                logger.warning(f"[OP AUTO] Erro de conexão com Django: {e}")
         
         # ===== DETECÇÃO REATIVA DE MUDANÇA DE TURNO =====
         # Detectar turno atual baseado no horário

@@ -58,20 +58,9 @@ class OrdemProducaoViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['post'])
     def auto_create_or_get(self, request):
         """
-        Auto-cria ou retorna OP existente
+        Auto-cria ou atualiza OP existente (update_or_create)
         
         Usado pelo Flask quando detecta nova OP nos dados do coletor.
-        Se a OP já existe, retorna. Se não existe, cria automaticamente.
-        
-        Payload:
-        {
-            "codigo_op": "OP-123",
-            "codigo_linha": "L1",
-            "codigo_sku": "SKU-001",
-            "formato_gramas": 2200.0,
-            "descricao": "Produto Especial",
-            "meta_producao": 5000
-        }
         """
         from equipamentos.models import Produto
         from django.utils import timezone
@@ -80,25 +69,23 @@ class OrdemProducaoViewSet(viewsets.ModelViewSet):
         codigo_linha = request.data.get('codigo_linha')
         codigo_equipamento = request.data.get('codigo_equipamento')
         codigo_sku = request.data.get('codigo_sku')
-        formato_gramas = request.data.get('formato_gramas', 0)
+        
+        # Validação segura de tipos
+        def safe_float(val):
+            try:
+                return float(val) if val is not None else 0.0
+            except (ValueError, TypeError):
+                return 0.0
+        
+        formato_gramas = safe_float(request.data.get('formato_gramas'))
+        meta_producao = safe_float(request.data.get('meta_producao'))
         descricao = request.data.get('descricao', '')
-        meta_producao = request.data.get('meta_producao', 0)
         
         if not codigo_op:
             return Response(
                 {'error': 'codigo_op é obrigatório'},
                 status=status.HTTP_400_BAD_REQUEST
             )
-        
-        # Verificar se OP já existe
-        try:
-            op = OrdemProducao.objects.get(codigo=codigo_op)
-            return Response({
-                'created': False,
-                'op': OrdemProducaoSerializer(op).data
-            })
-        except OrdemProducao.DoesNotExist:
-            pass
         
         # Resolver Linha
         linha = None
@@ -120,6 +107,7 @@ class OrdemProducaoViewSet(viewsets.ModelViewSet):
                 pass
         
         if not linha:
+            print(f"[ERRO OP] Linha não encontrada. Linha: '{codigo_linha}', Equip: '{codigo_equipamento}'")
             return Response(
                 {'error': f'Linha não encontrada (cod_linha={codigo_linha}, cod_equip={codigo_equipamento})'},
                 status=status.HTTP_404_NOT_FOUND
@@ -142,28 +130,43 @@ class OrdemProducaoViewSet(viewsets.ModelViewSet):
                 defaults=produto_defaults
             )
         
-        # Definir metas (prioridade: payload > linha > default)
-        meta_total = meta_producao if meta_producao and float(meta_producao) > 0 else 10000
-        meta_turno = linha.meta_producao_turno if linha.meta_producao_turno else (meta_total / 3) # Estima turno como 1/3 do total se não tiver meta
+        # Definir metas
+        meta_total = meta_producao if meta_producao > 0 else 10000
+        meta_turno = linha.meta_producao_turno if linha.meta_producao_turno else (meta_total / 3)
         
-        # Criar OP
-        op = OrdemProducao.objects.create(
-            codigo=codigo_op,
-            linha=linha,
-            produto=produto,
-            meta_total=meta_total,
-            meta_turno=meta_turno,
-            formato_gramas=formato_gramas or (produto.peso_unitario if produto else 0),
-            status='PRODUZINDO',
-            data_planejada_inicio=timezone.now(),
-            data_inicio_real=timezone.now(),
-            descricao=descricao if descricao else f'OP auto-criada em {timezone.now().date()}'
-        )
-        
-        return Response({
-            'created': True,
-            'op': OrdemProducaoSerializer(op).data
-        }, status=status.HTTP_201_CREATED)
+        try:
+            # UPDATE_OR_CREATE: O pulo do gato para evitar IntegrityError
+            op, created = OrdemProducao.objects.update_or_create(
+                codigo=codigo_op,
+                defaults={
+                    'linha': linha,
+                    'produto': produto,
+                    'meta_total': meta_total,
+                    'meta_turno': meta_turno,
+                    'formato_gramas': formato_gramas or (produto.peso_unitario if produto else 0),
+                    'status': 'PRODUZINDO', # Força status ativo se vier do PLC
+                    'descricao': descricao if descricao else f'OP auto-criada em {timezone.now().date()}'
+                }
+            )
+            
+            # Se foi criada agora, define datas iniciais
+            if created:
+                op.data_planejada_inicio = timezone.now()
+                op.data_inicio_real = timezone.now()
+                op.save()
+            
+            status_msg = "Criada" if created else "Atualizada"
+            print(f"[DJANGO] OP {codigo_op} {status_msg} com sucesso.")
+            
+            return Response({
+                'created': created,
+                'message': f"OP {status_msg} com sucesso",
+                'op': OrdemProducaoSerializer(op).data
+            })
+            
+        except Exception as e:
+            print(f"[CRITICAL DJANGO] Erro ao salvar OP {codigo_op}: {str(e)}")
+            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 
