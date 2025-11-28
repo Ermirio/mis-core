@@ -1,0 +1,9 @@
+meta hora da linha deve ser float, ajustar o model e todos osl ocais que utilizam esta infomração.
+meta turno deve ser float e ajustar em todos locais que usam a infomração. 
+ajustar models para que codigos de fabrica, linha equipamentos sejam atribuidos automaticamente conforme são criados. exepmplo criar usam
+equipento o prmierio vai ser E001, depois E002 e assim por diante, pra todos os que usam codigo. 
+Tipo de equipamento fornecer uma lista dos existentes no admin e a opção de criar um que nao exista. 
+
+Localização no admdin deve dar uma tooltip do que é essa infomração do equipaento, localização na fabrica ? na area ?
+
+

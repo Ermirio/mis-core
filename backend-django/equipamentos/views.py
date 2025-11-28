@@ -1054,6 +1054,69 @@ def metricas_linha_consolidadas(request):
         serializer = MetricaProducaoSerializer(metricas, many=True)
         metricas_data = serializer.data
         
+        # ===== INJEÇÃO DE DADOS EM TEMPO REAL (INFLUXDB) =====
+        # Sobrescreve dados do MySQL com dados frescos do InfluxDB para o turno atual
+        try:
+            from .influx_helpers import get_realtime_metrics
+            from .turno_helpers import obter_turno_atual, calcular_inicio_turno
+
+            # 1. Identificar equipamento final da linha
+            linha = LinhaProducao.objects.get(id=linha_id)
+            equipamentos_linha = Equipamento.objects.filter(linha=linha, status='ATIVO').order_by('ordem_na_linha')
+            
+            # Busca Equipamento Final Efetivo (último com tags ativas)
+            equipamento_final = equipamentos_linha.filter(tags_coleta__ativa=True).distinct().last()
+            
+            # Busca Formato
+            formato = None
+            if equipamento_final:
+                tag_formato_final = equipamento_final.tags_coleta.filter(nome_metrica='formato').first()
+                if tag_formato_final and tag_formato_final.formato and float(tag_formato_final.formato) > 0:
+                    formato = float(tag_formato_final.formato)
+            
+            # Fallback formato
+            if not formato:
+                for eq in equipamentos_linha:
+                    tag_formato = eq.tags_coleta.filter(formato__gt=0).first()
+                    if tag_formato:
+                        formato = float(tag_formato.formato)
+                        break
+            
+            if equipamento_final and formato:
+                # Obter turno atual e início
+                turno_atual_obj = obter_turno_atual()
+                inicio_turno = calcular_inicio_turno(turno_atual_obj)
+                
+                # Buscar métricas em tempo real
+                metricas_rt = get_realtime_metrics(
+                    equipamento_codigo=equipamento_final.codigo,
+                    formato_gramas=formato,
+                    inicio_turno=inicio_turno
+                )
+                
+                # Se tivermos métricas (lista não vazia), atualizamos a mais recente (índice 0)
+                # ou criamos uma entrada fictícia se não houver nenhuma
+                if not metricas_data:
+                    metricas_data = [{}]
+                
+                # Atualiza a entrada mais recente (que representa o turno atual)
+                metricas_data[0].update({
+                    'toneladas_produzidas': metricas_rt['toneladas_turno'],
+                    'vazao_real_ton_hora': metricas_rt['vazao_ton_hora'],
+                    'contagem_saida': int(metricas_rt['contagem_atual']),
+                    'formato_gramas': formato,
+                    # Se quiser atualizar OEE realtime também, precisaria calcular aqui
+                    # Por enquanto, mantemos OEE do MySQL ou 0
+                })
+                
+                # Se não tinha data, põe agora
+                if not metricas_data[0].get('data_hora'):
+                    metricas_data[0]['data_hora'] = timezone.now().isoformat()
+                    
+        except Exception as e:
+            logging.error(f"Erro ao injetar dados realtime na linha {linha_id}: {e}")
+            # Não falha a request, apenas segue com dados do MySQL
+        
         # ADICIONAR: Buscar OP e Meta em tempo real do InfluxDB (como no Home)
         try:
             linha = LinhaProducao.objects.get(id=linha_id)

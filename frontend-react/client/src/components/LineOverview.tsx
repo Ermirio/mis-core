@@ -33,7 +33,7 @@ interface LineOverviewProps {
 
 const LineOverview: React.FC<LineOverviewProps> = ({
   nome,
-  oee,
+  oee = 0,
   totalEquipamentos,
   equipamentosOnline,
   toneladasTurno = 0,
