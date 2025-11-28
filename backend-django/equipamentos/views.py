@@ -12,14 +12,15 @@ from .models import (
     LinhaProducao, Equipamento, Sensor, MetricaProducao, 
     Defeito, ConexaoOPC, TagColeta,
     TurnoProducao, CalendarioProducao, EventoEstadoEquipamento, EventoParada,
-    Produto, HistoricoSKU
+    Produto, HistoricoSKU, StrategicInitiative
 )
 from .serializers import (
     LinhaProducaoSerializer, EquipamentoSerializer, SensorSerializer,
     MetricaProducaoSerializer, DefeitoSerializer, ConexaoOPCSerializer,
     TagColetaSerializer, EquipamentoColetorSerializer, MetricaConsolidadaInputSerializer,
     TurnoProducaoSerializer, CalendarioProducaoSerializer,
-    EventoEstadoEquipamentoSerializer, EventoEstadoCreateSerializer, EventoParadaSerializer
+    EventoEstadoEquipamentoSerializer, EventoEstadoCreateSerializer, EventoParadaSerializer,
+    StrategicInitiativeSerializer
 )
 from .influx_helpers import get_influx_client
 from .projections import calculate_projection
@@ -1589,6 +1590,33 @@ class EventoParadaViewSet(viewsets.ModelViewSet):
             
         serializer = self.get_serializer(queryset, many=True)
         return Response(serializer.data)
+
+
+class StrategicInitiativeViewSet(viewsets.ModelViewSet):
+    """
+    API para Gestão de Iniciativas Estratégicas
+    Permite criar, listar, atualizar e deletar iniciativas de melhoria.
+    """
+    queryset = StrategicInitiative.objects.all().order_by('-data_criacao')
+    serializer_class = StrategicInitiativeSerializer
+    
+    @action(detail=False, methods=['get'])
+    def ativas(self, request):
+        """Retorna apenas iniciativas ativas"""
+        queryset = self.queryset.filter(status='ATIVA')
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)
+    
+    @action(detail=False, methods=['get'])
+    def por_linha(self, request):
+        """Retorna iniciativas de uma linha específica"""
+        linha_id = request.query_params.get('linha_id')
+        if linha_id:
+            queryset = self.queryset.filter(linha_id=linha_id)
+            serializer = self.get_serializer(queryset, many=True)
+            return Response(serializer.data)
+        return Response({'error': 'linha_id é obrigatório'}, status=status.HTTP_400_BAD_REQUEST)
+
 
 # --- ENDPOINTS DE IMPORTAR/EXPORTAR EXCEL ---
 
