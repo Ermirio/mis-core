@@ -36,6 +36,9 @@ from .serializers import (
     StrategicInitiativeSerializer
 )
 from .turno_helpers import obter_turno_atual, calcular_inicio_turno
+from rest_framework.decorators import api_view
+from django.http import HttpResponse
+from .excel_utils import ExcelExporter, ExcelImporter
 
 # Configuração do Logger
 logger = logging.getLogger(__name__)
@@ -211,6 +214,219 @@ def get_full_equipment_status(request):
 class StrategicInitiativeViewSet(viewsets.ModelViewSet):
     queryset = StrategicInitiative.objects.all()
     serializer_class = StrategicInitiativeSerializer
+
+
+# --- ENDPOINTS DE IMPORTAR/EXPORTAR EXCEL ---
+
+@api_view(['GET'])
+def exportar_linhas_excel(request):
+    """Exporta todas as linhas de produção para Excel."""
+    try:
+        queryset = LinhaProducao.objects.all()
+        return ExcelExporter.export_model_to_excel(
+            queryset,
+            LinhaProducao,
+            filename="linhas_producao.xlsx"
+        )
+    except Exception as e:
+        logger.error(f"Erro ao exportar linhas: {e}")
+        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['POST'])
+def importar_linhas_excel(request):
+    """Importa linhas de produção de um arquivo Excel."""
+    try:
+        if "file" not in request.FILES:
+            return Response(
+                {"error": "Nenhum arquivo fornecido"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        file = request.FILES["file"]
+        imported, errors = ExcelImporter.import_excel_to_model(
+            file,
+            LinhaProducao,
+            skip_errors=True
+        )
+        
+        return Response({
+            "status": "success",
+            "imported": imported,
+            "errors": errors
+        })
+    except Exception as e:
+        logger.error(f"Erro ao importar linhas: {e}")
+        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET'])
+def exportar_equipamentos_excel(request):
+    """Exporta todos os equipamentos para Excel."""
+    try:
+        queryset = Equipamento.objects.all()
+        return ExcelExporter.export_model_to_excel(
+            queryset,
+            Equipamento,
+            filename="equipamentos.xlsx"
+        )
+    except Exception as e:
+        logger.error(f"Erro ao exportar equipamentos: {e}")
+        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['POST'])
+def importar_equipamentos_excel(request):
+    """Importa equipamentos de um arquivo Excel."""
+    try:
+        if "file" not in request.FILES:
+            return Response(
+                {"error": "Nenhum arquivo fornecido"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        file = request.FILES["file"]
+        imported, errors = ExcelImporter.import_excel_to_model(
+            file,
+            Equipamento,
+            skip_errors=True
+        )
+        
+        return Response({
+            "status": "success",
+            "imported": imported,
+            "errors": errors
+        })
+    except Exception as e:
+        logger.error(f"Erro ao importar equipamentos: {e}")
+        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET'])
+def exportar_produtos_excel(request):
+    """Exporta todos os produtos para Excel."""
+    try:
+        queryset = Produto.objects.all()
+        return ExcelExporter.export_model_to_excel(
+            queryset,
+            Produto,
+            filename="produtos.xlsx"
+        )
+    except Exception as e:
+        logger.error(f"Erro ao exportar produtos: {e}")
+        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['POST'])
+def importar_produtos_excel(request):
+    """Importa produtos de um arquivo Excel."""
+    try:
+        if "file" not in request.FILES:
+            return Response(
+                {"error": "Nenhum arquivo fornecido"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        file = request.FILES["file"]
+        imported, errors = ExcelImporter.import_excel_to_model(
+            file,
+            Produto,
+            skip_errors=True
+        )
+        
+        return Response({
+            "status": "success",
+            "imported": imported,
+            "errors": errors
+        })
+    except Exception as e:
+        logger.error(f"Erro ao importar produtos: {e}")
+        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET'])
+def exportar_metricas_excel(request):
+    """Exporta todas as métricas de produção para Excel."""
+    try:
+        queryset = MetricaProducao.objects.all()
+        return ExcelExporter.export_model_to_excel(
+            queryset,
+            MetricaProducao,
+            filename="metricas_producao.xlsx"
+        )
+    except Exception as e:
+        logger.error(f"Erro ao exportar métricas: {e}")
+        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['POST'])
+def importar_metricas_excel(request):
+    """Importa métricas de produção de um arquivo Excel."""
+    try:
+        if "file" not in request.FILES:
+            return Response(
+                {"error": "Nenhum arquivo fornecido"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        file = request.FILES["file"]
+        imported, errors = ExcelImporter.import_excel_to_model(
+            file,
+            MetricaProducao,
+            skip_errors=True
+        )
+        
+        return Response({
+            "status": "success",
+            "imported": imported,
+            "errors": errors
+        })
+    except Exception as e:
+        logger.error(f"Erro ao importar métricas: {e}")
+        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET'])
+def exportar_ordens_producao_excel(request):
+    """Exporta todas as ordens de produção para Excel."""
+    try:
+        queryset = OrdemProducao.objects.all()
+        return ExcelExporter.export_model_to_excel(
+            queryset,
+            OrdemProducao,
+            filename="ordens_producao.xlsx"
+        )
+    except Exception as e:
+        logger.error(f"Erro ao exportar ordens de produção: {e}")
+        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['POST'])
+def importar_ordens_producao_excel(request):
+    """Importa ordens de produção de um arquivo Excel."""
+    try:
+        if "file" not in request.FILES:
+            return Response(
+                {"error": "Nenhum arquivo fornecido"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        file = request.FILES["file"]
+        imported, errors = ExcelImporter.import_excel_to_model(
+            file,
+            OrdemProducao,
+            skip_errors=True
+        )
+        
+        return Response({
+            "status": "success",
+            "imported": imported,
+            "errors": errors
+        })
+    except Exception as e:
+        logger.error(f"Erro ao importar ordens de produção: {e}")
+        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
 
 # Mantenha outros ViewSets e endpoints que não foram refatorados aqui... 
 # Ex: EquipamentoViewSet, LinhaProducaoViewSet, etc.
