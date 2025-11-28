@@ -36,7 +36,7 @@ interface LinhaStatusResponse {
   };
 }
 
-const FLASK_API_URL = process.env.REACT_APP_FLASK_API_URL || 'http://localhost:5000/api';
+const FLASK_API_URL = import.meta.env.VITE_FLASK_API_URL || 'http://localhost:5000/api';
 
 /**
  * LineManagement - Tela de Gerenciamento de Linha
