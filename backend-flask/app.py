@@ -277,6 +277,13 @@ def inserir_dados():
         descricao = medicoes.get('descricao', '')
         estado_maquina = medicoes.get('estado_maquina', 'UNKNOWN')
         motivo_parada = medicoes.get('motivo_parada', '')
+        percentual_descarte = float(medicoes.get('percentual_descarte', 0))
+        temperatura = float(medicoes.get('temperatura', 0))
+        pressao = float(medicoes.get('pressao', 0))
+        oee = float(medicoes.get('oee', 0))
+        disponibilidade = float(medicoes.get('disponibilidade', 0))
+        performance = float(medicoes.get('performance', 0))
+        qualidade = float(medicoes.get('qualidade', 0))
         
         # ===== CALCULAR VALORES DERIVADOS =====
         turno = detectar_turno()
@@ -302,10 +309,19 @@ def inserir_dados():
                 "contagem_entrada": contagem_entrada,
                 "contagem_saida": contagem_saida,
                 "descarte": descarte,
+                "percentual_descarte": percentual_descarte,
                 "velocidade_atual": velocidade_atual,
                 "formato_gramas": formato_gramas,
                 "planejado_op": planejado_op,
-                "descricao": descricao
+                "descricao": descricao,
+                "temperatura": temperatura,
+                "pressao": pressao,
+                "oee": oee,
+                "disponibilidade": disponibilidade,
+                "performance": performance,
+                "qualidade": qualidade,
+                "ordem_producao_field": ordem_producao if ordem_producao else "N/A",
+                "sku_codigo_field": sku_codigo if sku_codigo else "N/A"
             }
         }
         
@@ -376,15 +392,25 @@ def get_realtime_status(equipamento_codigo):
             return jsonify({'error': 'Banco de dados indisponível'}), 503
         
         # Query para buscar últimos dados do novo schema
-        # Agora incluímos estado_maquina que está nos tags
+        # Inclui TODOS os campos armazenados no InfluxDB
         query = f"""
             SELECT 
                 last(contagem_saida) as contagem_saida,
                 last(contagem_entrada) as contagem_entrada,
                 last(velocidade_atual) as velocidade_atual,
                 last(descarte) as descarte,
+                last(percentual_descarte) as percentual_descarte,
                 last(formato_gramas) as formato_gramas,
-                last(planejado_op) as planejado_op
+                last(planejado_op) as planejado_op,
+                last(descricao) as descricao,
+                last(temperatura) as temperatura,
+                last(pressao) as pressao,
+                last(oee) as oee,
+                last(disponibilidade) as disponibilidade,
+                last(performance) as performance,
+                last(qualidade) as qualidade,
+                last(ordem_producao_field) as ordem_producao,
+                last(sku_codigo_field) as sku_codigo
             FROM production
             WHERE equipment = '{equipamento_codigo}'
             GROUP BY *
@@ -440,14 +466,25 @@ def get_realtime_status(equipamento_codigo):
         response = {
             'equipamento': equipamento_codigo,
             'timestamp': datetime.now().isoformat(),
-            'status': status_code, # Retorna o código real (ex: 1, 2, 'RUN')
+            'status': status_code,
             'medicoes': {
                 'contagem_saida': int(data.get('contagem_saida') or 0),
                 'contagem_entrada': int(data.get('contagem_entrada') or 0),
                 'velocidade_atual': int(data.get('velocidade_atual') or 0),
                 'descarte': int(data.get('descarte') or 0),
+                'percentual_descarte': float(data.get('percentual_descarte') or 0),
                 'formato_gramas': int(data.get('formato_gramas') or 0),
-                'planejado_op': int(data.get('planejado_op') or 0)
+                'planejado_op': int(data.get('planejado_op') or 0),
+                'descricao': data.get('descricao', ''),
+                'temperatura': float(data.get('temperatura') or 0),
+                'pressao': float(data.get('pressao') or 0),
+                'oee': float(data.get('oee') or 0),
+                'disponibilidade': float(data.get('disponibilidade') or 0),
+                'performance': float(data.get('performance') or 0),
+                'qualidade': float(data.get('qualidade') or 0),
+                'ordem_producao': data.get('ordem_producao', ''),
+                'sku_codigo': data.get('sku_codigo', ''),
+                'estado': status_code
             }
         }
         
