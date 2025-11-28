@@ -8,7 +8,7 @@ import LinhaDetalhes from "./pages/LinhaDetalhes.tsx";
 import EquipamentoDetalhes from "./pages/EquipamentoDetalhes.tsx";
 import FactoryManagement from "./pages/FactoryManagement";
 import DiagnosticosLogs from "./pages/DiagnosticosLogs";
-import LineManagement from "./pages/LineManagement";
+import LineManagement from "./pages/LineManagement.tsx";
 
 function App() {
   return (

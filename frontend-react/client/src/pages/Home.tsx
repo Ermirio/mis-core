@@ -315,20 +315,20 @@ export default function Home() {
                   <div className="flex items-center justify-between gap-4">
                     <div className="flex-1">
                       <LineOverview
-                    nome={linha.linha_nome}
-                    oee={calcularOEELinha(linha.equipamentos)}
-                    totalEquipamentos={linha.equipamentos.length}
-                    equipamentosOnline={linha.equipamentos.filter(eq => eq.status === 'online').length}
-                    toneladasTurno={metricas.toneladas_produzidas}
-                    vazaoTurno={metricas.vazao_real_ton_hora}
-                    formatoAtual={metricas.formato_gramas}
-                    sku={metricas.sku_codigo}
-                    descricao={metricas.sku_descricao}
-                    ordemProducao={metricas.ordem_producao}
-                    metaProducao={metricas.meta_producao}
-                    toneladasProduzidasOP={metricas.toneladas_produzidas_op}
-                    projecao={metricas.projecao}
-                  />
+                        nome={linha.linha_nome}
+                        oee={calcularOEELinha(linha.equipamentos)}
+                        totalEquipamentos={linha.equipamentos.length}
+                        equipamentosOnline={linha.equipamentos.filter(eq => eq.status === 'online').length}
+                        toneladasTurno={metricas.toneladas_produzidas}
+                        vazaoTurno={metricas.vazao_real_ton_hora}
+                        formatoAtual={metricas.formato_gramas}
+                        sku={metricas.sku_codigo}
+                        descricao={metricas.sku_descricao}
+                        ordemProducao={metricas.ordem_producao}
+                        metaProducao={metricas.meta_producao}
+                        toneladasProduzidasOP={metricas.toneladas_produzidas_op}
+                        projecao={metricas.projecao}
+                      />
                     </div>
                     <Button
                       onClick={() => navigate(`/linha-management/${linha.linha_id}`)}
