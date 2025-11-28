@@ -20,6 +20,7 @@ router.register(r'turnos', views.TurnoProducaoViewSet, basename='turno')
 router.register(r'calendario', views.CalendarioProducaoViewSet, basename='calendario')
 router.register(r'eventos-estado', views.EventoEstadoEquipamentoViewSet, basename='evento-estado')
 router.register(r'eventos-parada', views.EventoParadaViewSet, basename='evento-parada')
+router.register(r'iniciativas-estrategicas', views.StrategicInitiativeViewSet, basename='iniciativa-estrategica')
 
 urlpatterns = [
     path('', include(router.urls)),

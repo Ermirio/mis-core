@@ -70,18 +70,25 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'config.wsgi.application'
 
+# DATABASES = {
+#     'default': {
+#         'ENGINE': 'django.db.backends.mysql',
+#         'NAME': config('MYSQL_DB', default='efficiency_db'),
+#         'USER': config('MYSQL_USER', default='root'),
+#         'PASSWORD': config('MYSQL_PASSWORD', default='ixvq10A@10'),
+#         'HOST': config('MYSQL_HOST', default='localhost'),
+#         'PORT': config('MYSQL_PORT', default='3307'),
+#         'OPTIONS': {
+#             'init_command': "SET sql_mode='STRICT_TRANS_TABLES'",
+#             'charset': 'utf8mb4',
+#         }
+#     }
+# }
+
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.mysql',
-        'NAME': config('MYSQL_DB', default='efficiency_db'),
-        'USER': config('MYSQL_USER', default='root'),
-        'PASSWORD': config('MYSQL_PASSWORD', default='ixvq10A@10'),
-        'HOST': config('MYSQL_HOST', default='localhost'),
-        'PORT': config('MYSQL_PORT', default='3307'),
-        'OPTIONS': {
-            'init_command': "SET sql_mode='STRICT_TRANS_TABLES'",
-            'charset': 'utf8mb4',
-        }
+        'ENGINE': 'django.db.backends.sqlite3',
+        'NAME': BASE_DIR / 'db.sqlite3',
     }
 }
 

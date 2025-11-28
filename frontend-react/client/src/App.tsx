@@ -6,6 +6,7 @@ import FactoryDashboard from "./pages/FactoryDashboard";
 import FabricaDetalhes from "./pages/FabricaDetalhes";
 import LinhaDetalhes from "./pages/LinhaDetalhes.tsx";
 import EquipamentoDetalhes from "./pages/EquipamentoDetalhes.tsx";
+import FactoryManagement from "./pages/FactoryManagement";
 
 function App() {
   return (
@@ -17,6 +18,7 @@ function App() {
           <Route path="fabrica" element={<FabricaDetalhes />} />
           <Route path="linha/:linhaId" element={<LinhaDetalhes />} />
           <Route path="equipamento/:equipamentoId" element={<EquipamentoDetalhes />} />
+            <Route path="factory-management" element={<FactoryManagement />} />
         </Route>
       </Routes>
     </BrowserRouter>

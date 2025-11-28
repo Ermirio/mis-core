@@ -1349,3 +1349,31 @@ class EventoParada(models.Model):
     
     def __str__(self):
         return f'{self.maquina} - {self.categoria_clp} ({self.inicio})'
+
+# ===== INICIATIVAS ESTRATÉGICAS =====
+
+class StrategicInitiative(models.Model):
+    """Iniciativas estratégicas para melhoria da fábrica"""
+    STATUS_CHOICES = [
+        ("NAO_INICIADO", "Não Iniciado"),
+        ("EM_ANDAMENTO", "Em Andamento"),
+        ("CONCLUIDO", "Concluído"),
+        ("CANCELADO", "Cancelado"),
+    ]
+
+    titulo = models.CharField(max_length=200, verbose_name="Título da Iniciativa")
+    descricao = models.TextField(verbose_name="Descrição")
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="NAO_INICIADO", verbose_name="Status")
+    responsavel = models.CharField(max_length=100, blank=True, verbose_name="Responsável")
+    data_inicio = models.DateField(null=True, blank=True, verbose_name="Data de Início")
+    data_fim = models.DateField(null=True, blank=True, verbose_name="Data de Fim")
+    criado_em = models.DateTimeField(auto_now_add=True)
+    atualizado_em = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Iniciativa Estratégica"
+        verbose_name_plural = "Iniciativas Estratégicas"
+        ordering = ["-criado_em"]
+
+    def __str__(self):
+        return self.titulo
