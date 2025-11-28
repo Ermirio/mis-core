@@ -4,7 +4,7 @@ from . import views
 from . import tonnage_views
 from . import loss_analysis_views
 
-from .views import exportar_excel, importar_excel
+
 
 router = DefaultRouter()
 router.register(r'linhas', views.LinhaProducaoViewSet, basename='linha')
@@ -33,8 +33,8 @@ urlpatterns = [
     path("full_equipment_status/", views.get_full_equipment_status, name="full-equipment-status"),
     path('metricas_equipamento_consolidadas/', views.metricas_equipamento_consolidadas, name='metricas-equipamento-consolidadas'),
     path('eventos_estado/', views.eventos_estado, name='eventos-estado'),
-    path('equipamentos/exportar-excel/', exportar_excel, name='exportar_excel'),
-    path('equipamentos/importar-excel/', importar_excel, name='importar_excel'),
+    
+    
     
     # Endpoints de Tonelagem
     path('linhas/<int:linha_id>/tonelagem-tempo-real/', tonnage_views.tonelagem_tempo_real, name='tonelagem-tempo-real'),
