@@ -152,10 +152,11 @@ const EquipamentoCard: React.FC<EquipamentoCardProps> = ({
   const estadoStyle = getEstadoStyle(estado);
   const performance = calcularPerformance();
 
-  // Calcula peças boas e ruins se não fornecidas
+  // Usa dados diretos do Flask (fonte de verdade em tempo real)
+  // Se não houver dados, usa 0 (não tenta calcular com fallbacks inconsistentes)
   const calculatedPecasBoas = pecasBoas ?? contagem_saida ?? 0;
-  const calculatedPecasRuins = pecasRuins ?? (contagem_entrada && contagem_saida ? contagem_entrada - contagem_saida : 0);
-  const calculatedOEE = oee ?? performance;
+  const calculatedPecasRuins = pecasRuins ?? 0;  // Sempre usa o descarte do Flask, nunca calcula
+  const calculatedOEE = oee ?? 0;  // Sempre usa OEE do Flask, nunca usa performance calculada
 
   const handleClick = () => {
     if (id) {

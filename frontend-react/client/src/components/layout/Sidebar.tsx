@@ -69,6 +69,16 @@ const Sidebar: React.FC = () => {
           ))
         )}
       </nav>
+
+      <div className="sidebar-footer">
+        <NavLink
+          to="/diagnosticos"
+          className={({ isActive }) => isActive ? "sidebar-link active" : "sidebar-link"}
+          title="Tela de diagnósticos e logs para identificar problemas no fluxo de dados"
+        >
+          🔧 Diagnósticos
+        </NavLink>
+      </div>
     </div>
   );
 };

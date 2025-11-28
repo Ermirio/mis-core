@@ -338,8 +338,7 @@ export default function Home() {
                         velocidadeAtual={eq.medicoes?.velocidade_atual}
                         velocidadePadrao={eq.velocidade_nominal}
                         oee={eq.medicoes?.oee}
-                        contagem_entrada={eq.medicoes?.contagem_entrada}
-                        contagem_saida={eq.medicoes?.contagem_saida}
+                        pecasBoas={eq.medicoes?.contagem_saida}
                         pecasRuins={eq.medicoes?.descarte}
                         metaOEE={eq.meta_oee}
                       />
