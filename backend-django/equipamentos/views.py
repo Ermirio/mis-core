@@ -12,14 +12,15 @@ from .models import (
     LinhaProducao, Equipamento, Sensor, MetricaProducao, 
     Defeito, ConexaoOPC, TagColeta,
     TurnoProducao, CalendarioProducao, EventoEstadoEquipamento, EventoParada,
-    Produto, HistoricoSKU
+    Produto, HistoricoSKU, StrategicInitiative
 )
 from .serializers import (
     LinhaProducaoSerializer, EquipamentoSerializer, SensorSerializer,
     MetricaProducaoSerializer, DefeitoSerializer, ConexaoOPCSerializer,
     TagColetaSerializer, EquipamentoColetorSerializer, MetricaConsolidadaInputSerializer,
     TurnoProducaoSerializer, CalendarioProducaoSerializer,
-    EventoEstadoEquipamentoSerializer, EventoEstadoCreateSerializer, EventoParadaSerializer
+    EventoEstadoEquipamentoSerializer, EventoEstadoCreateSerializer, EventoParadaSerializer,
+    StrategicInitiativeSerializer
 )
 from .influx_helpers import get_influx_client
 from .projections import calculate_projection
@@ -1589,3 +1590,7 @@ class EventoParadaViewSet(viewsets.ModelViewSet):
             
         serializer = self.get_serializer(queryset, many=True)
         return Response(serializer.data)
+
+class StrategicInitiativeViewSet(viewsets.ModelViewSet):
+    queryset = StrategicInitiative.objects.all()
+    serializer_class = StrategicInitiativeSerializer

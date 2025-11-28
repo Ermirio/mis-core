@@ -2,7 +2,8 @@ from rest_framework import serializers
 from .models import (
     LinhaProducao, Equipamento, Sensor, MetricaProducao, 
     Defeito, ConexaoOPC, TagColeta,
-    TurnoProducao, CalendarioProducao, EventoEstadoEquipamento, EventoParada
+    TurnoProducao, CalendarioProducao, EventoEstadoEquipamento, EventoParada,
+    StrategicInitiative
 )
 
 class ConexaoOPCSerializer(serializers.ModelSerializer):
@@ -207,4 +208,9 @@ class EventoParadaSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = EventoParada
+        fields = '__all__'
+
+class StrategicInitiativeSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = StrategicInitiative
         fields = '__all__'
