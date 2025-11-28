@@ -29,7 +29,7 @@ class OrdemProducaoSerializer(serializers.ModelSerializer):
             'id', 'codigo', 'linha', 'linha_codigo', 'linha_nome',
             'produto', 'produto_codigo', 'produto_descricao',
             'site_nome', 'tecnologia_nome',
-            'meta_total', 'meta_turno', 'formato_gramas', 'cuc',
+            'meta_total', 'formato_gramas', 'cuc',
             'eficiencia_planejada', 'status', 'status_display',
             'data_planejada_inicio', 'data_inicio_real', 'data_fim_real',
             'producao_realizada', 'percentual_conclusao',

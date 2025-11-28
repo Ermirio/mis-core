@@ -48,6 +48,94 @@ class EquipamentoViewSet(viewsets.ModelViewSet):
     queryset = Equipamento.objects.select_related('linha').prefetch_related('sensores')
     serializer_class = EquipamentoSerializer
     
+    @action(detail=False, methods=['post'])
+    def sync_metadata(self, request):
+        """
+        Sincroniza metadados (OP, SKU, Formato) vindos do Coletor.
+        Torna o Django a fonte da verdade atualizada pelo chão de fábrica.
+        """
+        try:
+            data = request.data
+            equipamento_codigo = data.get('equipamento_codigo')
+            
+            if not equipamento_codigo:
+                return Response({'error': 'equipamento_codigo é obrigatório'}, status=status.HTTP_400_BAD_REQUEST)
+                
+            try:
+                equipamento = Equipamento.objects.get(codigo=equipamento_codigo)
+            except Equipamento.DoesNotExist:
+                return Response({'error': f'Equipamento {equipamento_codigo} não encontrado'}, status=status.HTTP_404_NOT_FOUND)
+            
+            updates = []
+            
+            # 1. Atualizar Formato (Peso da Peça)
+            formato = data.get('formato')
+            if formato and float(formato) > 0:
+                # Atualiza tags de contagem (saída/entrada) com o novo formato
+                tags_afetadas = equipamento.tags_coleta.filter(
+                    nome_metrica__icontains='contagem',
+                    ativa=True
+                )
+                for tag in tags_afetadas:
+                    if float(tag.formato or 0) != float(formato):
+                        tag.formato = formato
+                        tag.save()
+                        updates.append(f"Formato atualizado para {formato}g na tag {tag.nome_metrica}")
+            
+            # 2. Atualizar OP e SKU (Histórico)
+            op_codigo = data.get('op_codigo')
+            sku_codigo = data.get('sku_codigo')
+            meta_producao = data.get('meta_producao')
+            
+            if op_codigo and sku_codigo:
+                # Verifica se precisa criar novo histórico
+                # Lógica: Se a OP mudou em relação ao último histórico ativo
+                ultimo_historico = HistoricoSKU.objects.filter(
+                    linha=equipamento.linha
+                ).order_by('-data_inicio').first()
+                
+                criar_novo = False
+                if not ultimo_historico:
+                    criar_novo = True
+                elif str(ultimo_historico.ordem_producao) != str(op_codigo):
+                    criar_novo = True
+                    # Fecha o anterior
+                    if not ultimo_historico.data_fim:
+                        ultimo_historico.data_fim = timezone.now()
+                        ultimo_historico.save()
+                
+                if criar_novo:
+                    # Busca ou cria o Produto (SKU)
+                    produto, _ = Produto.objects.get_or_create(
+                        codigo=sku_codigo,
+                        defaults={'descricao': data.get('descricao', f'SKU {sku_codigo}'), 'peso_unitario': 0}
+                    )
+                    
+                    # Cria novo histórico
+                    HistoricoSKU.objects.create(
+                        linha=equipamento.linha,
+                        produto=produto,
+                        ordem_producao=op_codigo,
+                        data_inicio=timezone.now(),
+                        meta_producao=int(meta_producao) if meta_producao else 0
+                    )
+                    updates.append(f"Novo histórico criado: OP {op_codigo}, SKU {sku_codigo}, Meta {meta_producao}")
+                elif meta_producao and ultimo_historico:
+                     # Se não criou novo, mas tem meta e é a mesma OP, atualiza a meta
+                     if ultimo_historico.meta_producao != int(meta_producao):
+                         ultimo_historico.meta_producao = int(meta_producao)
+                         ultimo_historico.save()
+                         updates.append(f"Meta atualizada para {meta_producao} na OP {op_codigo}")
+            
+            return Response({
+                'status': 'success',
+                'message': 'Metadados sincronizados',
+                'updates': updates
+            })
+            
+        except Exception as e:
+            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
     @action(detail=False, methods=['get'])
     def por_linha(self, request):
         """Retorna equipamentos de uma linha específica"""
@@ -524,16 +612,26 @@ def metricas_fabrica_consolidadas(request):
                 linha=linha
             ).order_by('ordem_na_linha')
             
-            # Busca Formato na sequência (1º que encontrar)
-            formato = None
-            for eq in equipamentos_linha_asc:
-                tag_formato = eq.tags_coleta.filter(formato__gt=0).first()
-                if tag_formato:
-                    formato = float(tag_formato.formato)
-                    break
-            
             # Busca Equipamento Final Efetivo (último com tags ativas)
             equipamento_final = equipamentos_linha_asc.filter(tags_coleta__ativa=True).distinct().last()
+            
+            # Busca Formato
+            # ESTRATÉGIA: Prioriza o formato do equipamento final. Se não tiver, busca o primeiro disponível.
+            formato = None
+            
+            # 1. Tenta pegar do final
+            if equipamento_final:
+                tag_formato_final = equipamento_final.tags_coleta.filter(nome_metrica='formato').first()
+                if tag_formato_final and tag_formato_final.formato and float(tag_formato_final.formato) > 0:
+                    formato = float(tag_formato_final.formato)
+            
+            # 2. Fallback: Busca na sequência (1º que encontrar)
+            if not formato:
+                for eq in equipamentos_linha_asc:
+                    tag_formato = eq.tags_coleta.filter(formato__gt=0).first()
+                    if tag_formato:
+                        formato = float(tag_formato.formato)
+                        break
             
             # Dados base da linha
             dados_linha = {
@@ -601,6 +699,7 @@ def metricas_fabrica_consolidadas(request):
                 op_realtime = None
                 desc_realtime = None
                 meta_realtime = None
+                toneladas_op = 0.0
                 
                 try:
                     # Itera sobre equipamentos para encontrar tags
@@ -616,8 +715,8 @@ def metricas_fabrica_consolidadas(request):
                             # Usamos last("contagem_saida") pois é um field garantido
                             query_time = f"""
                                 SELECT last("contagem_saida") 
-                                FROM "producao" 
-                                WHERE "equipamento_codigo" = '{eq.codigo}'
+                                FROM "production" 
+                                WHERE "equipment" = '{eq.codigo}'
                             """
                             result_time = client.query(query_time)
                             points_time = list(result_time.get_points())
@@ -629,8 +728,8 @@ def metricas_fabrica_consolidadas(request):
                                 # O GROUP BY * força o retorno das tags na estrutura de séries
                                 query_details = f"""
                                     SELECT * 
-                                    FROM "producao" 
-                                    WHERE "equipamento_codigo" = '{eq.codigo}' 
+                                    FROM "production" 
+                                    WHERE "equipment" = '{eq.codigo}' 
                                     AND time = '{last_time}' 
                                     GROUP BY *
                                 """
@@ -646,29 +745,16 @@ def metricas_fabrica_consolidadas(request):
                                     columns = serie.get('columns', [])
                                     
                                     # Extrai TAGS (Indexadas)
-                                    # Extrai TAGS (Indexadas)
-                                    if tags.get('ordem_producao'):
-                                        op_realtime = tags.get('ordem_producao')
-                                    if tags.get('sku_codigo'):
-                                        sku_realtime = tags.get('sku_codigo')
-                                    if tags.get('descricao'):
-                                        desc_realtime = tags.get('descricao')
+                                    if tags.get('order_id'):
+                                        op_realtime = tags.get('order_id')
+                                    if tags.get('sku'):
+                                        sku_realtime = tags.get('sku')
                                     
                                     # Extrai FIELDS (Não indexados)
                                     data_dict = dict(zip(columns, values))
                                     
-                                    # Tenta pegar produção já calculada pelo Flask
-                                    if data_dict.get('producao_acumulada_op'):
-                                        try:
-                                            producao_op_atual = float(data_dict.get('producao_acumulada_op'))
-                                        except:
-                                            pass
-                                            
-                                    if data_dict.get('producao_acumulada_sku'):
-                                        try:
-                                            producao_sku_atual = float(data_dict.get('producao_acumulada_sku'))
-                                        except:
-                                            pass
+                                    if data_dict.get('descricao'):
+                                        desc_realtime = data_dict.get('descricao')
 
                                     if data_dict.get('planejado_op'):
                                         try:
@@ -678,7 +764,15 @@ def metricas_fabrica_consolidadas(request):
                                     
                                     # Se achou SKU, considera que achou a fonte de dados principal
                                     if sku_realtime:
-                                        equipamento_com_op = eq
+                                        # Calcular produção da OP
+                                        if op_realtime and formato:
+                                            from .influx_helpers import get_production_by_op
+                                            prod_op = get_production_by_op(
+                                                equipamento_codigo=eq.codigo,
+                                                ordem_producao=op_realtime,
+                                                formato_gramas=formato
+                                            )
+                                            toneladas_op = prod_op['toneladas_op']
                                         break
                                         
                         except Exception as e:
@@ -697,6 +791,7 @@ def metricas_fabrica_consolidadas(request):
                     if op_str.endswith('.0'):
                         op_str = op_str[:-2]
                     dados_linha['ordem_producao'] = op_str
+                    dados_linha['toneladas_produzidas_op'] = toneladas_op
                     
                     # Descrição: Realtime > Histórico > '-'
                     if desc_realtime:
@@ -747,8 +842,10 @@ def metricas_fabrica_consolidadas(request):
                                 }
                             )
                             # Só atualiza se mudou significativamente
-                            if abs(historico_op.producao_realizada - producao_op_atual) > 0.001:
-                                historico_op.producao_realizada = producao_op_atual
+                            from decimal import Decimal
+                            prod_atual_dec = Decimal(str(producao_op_atual))
+                            if abs(historico_op.producao_realizada - prod_atual_dec) > Decimal('0.001'):
+                                historico_op.producao_realizada = prod_atual_dec
                                 historico_op.save()
                         except Exception as e:
                             logging.error(f"Erro ao atualizar histórico: {e}")

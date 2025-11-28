@@ -5,6 +5,7 @@ from influxdb import InfluxDBClient
 from decouple import config
 from datetime import datetime, timedelta
 import requests
+import time  # NOVO: Importar time no topo
 
 app = Flask(__name__)
 
@@ -31,12 +32,15 @@ logger.info("Iniciando Flask API...")
 INFLUX_HOST = config('INFLUXDB_HOST', default='127.0.0.1')
 INFLUX_PORT = config('INFLUXDB_PORT', default=8086, cast=int)
 INFLUX_DB = config('INFLUXDB_DATABASE', default='industrial_db')
-INFLUX_USER = config('INFLUXDB_USER', default=None)
-INFLUX_PASS = config('INFLUXDB_USER_PASSWORD', default=None)
+INFLUX_USER = config('INFLUXDB_USER', default='admin')
+INFLUX_PASS = config('INFLUXDB_USER_PASSWORD', default='ixvq10A@10')
 
 DJANGO_API_URL = config('DJANGO_API_URL', default='http://127.0.0.1:8000/api')
 
 # ===== CLIENTE INFLUXDB =====
+logger.info(f"Tentando conectar ao InfluxDB: {INFLUX_HOST}:{INFLUX_PORT}/{INFLUX_DB}")
+logger.info(f"Usuário: {INFLUX_USER}, Senha: {'*' * len(INFLUX_PASS) if INFLUX_PASS else 'None'}")
+
 try:
     influx_client = InfluxDBClient(
         host=INFLUX_HOST, 
@@ -46,122 +50,87 @@ try:
         database=INFLUX_DB
     )
     
-    # Tenta criar o DB (só por garantia)
-    influx_client.create_database(INFLUX_DB)
-    
+    # Testa conexão
+    influx_client.ping()
     logger.info(f"✓ Conectado ao InfluxDB em {INFLUX_HOST}:{INFLUX_PORT}, database '{INFLUX_DB}'")
 
 except Exception as e:
     logger.error(f"✗ Erro ao conectar InfluxDB: {e}")
     influx_client = None
 
-# ===== ACUMULADORES DE PRODUÇÃO =====
-# Dicionários para rastrear produção acumulada por OP e SKU
-# Formato: {equipamento_codigo_ordem_producao: {contagem_inicial, producao_acumulada}}
-acumuladores_op = {}
-acumuladores_sku = {}
-logger.info("Acumuladores de produção inicializados")
+# ===== FUNÇÕES AUXILIARES PARA SCHEMA INFLUXDB =====
+
+def detectar_turno():
+    """
+    Detecta o turno atual baseado no horário.
+    A: 06:00-14:00, B: 14:00-22:00, C: 22:00-06:00
+    """
+    hora_atual = datetime.now().hour
+    if 6 <= hora_atual < 14:
+        return 'A'
+    elif 14 <= hora_atual < 22:
+        return 'B'
+    else:
+        return 'C'
 
 
-# ===== CLASSE DE CONTROLE DE PRODUÇÃO =====
-class ProductionCounter:
-    def __init__(self):
-        # Estado: { 'equipamento': { 'op': '...', 'sku': '...', 'last_count': 0, 'acc_op': 0.0, 'acc_sku': 0.0 } }
-        self.states = {}
+def calcular_velocidade(contagem_atual, contagem_anterior, intervalo_segundos=5):
+    """
+    Calcula velocidade em peças/minuto.
+    
+    Args:
+        contagem_atual: Contador atual
+        contagem_anterior: Contador anterior
+        intervalo_segundos: Intervalo entre leituras (padrão 5s)
+    
+    Returns:
+        int: Velocidade em peças/minuto
+    """
+    if contagem_anterior is None or contagem_atual <= contagem_anterior:
+        return 0
+    
+    delta = contagem_atual - contagem_anterior
+    velocidade_por_segundo = delta / intervalo_segundos
+    velocidade_por_minuto = int(velocidade_por_segundo * 60)
+    
+    return velocidade_por_minuto
 
-    def get_last_accumulated(self, client, eq_code, tag_key, tag_value, field_key):
-        """Busca o último valor acumulado no InfluxDB para uma OP ou SKU específico"""
-        try:
-            if not client: return 0.0
-            # Query otimizada: busca apenas o último valor do campo específico filtrado pela tag
-            query = f"""
-                SELECT last("{field_key}") 
-                FROM "producao" 
-                WHERE "equipamento_codigo" = '{eq_code}' 
-                AND "{tag_key}" = '{tag_value}'
-            """
-            result = client.query(query)
-            points = list(result.get_points())
-            if points:
-                return float(points[0].get('last', 0.0))
-            return 0.0
-        except Exception as e:
-            logger.error(f"Erro ao buscar histórico de produção: {e}")
-            return 0.0
 
-    def process(self, eq_code, op, sku, counter, format_g, client):
-        state = self.states.get(eq_code)
-        
-        # Inicializa estado se não existir (primeira execução ou restart)
-        if not state:
-            state = {
-                'op': None,
-                'sku': None,
-                'last_count': counter, # Assume contador atual como base inicial
-                'acc_op': 0.0,
-                'acc_sku': 0.0
-            }
-            # Tenta recuperar estado anterior se for a mesma OP (caso de restart do Flask)
-            if op:
-                last_op_val = self.get_last_accumulated(client, eq_code, 'ordem_producao', op, 'producao_acumulada_op')
-                if last_op_val > 0:
-                    state['op'] = op
-                    state['acc_op'] = last_op_val
-                    logger.info(f"[RESUME] Retomando OP {op} com {last_op_val} ton")
-            
-            if sku:
-                last_sku_val = self.get_last_accumulated(client, eq_code, 'sku_codigo', sku, 'producao_acumulada_sku')
-                if last_sku_val > 0:
-                    state['sku'] = sku
-                    state['acc_sku'] = last_sku_val
+# Cache global para detectar mudanças de estado
+_estado_anterior = {}
 
-            self.states[eq_code] = state
+def mudou_estado(equipamento_codigo, estado_atual):
+    """
+    Detecta se o estado da máquina mudou.
+    
+    Args:
+        equipamento_codigo: Código do equipamento
+        estado_atual: Estado atual da máquina
+    
+    Returns:
+        bool: True se mudou, False caso contrário
+    """
+    global _estado_anterior
+    
+    estado_prev = _estado_anterior.get(equipamento_codigo)
+    mudou = estado_prev != estado_atual
+    
+    if mudou:
+        _estado_anterior[equipamento_codigo] = estado_atual
+    
+    return mudou
 
-        # Detecta Mudança de OP
-        if state['op'] != op:
-            logger.info(f"[OP CHANGE] {state['op']} -> {op}")
-            # Busca valor acumulado da NOVA OP (Resume Logic)
-            prev_acc = 0.0
-            if op:
-                prev_acc = self.get_last_accumulated(client, eq_code, 'ordem_producao', op, 'producao_acumulada_op')
-            
-            state['op'] = op
-            state['acc_op'] = prev_acc
-            state['last_count'] = counter # Reseta referência do delta para o momento da troca
-            logger.info(f"[OP START] Iniciando OP {op} com {prev_acc} ton")
 
-        # Detecta Mudança de SKU
-        if state['sku'] != sku:
-            logger.info(f"[SKU CHANGE] {state['sku']} -> {sku}")
-            prev_acc = 0.0
-            if sku:
-                prev_acc = self.get_last_accumulated(client, eq_code, 'sku_codigo', sku, 'producao_acumulada_sku')
-            
-            state['sku'] = sku
-            state['acc_sku'] = prev_acc
-            state['last_count'] = counter
+# Cache para cálculo de velocidade
+_contador_anterior = {}
 
-        # Calcula Delta
-        delta = counter - state['last_count']
-        
-        # Tratamento de Reset do PLC ou Rollover
-        if delta < 0:
-            logger.warning(f"[COUNTER RESET] Contador reiniciou: {state['last_count']} -> {counter}")
-            delta = counter # Assume que resetou e produziu 'counter' peças
-        
-        # Calcula Produção em Toneladas
-        prod_ton = (delta * format_g) / 1000000.0
-        
-        # Atualiza Acumuladores
-        state['acc_op'] += prod_ton
-        state['acc_sku'] += prod_ton
-        state['last_count'] = counter
-        
-        return state['acc_op'], state['acc_sku']
+def get_contador_anterior(equipamento_codigo):
+    """Retorna o contador anterior para cálculo de velocidade"""
+    return _contador_anterior.get(equipamento_codigo)
 
-# Instância global
-production_counter = ProductionCounter()
-
+def set_contador_anterior(equipamento_codigo, contador):
+    """Armazena o contador atual para próxima iteração"""
+    _contador_anterior[equipamento_codigo] = contador
 
 # ===== DETECTOR DE MUDANÇA DE TURNO =====
 class ShiftDetector:
@@ -171,6 +140,7 @@ class ShiftDetector:
         # Estado: { 'linha_codigo': { 'turno_atual': 'A', 'ultimo_check': timestamp } }
         self.shift_states = {}
         self.consolidation_in_progress = set()  # Evita consolidações duplicadas
+
     
     def detect_and_consolidate(self, linha_codigo, turno_atual):
         """
@@ -238,7 +208,7 @@ class ShiftDetector:
                     from threading import Timer
                     Timer(60, lambda: self.consolidation_in_progress.discard(consolidation_key)).start()
                 
-                return True
+            return True
         
         return False
 
@@ -246,9 +216,8 @@ class ShiftDetector:
 shift_detector = ShiftDetector()
 
 
-
-
 # ===== ROTAS DE API =====
+
 
 @app.route('/api/health', methods=['GET'])
 def health():
@@ -283,271 +252,210 @@ def inserir_dados():
         "timestamp": "2024-01-15T10:30:00Z"
     }
     """
-    global acumuladores_op, acumuladores_sku # Declare global to modify
-    data = None
     try:
         data = request.json
-        
-        # Log do payload para debug
-        # logger.info(f"Payload recebido: {json.dumps(data)}")
+        logger.debug(f"Recebido payload de {data.get('equipamento_codigo')}")
         
         equipamento_codigo = data.get('equipamento_codigo') or data.get('equipamento')
         linha_codigo = data.get('linha_codigo', '')
         medicoes = data.get('medicoes', {})
         timestamp = data.get('timestamp')
         
-        # Garante tipos corretos
-        if 'descarte' in medicoes:
-            try:
-                medicoes['descarte'] = int(float(medicoes['descarte']))
-            except (ValueError, TypeError):
-                pass
-
-        
+        # Validação básica
         if not equipamento_codigo or not medicoes:
             logger.warning(f"Payload inválido: {data}")
             return jsonify({'error': 'equipamento_codigo e medicoes são obrigatórios'}), 400
         
-        # ===== ACUMULAÇÃO DE PRODUÇÃO POR OP E SKU (STATEFUL) =====
+        # ===== EXTRAIR DADOS DO PAYLOAD =====
         ordem_producao = medicoes.get('ordem_producao', '')
         sku_codigo = medicoes.get('sku_codigo', '')
-        contagem_saida = float(medicoes.get('contagem_saida', 0))
-        formato_gramas = float(medicoes.get('formato_gramas', 0))
+        contagem_entrada = int(float(medicoes.get('contagem_entrada', 0)))
+        contagem_saida = int(float(medicoes.get('contagem_saida', 0)))
+        descarte = int(float(medicoes.get('descarte', 0)))
+        formato_gramas = int(float(medicoes.get('formato_gramas', 0)))
+        planejado_op = int(float(medicoes.get('planejado_op', 0)))
+        descricao = medicoes.get('descricao', '')
+        estado_maquina = medicoes.get('estado_maquina', 'UNKNOWN')
+        motivo_parada = medicoes.get('motivo_parada', '')
         
-        # Processa acumulação usando a classe robusta
-        acc_op, acc_sku = production_counter.process(
-            equipamento_codigo, 
-            ordem_producao, 
-            sku_codigo, 
-            contagem_saida, 
-            formato_gramas, 
-            influx_client
-        )
+        # ===== CALCULAR VALORES DERIVADOS =====
+        turno = detectar_turno()
+        contador_anterior = get_contador_anterior(equipamento_codigo)
+        velocidade_atual = calcular_velocidade(contagem_saida, contador_anterior)
+        set_contador_anterior(equipamento_codigo, contagem_saida)
         
-        medicoes['producao_acumulada_op'] = acc_op
-        medicoes['producao_acumulada_sku'] = acc_sku
+        # ===== ESCREVER NO INFLUXDB =====
+        points_to_write = []
         
-        logger.info(f"[PROD] OP={ordem_producao}: {acc_op:.3f} ton | SKU={sku_codigo}: {acc_sku:.3f} ton")
-        
-        # ===== AUTO-CRIAÇÃO DE OP NO MYSQL (NOVO) =====
-        # Cache simples para evitar DDoS interno no Django
-        op_anterior = cache_ops_equipamento.get(equipamento_codigo)
-        
-        # Só chama o Django se a OP mudou ou se é a primeira vez
-        if ordem_producao and ordem_producao != '' and ordem_producao != op_anterior:
-            try:
-                # Extrair dados adicionais se disponíveis
-                descricao_op = medicoes.get('descricao', '') or medicoes.get('produto_descricao', '')
-                meta_producao = medicoes.get('meta_producao') or medicoes.get('meta', 0)
-                
-                logger.info(f"[OP CHECK] Nova OP detectada no equip {equipamento_codigo}: {op_anterior} -> {ordem_producao}")
-                
-                # Tentar criar OP no Django automaticamente
-                response = requests.post(
-                    f"{DJANGO_API_URL}/bi/ordens-producao/auto_create_or_get/",
-                    json={
-                        'codigo_op': ordem_producao,
-                        'codigo_linha': linha_codigo,
-                        'codigo_equipamento': equipamento_codigo,
-                        'codigo_sku': sku_codigo,
-                        'formato_gramas': formato_gramas,
-                        'descricao': descricao_op,
-                        'meta_producao': meta_producao
-                    },
-                    timeout=5  # Timeout aumentado para segurança
-                )
-                
-                if response.status_code in [200, 201]:
-                    # SUCESSO: Atualiza o cache
-                    cache_ops_equipamento[equipamento_codigo] = ordem_producao
-                    logger.info(f"[OP SYNC] Django confirmou OP: {ordem_producao}")
-                else:
-                    # ERRO: Loga detalhe e NÃO atualiza cache (tenta de novo depois)
-                    logger.error(f"[OP SYNC ERROR] Status: {response.status_code}, Body: {response.text}")
-                    
-            except Exception as e:
-                # Não falha a coleta se auto-criação de OP falhar
-                logger.warning(f"[OP AUTO] Erro de conexão com Django: {e}")
-        
-        # ===== DETECÇÃO REATIVA DE MUDANÇA DE TURNO =====
-        # Detectar turno atual baseado no horário
-        hora_atual = datetime.now().hour
-        
-        # Turnos padrão (ajuste conforme sua configuração)
-        # A: 06:00-14:00, B: 14:00-22:00, C: 22:00-06:00
-        if 6 <= hora_atual < 14:
-            turno_atual = 'A'
-        elif 14 <= hora_atual < 22:
-            turno_atual = 'B'
-        else:
-            turno_atual = 'C'
-        
-        # Detectar mudança de turno e disparar consolidação
-        if linha_codigo:
-            shift_detector.detect_and_consolidate(linha_codigo, turno_atual)
-        
-        # ===== EXTRAI TAGS DO MEDICOES =====
-        # CRÍTICO: Extrai DEPOIS de calcular producao_acumulada_op/sku
-        # ordem_producao, sku_codigo e formato_gramas devem ser TAGS, não fields
-        # Isso permite filtrar eficientemente por OP, SKU e formato nas queries
-        ordem_producao_tag = str(medicoes.pop('ordem_producao', ''))
-        sku_codigo_tag = str(medicoes.pop('sku_codigo', ''))
-        formato_gramas_tag = str(medicoes.pop('formato_gramas', 0))
-        descricao_tag = str(medicoes.pop('descricao', ''))
-        
-        # Prepara ponto de dados com tags separadas dos fields
-        json_body = [{
-            "measurement": "producao",
+        # 1. MEASUREMENT: production (sempre escreve)
+        production_point = {
+            "measurement": "production",
             "tags": {
-                "equipamento_codigo": equipamento_codigo,
-                "linha_codigo": linha_codigo,
-                "ordem_producao": ordem_producao_tag,
-                "sku_codigo": sku_codigo_tag,
-                "formato_gramas": formato_gramas_tag,
-                "descricao": descricao_tag
+                "line": linha_codigo,
+                "equipment": equipamento_codigo,
+                "order_id": ordem_producao,
+                "sku": sku_codigo,
+                "shift": turno,
+                "estado_maquina": estado_maquina # Adiciona estado como tag
             },
-            "time": timestamp if timestamp else datetime.utcnow().isoformat(),
-            "fields": medicoes  # Agora inclui producao_acumulada_op e producao_acumulada_sku
-        }]
+            "fields": {
+                "contagem_entrada": contagem_entrada,
+                "contagem_saida": contagem_saida,
+                "descarte": descarte,
+                "velocidade_atual": velocidade_atual,
+                "formato_gramas": formato_gramas,
+                "planejado_op": planejado_op,
+                "descricao": descricao
+            }
+        }
         
-        logger.info(f"[INFLUX] Tags: OP={ordem_producao_tag}, SKU={sku_codigo_tag}, Formato={formato_gramas_tag}")
+        if timestamp:
+            production_point["time"] = timestamp
         
-        if not influx_client:
-            logger.error("Cliente InfluxDB não disponível")
-            return jsonify({'error': 'Banco de dados indisponível'}), 503
+        # DEBUG: Log do ponto a ser escrito
+        logger.info(f"[DEBUG-WRITE] Escrevendo ponto: {production_point}")
         
-        # Insere no InfluxDB
-        # Insere no InfluxDB
-        influx_client.write_points(json_body)
+        points_to_write.append(production_point)
+        logger.info(f"[PRODUCTION] {equipamento_codigo}: saída={contagem_saida}, vel={velocidade_atual} pç/min, estado={estado_maquina}")
         
-        logger.info(f"✓ Dados inseridos: {equipamento_codigo}")
-
-        # ===== LÓGICA DE PERDA ESTRATÉGICA (USER REQUEST) =====
-        try:
-            status_maquina = int(medicoes.get('estado', 1)) # 1=Run, 0=Stop (assumindo)
-            # Se estado for diferente de 1 (RUN), considera parada
-            # Ajuste conforme sua lógica de PLC (ex: 1=Run, 2=Stop, etc)
-            is_stopped = (status_maquina == 0) 
+        # 2. MEASUREMENT: machine_status (só escreve se mudou)
+        if mudou_estado(equipamento_codigo, estado_maquina):
+            status_point = {
+                "measurement": "machine_status",
+                "tags": {
+                    "line": linha_codigo,
+                    "equipment": equipamento_codigo,
+                    "estado_maquina": estado_maquina,
+                    "motivo_parada": motivo_parada if motivo_parada else "N/A",
+                    "shift": turno
+                },
+                "fields": {
+                    "value": 1
+                }
+            }
             
-            codigo_evento = medicoes.get('codigo_evento', 'OUTRO')
-            velocidade_nominal = float(medicoes.get('velocidade_nominal', 0))
+            if timestamp:
+                status_point["time"] = timestamp
             
-            # URL da API Django
-            django_url = DJANGO_API_URL
-            
-            if is_stopped:
-                # 1. InfluxDB: Ping de Perda (Sangramento)
-                # Assume que este ping representa o intervalo desde a última coleta (ex: 1s)
-                # Se o coletor manda a cada 1s, perda_segundos = 1
-                perda_segundos = 1 
-                perda_ton = (perda_segundos / 3600.0) * velocidade_nominal if velocidade_nominal else 0
-                
-                loss_point = [{
-                    "measurement": "perda_tempo_real",
-                    "tags": {
-                        "equipamento_codigo": equipamento_codigo,
-                        "linha_codigo": linha_codigo,
-                        "evento_clp": codigo_evento,
-                        "turno": medicoes.get('turno', 'A'), # Precisa vir do coletor ou calculado
-                        "sku": sku_codigo_tag
-                    },
-                    "fields": {
-                        "perda_ton": float(perda_ton),
-                        "perda_segundos": int(perda_segundos)
-                    }
-                }]
-                influx_client.write_points(loss_point)
-                
-                # 2. MySQL: Garante evento aberto
-                # Verifica se já tem evento aberto para esta máquina via API
-                # Otimização: Poderia cachear isso no Flask, mas vamos via API por segurança
-                try:
-                    resp = requests.get(f"{django_url}/eventos-parada/abertos/?maquina={equipamento_codigo}")
-                    abertos = resp.json()
-                    
-                    if not abertos:
-                        # Cria novo evento
-                        requests.post(f"{django_url}/eventos-parada/", json={
-                            "maquina": equipamento_codigo,
-                            "op": ordem_producao_tag,
-                            "turno": medicoes.get('turno', 'A'),
-                            "sku": sku_codigo_tag,
-                            "inicio": timestamp if timestamp else datetime.utcnow().isoformat(),
-                            "categoria_clp": codigo_evento
-                        })
-                except Exception as e:
-                    logger.error(f"Erro ao gerenciar evento MySQL (Open): {e}")
-                    
-            else:
-                # Máquina Rodando: Fecha eventos abertos
-                try:
-                    resp = requests.get(f"{django_url}/eventos-parada/abertos/?maquina={equipamento_codigo}")
-                    abertos = resp.json()
-                    
-                    for evento in abertos:
-                        # Fecha evento
-                        requests.patch(f"{django_url}/eventos-parada/{evento['id']}/", json={
-                            "fim": timestamp if timestamp else datetime.utcnow().isoformat()
-                        })
-                except Exception as e:
-                    logger.error(f"Erro ao gerenciar evento MySQL (Close): {e}")
-                    
-        except Exception as e:
-            logger.error(f"Erro na lógica de perda estratégica: {e}")
-
+            points_to_write.append(status_point)
+            logger.info(f"[STATUS CHANGE] {equipamento_codigo}: {estado_maquina}")
+        
+        # Escrever todos os pontos no InfluxDB
+        if influx_client and points_to_write:
+            try:
+                influx_client.write_points(points_to_write)
+                logger.debug(f"✓ {len(points_to_write)} pontos escritos no InfluxDB")
+            except Exception as e:
+                logger.error(f"✗ Erro ao escrever no InfluxDB: {e}")
+                return jsonify({'error': 'Falha ao escrever no InfluxDB'}), 500
+        
         return jsonify({'status': 'success', 'message': 'Dados inseridos com sucesso'})
     
     except Exception as e:
-        logger.error(f"✗ Erro ao inserir dados: {e}. Dados: {data}")
+        import traceback
+        error_msg = f"ERRO FATAL FLASK: {str(e)}\n{traceback.format_exc()}"
+        logger.error(f"✗ Erro ao inserir dados: {e}")
+        # Escreve em arquivo para debug persistente
+        try:
+            with open('flask_fatal_error.log', 'a') as f:
+                f.write(f"\n[{datetime.now()}] {error_msg}\n")
+        except:
+            pass
         return jsonify({'error': 'Falha ao salvar dados', 'details': str(e)}), 500
 
 
 @app.route('/api/realtime/status/<equipamento_codigo>', methods=['GET'])
 def get_realtime_status(equipamento_codigo):
     """
-    Retorna status em tempo real de um equipamento
+    Retorna status em tempo real de um equipamento.
+    Busca os últimos dados do measurement 'production'.
     """
     try:
         if not influx_client:
             logger.error("Cliente InfluxDB não disponível")
             return jsonify({'error': 'Banco de dados indisponível'}), 503
         
-        # Busca dados mais recentes
+        # Query para buscar últimos dados do novo schema
+        # Agora incluímos estado_maquina que está nos tags
         query = f"""
-            SELECT * FROM producao
-            WHERE equipamento_codigo = '{equipamento_codigo}'
-            ORDER BY time DESC 
+            SELECT 
+                last(contagem_saida) as contagem_saida,
+                last(contagem_entrada) as contagem_entrada,
+                last(velocidade_atual) as velocidade_atual,
+                last(descarte) as descarte,
+                last(formato_gramas) as formato_gramas,
+                last(planejado_op) as planejado_op
+            FROM production
+            WHERE equipment = '{equipamento_codigo}'
+            GROUP BY *
+            ORDER BY time DESC
             LIMIT 1
         """
         
         result = influx_client.query(query)
+        # get_points() com tags retorna um gerador de dicionários incluindo tags
         points = list(result.get_points())
+        
+        status_code = 'ONLINE' # Default
+        
+        if points:
+            # Pega o estado do último ponto de produção
+            status_code = points[0].get('estado_maquina', 'ONLINE')
+        else:
+            # Fallback para machine_status se não tiver produção recente
+            query_status = f"""
+                SELECT *
+                FROM machine_status
+                WHERE equipment = '{equipamento_codigo}'
+                ORDER BY time DESC
+                LIMIT 1
+            """
+            result_status = influx_client.query(query_status)
+            points_status = list(result_status.get_points())
+            if points_status:
+                status_code = points_status[0].get('estado_maquina', 'ONLINE')
         
         if not points:
             logger.info(f"Sem dados para {equipamento_codigo}")
             return jsonify({
                 'equipamento': equipamento_codigo,
-                'status': 'sem_dados',
+                'status': 'OFFLINE',
                 'message': 'Nenhum dado recente encontrado',
                 'timestamp': datetime.now().isoformat()
-            })
+            }), 200
         
         # Formata resposta
-        dados_tempo_real = points[0]
-        dados_tempo_real.pop('time', None)
+        data = points[0]
         
+        # Verifica se tem dados válidos (pelo menos contagem_saida)
+        if data.get('contagem_saida') is None:
+             logger.info(f"Dados incompletos para {equipamento_codigo}")
+             return jsonify({
+                'equipamento': equipamento_codigo,
+                'status': 'OFFLINE',
+                'message': 'Dados incompletos',
+                'timestamp': datetime.now().isoformat()
+            }), 200
+
         response = {
             'equipamento': equipamento_codigo,
             'timestamp': datetime.now().isoformat(),
-            'status': 'online',
-            'medicoes': dados_tempo_real
+            'status': status_code, # Retorna o código real (ex: 1, 2, 'RUN')
+            'medicoes': {
+                'contagem_saida': int(data.get('contagem_saida') or 0),
+                'contagem_entrada': int(data.get('contagem_entrada') or 0),
+                'velocidade_atual': int(data.get('velocidade_atual') or 0),
+                'descarte': int(data.get('descarte') or 0),
+                'formato_gramas': int(data.get('formato_gramas') or 0),
+                'planejado_op': int(data.get('planejado_op') or 0)
+            }
         }
         
-        return jsonify(response)
-    
+        return jsonify(response), 200
+        
     except Exception as e:
         logger.error(f"✗ Erro em /realtime/status/{equipamento_codigo}: {e}")
-        return jsonify({'error': 'Erro ao buscar dados', 'details': str(e)}), 500
+        return jsonify({'error': str(e)}), 500
 
 
 @app.route('/api/realtime/variaveis/<equipamento_codigo>', methods=['GET'])
@@ -562,8 +470,8 @@ def get_process_variables(equipamento_codigo):
         
         query = f"""
             SELECT *
-            FROM producao
-            WHERE equipamento_codigo = '{equipamento_codigo}'
+            FROM production
+            WHERE equipment = '{equipamento_codigo}'
             AND time > now() - 2m
             ORDER BY time ASC
             LIMIT 20
@@ -617,8 +525,8 @@ def get_timeline(equipamento_codigo):
                 mean("velocidade_atual") as velocidade,
                 max("contagem_saida") - min("contagem_saida") as producao,
                 max("descarte") - min("descarte") as descarte
-            FROM producao
-            WHERE equipamento_codigo = '{equipamento_codigo}'
+            FROM production
+            WHERE equipment = '{equipamento_codigo}'
             AND time >= '{start_str}' AND time <= '{end_str}'
             GROUP BY time(1m) fill(0)
         """
@@ -655,8 +563,8 @@ def get_historico(equipamento_codigo):
                    mean("temperatura") as temperatura_media,
                    mean("pressao") as pressao_media,
                    max("contagem_saida") - min("contagem_saida") as producao_total
-            FROM producao
-            WHERE equipamento_codigo = '{equipamento_codigo}'
+            FROM production
+            WHERE equipment = '{equipamento_codigo}'
             AND time > now() - {horas}h
             GROUP BY time(1h)
         """

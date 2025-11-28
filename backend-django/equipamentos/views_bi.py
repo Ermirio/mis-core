@@ -17,6 +17,9 @@ from .serializers_bi import (
     ProducaoFabricaSerializer, ProducaoTecnologiaSerializer,
     ProducaoLinhaSerializer
 )
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class OrdemProducaoViewSet(viewsets.ModelViewSet):
@@ -131,42 +134,80 @@ class OrdemProducaoViewSet(viewsets.ModelViewSet):
             )
         
         # Definir metas
+        # meta_producao agora vem do 'planejado_op' do PLC
         meta_total = meta_producao if meta_producao > 0 else 10000
-        meta_turno = linha.meta_producao_turno if linha.meta_producao_turno else (meta_total / 3)
         
         try:
-            # UPDATE_OR_CREATE: O pulo do gato para evitar IntegrityError
-            op, created = OrdemProducao.objects.update_or_create(
+            # USAR GET_OR_CREATE + UPDATE MANUAL
+            defaults = {
+                'linha': linha,
+                'produto': produto,
+                'meta_total': meta_total,
+                'formato_gramas': formato_gramas or (produto.peso_unitario if produto else 0),
+                'status': 'PRODUZINDO',
+                'descricao': descricao if descricao else f'OP auto-criada em {timezone.now().date()}',
+                'data_planejada_inicio': timezone.now(),
+                'data_inicio_real': timezone.now()
+            }
+            
+            op, created = OrdemProducao.objects.get_or_create(
                 codigo=codigo_op,
-                defaults={
-                    'linha': linha,
-                    'produto': produto,
-                    'meta_total': meta_total,
-                    'meta_turno': meta_turno,
-                    'formato_gramas': formato_gramas or (produto.peso_unitario if produto else 0),
-                    'status': 'PRODUZINDO', # Força status ativo se vier do PLC
-                    'descricao': descricao if descricao else f'OP auto-criada em {timezone.now().date()}'
-                }
+                defaults=defaults
             )
             
-            # Se foi criada agora, define datas iniciais
-            if created:
-                op.data_planejada_inicio = timezone.now()
-                op.data_inicio_real = timezone.now()
-                op.save()
-            
-            status_msg = "Criada" if created else "Atualizada"
-            print(f"[DJANGO] OP {codigo_op} {status_msg} com sucesso.")
-            
-            return Response({
-                'created': created,
-                'message': f"OP {status_msg} com sucesso",
-                'op': OrdemProducaoSerializer(op).data
-            })
-            
+            # Atualizar campos mutáveis se já existia
+            if not created:
+                if meta_total > 0:
+                    op.meta_total = meta_total
+                if produto:
+                    op.produto = produto
+                    
+                # Atualiza producao_realizada se enviada
+                prod_realizada = request.data.get('producao_realizada')
+                if prod_realizada is not None:
+                    from decimal import Decimal
+                    try:
+                        old_value = op.producao_realizada or Decimal(0)
+                        new_value = Decimal(str(prod_realizada))
+                        op.producao_realizada = new_value
+                        op.save()
+                        
+                        # NOVO: Log detalhado da atualização
+                        logger.info(f"[DJANGO SYNC] OP {codigo_op}: {old_value:.3f} -> {new_value:.3f} ton")
+                        
+                    except (ValueError, TypeError, Exception) as e:
+                        # NOVO: Log de erro de conversão
+                        logger.error(f"[DJANGO SYNC ERROR] Falha ao converter producao_realizada para OP {codigo_op}: {prod_realizada} -> {e}")
+                        # Não falha a requisição, apenas loga o erro
+                        pass
+                else:
+                    op.save()
+            else:
+                # Se acabou de criar, também seta a produção realizada se houver
+                prod_realizada = request.data.get('producao_realizada')
+                if prod_realizada is not None:
+                    from decimal import Decimal
+                    try:
+                        new_value = Decimal(str(prod_realizada))
+                        op.producao_realizada = new_value
+                        op.save()
+                        
+                        # NOVO: Log de criação com valor inicial
+                        logger.info(f"[DJANGO SYNC] OP {codigo_op} criada com produção inicial: {new_value:.3f} ton")
+                        
+                    except (ValueError, TypeError, Exception) as e:
+                        # NOVO: Log de erro de conversão
+                        logger.error(f"[DJANGO SYNC ERROR] Falha ao converter producao_realizada na criação da OP {codigo_op}: {prod_realizada} -> {e}")
+                        pass
+
+            serializer = self.get_serializer(op)
+            return Response(serializer.data, status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
+                
+        except OrdemProducao.DoesNotExist:
+            return Response({'error': 'OP não encontrada'}, status=404)
         except Exception as e:
-            print(f"[CRITICAL DJANGO] Erro ao salvar OP {codigo_op}: {str(e)}")
-            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            logger.error(f"Erro em auto_create_or_get: {e}")
+            return Response({'error': str(e)}, status=500)
 
 
 

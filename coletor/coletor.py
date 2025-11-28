@@ -73,6 +73,7 @@ class ColetorOPC:
         self.ultima_atualizacao_config = None
         self.contadores_anteriores = {}  # Para calcular descartes
         self.estados_anteriores = {}  # Para detectar mudanças de estado
+        self.metadata_anteriores = {}  # Para detectar mudanças de OP/SKU/Formato
         
     async def inicializar(self):
         """Inicializa o coletor"""
@@ -232,6 +233,28 @@ class ColetorOPC:
             logger.error(f"Erro inesperado ao enviar evento de estado: {e}")
             return False
     
+    async def enviar_metadata_django(self, dados: Dict) -> bool:
+        """Envia metadados atualizados para o Django"""
+        try:
+            url = f"{DJANGO_API_URL}/equipamentos/sync_metadata/"
+            
+            response = requests.post(
+                url,
+                json=dados,
+                timeout=TIMEOUT_REQUEST
+            )
+            response.raise_for_status()
+            
+            logger.info(f"[METADATA] Sincronizado com sucesso para {dados['equipamento_codigo']}")
+            return True
+            
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Erro ao sincronizar metadados: {e}")
+            return False
+        except Exception as e:
+            logger.error(f"Erro inesperado ao sincronizar metadados: {e}")
+            return False
+
     async def coletar_dados_equipamento(self, equipamento: Dict) -> Optional[Dict]:
         """Coleta dados de um equipamento específico"""
         try:
@@ -247,6 +270,16 @@ class ColetorOPC:
             medicoes = {}
             estado_atual = None
             formato_gramas = 0  # Inicializa formato
+            
+            # Metadados atuais (lidos do PLC)
+            metadata_atual = {
+                'equipamento_codigo': codigo_equipamento,
+                'op_codigo': None,
+                'sku_codigo': None,
+                'descricao': None,
+                'formato': None,
+                'meta_producao': None
+            }
             
             for tag in tags_coleta:
                 conexao = tag.get('conexao_detalhes')
@@ -273,12 +306,35 @@ class ColetorOPC:
                     medicoes[nome_metrica] = valor
                     
                     # DEBUG: Log detalhado para tags SKU/OP/Descrição
-                    if nome_metrica in ['sku_codigo', 'descricao', 'ordem_producao']:
+                    if nome_metrica in ['sku_codigo', 'descricao', 'ordem_producao', 'planejado_op']:
                         logger.info(f"[DEBUG-TAG] {codigo_equipamento} - {nome_metrica}: '{valor}' (tipo: {type(valor).__name__})")
+                        
+                    # Preenche metadados atuais
+                    if nome_metrica == 'ordem_producao':
+                        metadata_atual['op_codigo'] = str(valor)
+                    elif nome_metrica == 'sku_codigo':
+                        metadata_atual['sku_codigo'] = str(valor)
+                    elif nome_metrica == 'descricao':
+                        metadata_atual['descricao'] = str(valor)
+                    elif nome_metrica == 'formato':
+                        try:
+                            metadata_atual['formato'] = float(valor)
+                        except:
+                            pass
+                    elif nome_metrica == 'planejado_op':
+                        try:
+                            metadata_atual['meta_producao'] = int(float(valor))
+                        except:
+                            pass
                     
                     # Detecta tag de estado
                     if nome_metrica == 'estado':
+                        logger.info(f"[DEBUG-STATUS] {codigo_equipamento} - Valor bruto: {valor} (Tipo: {type(valor)})")
                         estado_atual = self.mapear_estado_opc(int(valor))
+                        logger.info(f"[DEBUG-STATUS] {codigo_equipamento} - Mapeado para: {estado_atual}")
+                        
+                        # Adiciona estado_maquina às medições para ser enviado como tag/field
+                        medicoes['estado_maquina'] = estado_atual
                 
                 # CRÍTICO: Extrai formato_gramas da configuração da tag
                 # Isso é necessário para calcular produção por OP e SKU
@@ -294,6 +350,35 @@ class ColetorOPC:
             if not medicoes:
                 logger.debug(f"Nenhuma medição obtida para {nome_equipamento}")
                 return None
+            
+            # ===== DETECÇÃO DE MUDANÇA DE METADADOS =====
+            # Verifica se houve mudança em OP, SKU ou Formato
+            metadata_anterior = self.metadata_anteriores.get(codigo_equipamento, {})
+            
+            mudou = False
+            if metadata_atual['op_codigo'] and metadata_atual['op_codigo'] != metadata_anterior.get('op_codigo'):
+                mudou = True
+                logger.info(f"[CHANGE] OP mudou: {metadata_anterior.get('op_codigo')} -> {metadata_atual['op_codigo']}")
+            
+            if metadata_atual['sku_codigo'] and metadata_atual['sku_codigo'] != metadata_anterior.get('sku_codigo'):
+                mudou = True
+                logger.info(f"[CHANGE] SKU mudou: {metadata_anterior.get('sku_codigo')} -> {metadata_atual['sku_codigo']}")
+                
+            if metadata_atual['formato'] and metadata_atual['formato'] > 0:
+                if float(metadata_atual['formato']) != float(metadata_anterior.get('formato') or 0):
+                    mudou = True
+                    logger.info(f"[CHANGE] Formato mudou: {metadata_anterior.get('formato')} -> {metadata_atual['formato']}")
+            
+            if metadata_atual['meta_producao'] and metadata_atual['meta_producao'] > 0:
+                if metadata_atual['meta_producao'] != metadata_anterior.get('meta_producao'):
+                    mudou = True
+                    logger.info(f"[CHANGE] Meta OP mudou: {metadata_anterior.get('meta_producao')} -> {metadata_atual['meta_producao']}")
+            
+            if mudou:
+                # Envia para Django
+                await self.enviar_metadata_django(metadata_atual)
+                # Atualiza cache anterior
+                self.metadata_anteriores[codigo_equipamento] = metadata_atual.copy()
             
             # ADICIONA formato_gramas às medições se foi encontrado
             if formato_gramas > 0:

@@ -17,19 +17,19 @@ def get_influx_client() -> InfluxDBClient:
     return InfluxDBClient(
         host=config('INFLUXDB_HOST', default='127.0.0.1'),
         port=config('INFLUXDB_PORT', default=8086, cast=int),
-        username=config('INFLUXDB_USER', default=None),
-        password=config('INFLUXDB_USER_PASSWORD', default=None),
+        username=config('INFLUXDB_USER', default='admin'),
+        password=config('INFLUXDB_USER_PASSWORD', default='ixvq10A@10'),
         database=config('INFLUXDB_DATABASE', default='industrial_db')
     )
 
 
 def get_current_count(equipamento_codigo: str, client: Optional[InfluxDBClient] = None) -> float:
     """
-    Busca contagem atual de um equipamento (últimos 5 minutos)
+    Busca contagem atual de um equipamento (último valor registrado)
     
     Args:
-        equipamento_codigo: Código do equipamento (ex: '003')
-        client: Cliente InfluxDB (opcional, cria novo se não fornecido)
+        equipamento_codigo: Código do equipamento
+        client: Cliente InfluxDB (opcional)
     
     Returns:
         Contagem atual ou 0.0 se não encontrado
@@ -37,11 +37,11 @@ def get_current_count(equipamento_codigo: str, client: Optional[InfluxDBClient] 
     if client is None:
         client = get_influx_client()
     
+    # Busca o ÚLTIMO valor registrado (sem restrição de tempo para garantir que pegue o último)
     query = f"""
         SELECT last("contagem_saida")
-        FROM "producao"
-        WHERE "equipamento_codigo" = '{equipamento_codigo}'
-        AND time >= now() - 5m
+        FROM "production"
+        WHERE "equipment" = '{equipamento_codigo}'
     """
     
     result = client.query(query)
@@ -52,27 +52,26 @@ def get_current_count(equipamento_codigo: str, client: Optional[InfluxDBClient] 
     return 0.0
 
 
-def get_count_at_time(equipamento_codigo: str, timestamp: datetime, 
-                      client: Optional[InfluxDBClient] = None) -> float:
+def get_count_at_time(equipamento_codigo: str, target_time: datetime, client: Optional[InfluxDBClient] = None) -> float:
     """
-    Busca primeira contagem a partir de um timestamp específico
+    Busca contagem em um momento específico (primeiro valor após o timestamp)
     
     Args:
         equipamento_codigo: Código do equipamento
-        timestamp: Timestamp de início (datetime aware)
+        target_time: Timestamp alvo
         client: Cliente InfluxDB (opcional)
     
     Returns:
-        Contagem no timestamp ou 0.0 se não encontrado
+        Contagem no momento ou 0.0
     """
     if client is None:
         client = get_influx_client()
-    
+        
     query = f"""
         SELECT first("contagem_saida")
-        FROM "producao"
-        WHERE "equipamento_codigo" = '{equipamento_codigo}'
-        AND time >= '{timestamp.isoformat()}'
+        FROM "production"
+        WHERE "equipment" = '{equipamento_codigo}'
+        AND time >= '{target_time.isoformat()}'
     """
     
     result = client.query(query)
@@ -99,8 +98,8 @@ def get_count_1min_ago(equipamento_codigo: str, client: Optional[InfluxDBClient]
     
     query = f"""
         SELECT first("contagem_saida")
-        FROM "producao"
-        WHERE "equipamento_codigo" = '{equipamento_codigo}'
+        FROM "production"
+        WHERE "equipment" = '{equipamento_codigo}'
         AND time >= now() - 1m
     """
     
@@ -223,8 +222,8 @@ def get_production_by_op(equipamento_codigo: str, ordem_producao: str,
     # IMPORTANTE: Usando min/max em vez de first/last para garantir compatibilidade
     query = f"""
         SELECT min("contagem_saida") as primeira, max("contagem_saida") as ultima
-        FROM "producao"
-        WHERE "equipamento_codigo" = '{equipamento_codigo}'
+        FROM "production"
+        WHERE "equipment" = '{equipamento_codigo}'
         AND "ordem_producao" = '{ordem_producao}'
     """
     
@@ -295,8 +294,8 @@ def get_production_by_sku(equipamento_codigo: str, sku_codigo: str,
     # IMPORTANTE: Usando min/max em vez de first/last para garantir compatibilidade
     query = f"""
         SELECT min("contagem_saida") as primeira, max("contagem_saida") as ultima
-        FROM "producao"
-        WHERE "equipamento_codigo" = '{equipamento_codigo}'
+        FROM "production"
+        WHERE "equipment" = '{equipamento_codigo}'
         AND "sku_codigo" = '{sku_codigo}'
     """
     
@@ -353,8 +352,8 @@ def get_production_by_day(equipamento_codigo: str, day: str,
     # Query para pegar MIN e MAX da contagem para este dia
     query = f"""
         SELECT min("contagem_saida") as primeira, max("contagem_saida") as ultima
-        FROM "producao"
-        WHERE "equipamento_codigo" = '{equipamento_codigo}'
+        FROM "production"
+        WHERE "equipment" = '{equipamento_codigo}'
         AND time >= '{day}T00:00:00Z' AND time < '{day}T23:59:59Z'
     """
     
@@ -413,8 +412,8 @@ def get_production_by_hour(equipamento_codigo: str, start_time: datetime,
     # Query para pegar MIN e MAX da contagem para esta hora
     query = f"""
         SELECT min("contagem_saida") as primeira, max("contagem_saida") as ultima
-        FROM "producao"
-        WHERE "equipamento_codigo" = '{equipamento_codigo}'
+        FROM "production"
+        WHERE "equipment" = '{equipamento_codigo}'
         AND time >= '{start_time.isoformat()}' AND time < '{end_time.isoformat()}'
     """
     
@@ -468,8 +467,8 @@ def get_production_by_format(equipamento_codigo: str, formato_gramas: int,
     # IMPORTANTE: formato_gramas agora é uma TAG
     query = f"""
         SELECT min("contagem_saida") as primeira, max("contagem_saida") as ultima
-        FROM "producao"
-        WHERE "equipamento_codigo" = '{equipamento_codigo}'
+        FROM "production"
+        WHERE "equipment" = '{equipamento_codigo}'
         AND "formato_gramas" = '{formato_gramas}'
     """
     

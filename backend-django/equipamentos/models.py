@@ -210,11 +210,7 @@ class OrdemProducao(models.Model):
         verbose_name='Meta Total',
         help_text='Meta total de produção para esta OP'
     )
-    meta_turno = models.IntegerField(
-        validators=[MinValueValidator(0)],
-        verbose_name='Meta por Turno',
-        help_text='Meta de produção por turno'
-    )
+    # meta_turno removido conforme solicitação (vem do calendário)
     
     # Formato e Custos
     formato_gramas = models.DecimalField(
@@ -258,6 +254,15 @@ class OrdemProducao(models.Model):
         null=True,
         blank=True,
         verbose_name='Data Real de Término'
+    )
+    
+    # Produção Realizada (Materializada)
+    producao_realizada = models.DecimalField(
+        max_digits=12,
+        decimal_places=3,
+        default=0.0,
+        verbose_name='Produção Realizada (ton)',
+        help_text='Total produzido acumulado para esta OP'
     )
     
     # Informações adicionais
