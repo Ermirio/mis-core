@@ -643,3 +643,139 @@ if __name__ == '__main__':
     logger.info("=" * 60)
     
     app.run(host='127.0.0.1', port=5000, debug=False)
+
+
+@app.route('/api/linha/<linha_codigo>/status', methods=['GET'])
+def get_linha_status(linha_codigo):
+    """
+    Retorna status consolidado de uma linha de produção.
+    Busca dados de TODOS os equipamentos da linha no InfluxDB.
+    """
+    try:
+        if not influx_client:
+            logger.error("Cliente InfluxDB não disponível")
+            return jsonify({'error': 'Banco de dados indisponível'}), 503
+        
+        # Query para buscar últimos dados de todos os equipamentos da linha
+        query = f"""
+            SELECT 
+                last(contagem_saida) as contagem_saida,
+                last(contagem_entrada) as contagem_entrada,
+                last(velocidade_atual) as velocidade_atual,
+                last(descarte) as descarte,
+                last(percentual_descarte) as percentual_descarte,
+                last(formato_gramas) as formato_gramas,
+                last(planejado_op) as planejado_op,
+                last(descricao) as descricao,
+                last(temperatura) as temperatura,
+                last(pressao) as pressao,
+                last(oee) as oee,
+                last(disponibilidade) as disponibilidade,
+                last(performance) as performance,
+                last(qualidade) as qualidade
+            FROM production
+            WHERE linha = '{linha_codigo}'
+            GROUP BY equipment
+            ORDER BY time DESC
+        """
+        
+        result = influx_client.query(query)
+        points = list(result.get_points())
+        
+        if not points:
+            logger.info(f"Sem dados para linha {linha_codigo}")
+            return jsonify({
+                'linha': linha_codigo,
+                'status': 'OFFLINE',
+                'equipamentos': [],
+                'message': 'Nenhum dado recente encontrado',
+                'timestamp': datetime.now().isoformat()
+            }), 200
+        
+        # Agrupa dados por equipamento
+        equipamentos_status = {}
+        for point in points:
+            equipment = point.get('equipment', 'UNKNOWN')
+            equipamentos_status[equipment] = {
+                'equipamento': equipment,
+                'medicoes': {
+                    'contagem_saida': int(point.get('contagem_saida') or 0),
+                    'contagem_entrada': int(point.get('contagem_entrada') or 0),
+                    'velocidade_atual': int(point.get('velocidade_atual') or 0),
+                    'descarte': int(point.get('descarte') or 0),
+                    'percentual_descarte': float(point.get('percentual_descarte') or 0),
+                    'formato_gramas': int(point.get('formato_gramas') or 0),
+                    'planejado_op': int(point.get('planejado_op') or 0),
+                    'descricao': point.get('descricao', ''),
+                    'temperatura': float(point.get('temperatura') or 0),
+                    'pressao': float(point.get('pressao') or 0),
+                    'oee': float(point.get('oee') or 0),
+                    'disponibilidade': float(point.get('disponibilidade') or 0),
+                    'performance': float(point.get('performance') or 0),
+                    'qualidade': float(point.get('qualidade') or 0),
+                }
+            }
+        
+        # Calcula agregados da linha
+        total_contagem_saida = sum(e['medicoes']['contagem_saida'] for e in equipamentos_status.values())
+        total_descarte = sum(e['medicoes']['descarte'] for e in equipamentos_status.values())
+        media_oee = sum(e['medicoes']['oee'] for e in equipamentos_status.values()) / len(equipamentos_status) if equipamentos_status else 0
+        media_velocidade = sum(e['medicoes']['velocidade_atual'] for e in equipamentos_status.values()) / len(equipamentos_status) if equipamentos_status else 0
+        
+        response = {
+            'linha': linha_codigo,
+            'timestamp': datetime.now().isoformat(),
+            'status': 'ONLINE',
+            'equipamentos': list(equipamentos_status.values()),
+            'agregados': {
+                'total_equipamentos': len(equipamentos_status),
+                'total_contagem_saida': total_contagem_saida,
+                'total_descarte': total_descarte,
+                'media_oee': round(media_oee, 2),
+                'media_velocidade': round(media_velocidade, 2)
+            }
+        }
+        
+        return jsonify(response), 200
+        
+    except Exception as e:
+        logger.error(f"✗ Erro em /linha/{linha_codigo}/status: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/linha/<linha_codigo>/timeline', methods=['GET'])
+def get_linha_timeline(linha_codigo):
+    """
+    Retorna timeline de dados de uma linha (últimas 2 horas)
+    Útil para gráficos de histórico
+    """
+    try:
+        if not influx_client:
+            logger.error("Cliente InfluxDB não disponível")
+            return jsonify({'error': 'Banco de dados indisponível'}), 503
+        
+        query = f"""
+            SELECT *
+            FROM production
+            WHERE linha = '{linha_codigo}'
+            AND time > now() - 2h
+            ORDER BY time ASC
+        """
+        
+        result = influx_client.query(query)
+        points = list(result.get_points())
+        
+        if not points:
+            logger.info(f"Sem dados (2h) para linha {linha_codigo}")
+            return jsonify({'error': 'Nenhum dado encontrado'}), 404
+        
+        return jsonify({
+            'linha': linha_codigo,
+            'timestamp': datetime.now().isoformat(),
+            'quantidade_pontos': len(points),
+            'dados': points
+        })
+    
+    except Exception as e:
+        logger.error(f"✗ Erro em /linha/{linha_codigo}/timeline: {e}")
+        return jsonify({'error': 'Erro ao buscar dados', 'details': str(e)}), 500

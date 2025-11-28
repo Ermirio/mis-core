@@ -8,6 +8,7 @@ import LinhaDetalhes from "./pages/LinhaDetalhes.tsx";
 import EquipamentoDetalhes from "./pages/EquipamentoDetalhes.tsx";
 import FactoryManagement from "./pages/FactoryManagement";
 import DiagnosticosLogs from "./pages/DiagnosticosLogs";
+import LineManagement from "./pages/LineManagement";
 
 function App() {
   return (
@@ -21,6 +22,7 @@ function App() {
           <Route path="equipamento/:equipamentoId" element={<EquipamentoDetalhes />} />
             <Route path="factory-management" element={<FactoryManagement />} />
           <Route path="diagnosticos" element={<DiagnosticosLogs />} />
+          <Route path="linha-management/:linhaId" element={<LineManagement />} />
         </Route>
       </Routes>
     </BrowserRouter>

@@ -2,7 +2,8 @@ import React, { useEffect, useState } from "react";
 import EquipamentoCard from "@/components/EquipamentoCard";
 import LineOverview from "@/components/LineOverview";
 import { Button } from "@/components/ui/button";
-import { Moon, Sun, RefreshCw, AlertCircle } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { RefreshCw, AlertCircle, Sun, Moon, ExternalLink } from "lucide-react";
 import { useTheme } from "@/contexts/ThemeContext";
 import { APP_TITLE } from "@/const";
 import MultiEquipmentTimeline from "@/components/MultiEquipmentTimeline";
@@ -68,6 +69,7 @@ const DJANGO_API_URL = import.meta.env.VITE_DJANGO_API_URL || "http://127.0.0.1:
 const FLASK_API_URL = import.meta.env.VITE_FLASK_API_URL || "http://127.0.0.1:5000/api";
 
 export default function Home() {
+  const navigate = useNavigate();
   const { theme, toggleTheme } = useTheme();
   const [linhas, setLinhas] = useState<LinhaAgrupada[]>([]);
   const [loading, setLoading] = useState(true);
@@ -154,13 +156,13 @@ export default function Home() {
       const promises = configuracoes.map(async (config) => {
         const tempoReal = await fetchTempoReal(config.codigo);
 
-        // Só considera dados válidos se status for 'online'
-        const temDadosValidos = tempoReal?.status === 'online';
+        // Considera dados válidos se houver medicoes (não depende do status)
+        const temDadosValidos = tempoReal && tempoReal.medicoes;
 
         return {
           ...config,
-          medicoes: temDadosValidos ? tempoReal.medicoes : undefined,
-          status: tempoReal?.status || 'offline',
+          medicoes: temDadosValidos ? tempoReal.medicoes : {},
+          status: tempoReal?.medicoes?.estado || tempoReal?.status || 'offline',
           timestamp: tempoReal?.timestamp
         } as EquipamentoCompleto;
       });
@@ -310,7 +312,9 @@ export default function Home() {
               return (
                 <div key={linha.linha_id} className="space-y-4">
                   {/* Line Overview - Visão consolidada da linha */}
-                  <LineOverview
+                  <div className="flex items-center justify-between gap-4">
+                    <div className="flex-1">
+                      <LineOverview
                     nome={linha.linha_nome}
                     oee={calcularOEELinha(linha.equipamentos)}
                     totalEquipamentos={linha.equipamentos.length}
@@ -325,6 +329,16 @@ export default function Home() {
                     toneladasProduzidasOP={metricas.toneladas_produzidas_op}
                     projecao={metricas.projecao}
                   />
+                    </div>
+                    <Button
+                      onClick={() => navigate(`/linha-management/${linha.linha_id}`)}
+                      className="h-fit"
+                      title="Abrir gerenciamento detalhado da linha"
+                    >
+                      <ExternalLink className="w-4 h-4 mr-2" />
+                      Gerenciar
+                    </Button>
+                  </div>
 
                   {/* Equipment Cards - Grid de equipamentos */}
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
