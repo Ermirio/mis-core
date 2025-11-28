@@ -1,11 +1,10 @@
-import React, { useEffect, useState } from "react";
+import React, { useState, useEffect } from "react";
 import EquipamentoCard from "@/components/EquipamentoCard";
 import LineOverview from "@/components/LineOverview";
 import { Button } from "@/components/ui/button";
 import { Moon, Sun, RefreshCw, AlertCircle } from "lucide-react";
 import { useTheme } from "@/contexts/ThemeContext";
 import { APP_TITLE } from "@/const";
-import MultiEquipmentTimeline from "@/components/MultiEquipmentTimeline";
 
 interface EquipamentoConfig {
   id: number;
@@ -23,40 +22,41 @@ interface EquipamentoConfig {
   temperatura_max?: number;
   pressao_min?: number;
   pressao_max?: number;
-}
-
-interface MedicoesTempoReal {
-  equipamento: string;
-  status: string;
-  timestamp: string;
-  medicoes: {
+  medicoes?: {
+    estado?: number | string;
     velocidade_atual?: number;
-    temperatura?: number;
-    pressao?: number;
-    contagem?: number;
-    contagem_entrada?: number;
-    contagem_saida?: number;
-    descarte?: number;
-    percentual_descarte?: number;
-    estado?: string;
     oee?: number;
   };
+  status_realtime?: string;
 }
 
-interface EquipamentoCompleto extends EquipamentoConfig {
-  medicoes?: MedicoesTempoReal['medicoes'];
-  status: string;
-  timestamp?: string;
+interface LinhaMetricas {
+  linha_id: number;
+  linha_nome: string;
+  oee: number;
+  sku_codigo: string | null;
+  sku_descricao: string | null;
+  ordem_producao: string | null;
+  formato_gramas: number;
+  toneladas_produzidas_turno: number;
+  toneladas_produzidas_op: number;
+  meta_producao: number;
+  vazao_real_ton_hora: number;
+  disponibilidade: number;
+  performance: number;
+  qualidade: number;
+  equipamentos_online: number;
+  total_equipamentos: number;
 }
 
 interface LinhaAgrupada {
   linha_id: number;
   linha_nome: string;
-  equipamentos: EquipamentoCompleto[];
+  equipamentos: EquipamentoConfig[];
+  metricas: LinhaMetricas;
 }
 
 const DJANGO_API_URL = import.meta.env.VITE_DJANGO_API_URL || "http://127.0.0.1:8000/api";
-const FLASK_API_URL = import.meta.env.VITE_FLASK_API_URL || "http://127.0.0.1:5000/api";
 
 export default function Home() {
   const { theme, toggleTheme } = useTheme();
@@ -64,35 +64,31 @@ export default function Home() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [lastUpdate, setLastUpdate] = useState<Date>(new Date());
-  const [metricasConsolidadas, setMetricasConsolidadas] = useState<Record<number, any>>({});
 
-  const fetchConfiguracao = async (): Promise<EquipamentoConfig[]> => {
+  // Busca configuração dos equipamentos do Django
+  const fetchEquipamentos = async (): Promise<EquipamentoConfig[]> => {
     const response = await fetch(`${DJANGO_API_URL}/equipamentos/`);
-    if (!response.ok) throw new Error(`Erro HTTP ${response.status} ao buscar configuração.`);
+    if (!response.ok) throw new Error(`Erro HTTP ${response.status} ao buscar equipamentos.`);
     const data = await response.json();
     return data.results || data;
   };
 
-  const fetchTempoReal = async (nomeEquipamento: string): Promise<MedicoesTempoReal | null> => {
-    try {
-      const response = await fetch(`${FLASK_API_URL}/realtime/status/${nomeEquipamento}`);
-      if (!response.ok) return null;
-      return await response.json();
-    } catch (err) {
-      console.warn(`Falha ao buscar dados de tempo real para ${nomeEquipamento}:`, err);
-      return null;
-    }
+  // Busca status em tempo real e estado numérico dos equipamentos
+  const fetchEquipamentosComStatus = async (): Promise<EquipamentoConfig[]> => {
+    const response = await fetch(`${DJANGO_API_URL}/full_equipment_status/`);
+    if (!response.ok) throw new Error(`Erro HTTP ${response.status} ao buscar status.`);
+    return await response.json();
   };
 
-  const fetchMetricasConsolidadas = async (linhaId: number): Promise<any | null> => {
+  // Busca métricas consolidadas da linha
+  const fetchMetricasLinha = async (linhaId: number): Promise<LinhaMetricas | null> => {
     try {
-      const response = await fetch(`${DJANGO_API_URL}/metricas_linha_consolidadas/?linha_id=${linhaId}&periodo=TURNO`);
+      const response = await fetch(`${DJANGO_API_URL}/metricas_linha_consolidadas/?linha_id=${linhaId}`);
       if (!response.ok) return null;
       const data = await response.json();
-      // A API retorna uma lista, pegamos o primeiro (mais recente)
-      return data.metricas && data.metricas.length > 0 ? data.metricas[0] : {};
+      return data.metricas && data.metricas.length > 0 ? data.metricas[0] : null;
     } catch (err) {
-      console.error(`Falha ao buscar métricas consolidadas para linha ${linhaId}:`, err);
+      console.error(`Erro ao buscar métricas da linha ${linhaId}:`, err);
       return null;
     }
   };
@@ -100,63 +96,48 @@ export default function Home() {
   const fetchDados = async () => {
     try {
       setError(null);
+      setLoading(true);
 
-      // 1. Busca configuração do Django
-      const configuracoes = await fetchConfiguracao();
-      if (!configuracoes || configuracoes.length === 0) {
+      // 1. Busca equipamentos com status em tempo real (inclui estado numérico 0-9)
+      const equipamentosComStatus = await fetchEquipamentosComStatus();
+      if (!equipamentosComStatus || equipamentosComStatus.length === 0) {
         setError("Nenhum equipamento configurado no sistema.");
         setLinhas([]);
         return;
       }
 
-      // 2. Busca dados de tempo real do Flask para cada equipamento
-      const tempoRealPromises = configuracoes.map(config => fetchTempoReal(config.codigo));
-      const temposReais = await Promise.all(tempoRealPromises);
-
-      // 3. Combina configuração com dados de tempo real
-      const equipamentosCompletos = configuracoes.map((config, index) => {
-        const tempoReal = temposReais[index];
-        const temDadosValidos = tempoReal?.status === 'online';
-        return {
-          ...config,
-          medicoes: temDadosValidos ? tempoReal.medicoes : undefined,
-          status: tempoReal?.status || 'offline',
-          timestamp: tempoReal?.timestamp,
-        } as EquipamentoCompleto;
-      });
-
-      // 4. Agrupa por linha
+      // 2. Agrupa equipamentos por linha
       const linhasMap = new Map<number, LinhaAgrupada>();
-      equipamentosCompletos.forEach(eq => {
+      for (const eq of equipamentosComStatus) {
         if (!linhasMap.has(eq.linha)) {
           linhasMap.set(eq.linha, {
             linha_id: eq.linha,
             linha_nome: eq.linha_nome,
             equipamentos: [],
+            metricas: {} as LinhaMetricas,
           });
         }
         linhasMap.get(eq.linha)!.equipamentos.push(eq);
-      });
+      }
 
+      // 3. Busca métricas consolidadas para cada linha
       const linhasArray = Array.from(linhasMap.values());
+      for (const linha of linhasArray) {
+        const metricas = await fetchMetricasLinha(linha.linha_id);
+        if (metricas) {
+          linha.metricas = metricas;
+          // Atualiza contagem de equipamentos online (baseado no status_realtime)
+          linha.metricas.equipamentos_online = linha.equipamentos.filter(eq => eq.status_realtime === 'online').length;
+          linha.metricas.total_equipamentos = linha.equipamentos.length;
+        }
+      }
+
+      // 4. Ordena equipamentos por ordem_na_linha
       linhasArray.forEach(linha => {
         linha.equipamentos.sort((a, b) => (a.ordem_na_linha || 0) - (b.ordem_na_linha || 0));
       });
 
-      // 5. Busca métricas consolidadas para cada linha
-      const metricasPromises = linhasArray.map(linha => fetchMetricasConsolidadas(linha.linha_id));
-      const metricasResultados = await Promise.all(metricasPromises);
-
-      const novasMetricas: Record<number, any> = {};
-      metricasResultados.forEach((resultado, index) => {
-        const linhaId = linhasArray[index].linha_id;
-        if (resultado) {
-          novasMetricas[linhaId] = resultado;
-        }
-      });
-
       setLinhas(linhasArray);
-      setMetricasConsolidadas(novasMetricas);
       setLastUpdate(new Date());
 
     } catch (error) {
@@ -169,13 +150,9 @@ export default function Home() {
 
   useEffect(() => {
     fetchDados();
-    const interval = setInterval(fetchDados, 5000);
+    const interval = setInterval(fetchDados, 5000); // Atualiza a cada 5 segundos
     return () => clearInterval(interval);
   }, []);
-
-  const getMetricasLinha = (linhaId: number) => {
-    return metricasConsolidadas[linhaId] || {};
-  };
 
   return (
     <div className="min-h-screen bg-neutral-100 dark:bg-neutral-900">
@@ -218,51 +195,42 @@ export default function Home() {
           </div>
         ) : (
           <div className="space-y-10">
-            {linhas.map((linha) => {
-              const metricas = getMetricasLinha(linha.linha_id);
-              return (
-                <div key={linha.linha_id} className="space-y-4">
-                  <LineOverview
-                    nome={linha.linha_nome}
-                    oee={metricas.oee}
-                    totalEquipamentos={linha.equipamentos.length}
-                    equipamentosOnline={linha.equipamentos.filter(eq => eq.status === 'online').length}
-                    toneladasTurno={metricas.toneladas_produzidas}
-                    vazaoTurno={metricas.vazao_real_ton_hora}
-                    formatoAtual={metricas.formato_gramas}
-                    sku={metricas.sku_codigo}
-                    descricao={metricas.sku_descricao}
-                    ordemProducao={metricas.ordem_producao}
-                    metaProducao={metricas.meta_producao}
-                    toneladasProduzidasOP={metricas.toneladas_produzidas_op}
-                    projecao={metricas.projecao}
-                  />
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                    {linha.equipamentos.map((eq) => (
-                      <EquipamentoCard
-                        key={eq.id}
-                        id={eq.id}
-                        nome={eq.nome}
-                        tipo={eq.tipo}
-                        estado={eq.medicoes?.estado || eq.status}
-                        velocidadeAtual={eq.medicoes?.velocidade_atual}
-                        velocidadePadrao={eq.velocidade_nominal}
-                        oee={eq.medicoes?.oee} // OEE do equipamento individual, se vier do coletor
-                        contagem_entrada={eq.medicoes?.contagem_entrada}
-                        contagem_saida={eq.medicoes?.contagem_saida}
-                        pecasRuins={eq.medicoes?.descarte}
-                        metaOEE={eq.meta_oee}
-                      />
-                    ))}
-                  </div>
-                  <MultiEquipmentTimeline
-                    linhaId={linha.linha_id}
-                    linhaNome={linha.linha_nome}
-                    equipamentos={linha.equipamentos}
-                  />
+            {linhas.map((linha) => (
+              <div key={linha.linha_id} className="space-y-4">
+                <LineOverview
+                  nome={linha.linha_nome}
+                  oee={linha.metricas.oee || 0}
+                  totalEquipamentos={linha.metricas.total_equipamentos || 0}
+                  equipamentosOnline={linha.metricas.equipamentos_online || 0}
+                  toneladasTurno={linha.metricas.toneladas_produzidas_turno || 0}
+                  toneladasProduzidasOP={linha.metricas.toneladas_produzidas_op || 0}
+                  vazaoTurno={linha.metricas.vazao_real_ton_hora || 0}
+                  formatoAtual={linha.metricas.formato_gramas || 0}
+                  sku={linha.metricas.sku_codigo}
+                  descricao={linha.metricas.sku_descricao}
+                  ordemProducao={linha.metricas.ordem_producao}
+                  metaProducao={linha.metricas.meta_producao || 0}
+                  disponibilidade={linha.metricas.disponibilidade || 0}
+                  performance={linha.metricas.performance || 0}
+                  qualidade={linha.metricas.qualidade || 0}
+                />
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                  {linha.equipamentos.map((eq) => (
+                    <EquipamentoCard
+                      key={eq.id}
+                      id={eq.id}
+                      nome={eq.nome}
+                      tipo={eq.tipo}
+                      estado={eq.medicoes?.estado || eq.status_realtime || "offline"}
+                      velocidadeAtual={eq.medicoes?.velocidade_atual}
+                      velocidadePadrao={eq.velocidade_nominal}
+                      oee={eq.medicoes?.oee}
+                      metaOEE={eq.meta_oee}
+                    />
+                  ))}
                 </div>
-              );
-            })}
+              </div>
+            ))}
           </div>
         )}
       </main>

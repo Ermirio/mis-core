@@ -4,7 +4,7 @@ from . import views
 from . import tonnage_views
 from . import loss_analysis_views
 
-from .views import exportar_excel, importar_excel
+
 
 router = DefaultRouter()
 router.register(r'linhas', views.LinhaProducaoViewSet, basename='linha')
@@ -29,11 +29,22 @@ urlpatterns = [
     path('configuracao_coletor/', views.configuracao_coletor, name='configuracao-coletor'),
     path('metricas_consolidadas/', views.metricas_consolidadas, name='metricas-consolidadas'),
     path('metricas_fabrica_consolidadas/', views.metricas_fabrica_consolidadas, name='metricas-fabrica'),
-    path('metricas_linha_consolidadas/', views.metricas_linha_consolidadas, name='metricas-linha-consolidadas'),
+    path("metricas_linha_consolidadas/", views.metricas_linha_consolidadas, name="metricas-linha-consolidadas"),
+    path("full_equipment_status/", views.get_full_equipment_status, name="full-equipment-status"),
     path('metricas_equipamento_consolidadas/', views.metricas_equipamento_consolidadas, name='metricas-equipamento-consolidadas'),
     path('eventos_estado/', views.eventos_estado, name='eventos-estado'),
-    path('equipamentos/exportar-excel/', exportar_excel, name='exportar_excel'),
-    path('equipamentos/importar-excel/', importar_excel, name='importar_excel'),
+    
+    # Endpoints de Importar/Exportar Excel
+    path('linhas/exportar-excel/', views.exportar_linhas_excel, name='exportar-linhas-excel'),
+    path('linhas/importar-excel/', views.importar_linhas_excel, name='importar-linhas-excel'),
+    path('equipamentos/exportar-excel/', views.exportar_equipamentos_excel, name='exportar-equipamentos-excel'),
+    path('equipamentos/importar-excel/', views.importar_equipamentos_excel, name='importar-equipamentos-excel'),
+    path('produtos/exportar-excel/', views.exportar_produtos_excel, name='exportar-produtos-excel'),
+    path('produtos/importar-excel/', views.importar_produtos_excel, name='importar-produtos-excel'),
+    path('metricas/exportar-excel/', views.exportar_metricas_excel, name='exportar-metricas-excel'),
+    path('metricas/importar-excel/', views.importar_metricas_excel, name='importar-metricas-excel'),
+    path('ordens-producao/exportar-excel/', views.exportar_ordens_producao_excel, name='exportar-ordens-excel'),
+    path('ordens-producao/importar-excel/', views.importar_ordens_producao_excel, name='importar-ordens-excel'),
     
     # Endpoints de Tonelagem
     path('linhas/<int:linha_id>/tonelagem-tempo-real/', tonnage_views.tonelagem_tempo_real, name='tonelagem-tempo-real'),
