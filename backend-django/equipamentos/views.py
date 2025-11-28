@@ -1597,7 +1597,7 @@ class StrategicInitiativeViewSet(viewsets.ModelViewSet):
     API para Gestão de Iniciativas Estratégicas
     Permite criar, listar, atualizar e deletar iniciativas de melhoria.
     """
-    queryset = StrategicInitiative.objects.all().order_by('-data_criacao')
+    queryset = StrategicInitiative.objects.all().order_by('-criado_em')
     serializer_class = StrategicInitiativeSerializer
     
     @action(detail=False, methods=['get'])
