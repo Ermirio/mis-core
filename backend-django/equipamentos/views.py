@@ -947,53 +947,55 @@ def metricas_fabrica_consolidadas(request):
 
 
 
-@api_view(['POST'])
-def eventos_estado(request):
+
+
+
+
+# ===== NOVOS ENDPOINTS PARA CONSOLIDAÇÃO =====
+
+@api_view(['GET'])
+def get_full_equipment_status(request):
     """
-    Endpoint para receber eventos de mudança de estado do Coletor
+    Endpoint para obter o status completo de todos os equipamentos
+    Retorna: estado numerico, velocidade, OEE, e outras metricas em tempo real
     """
     try:
-        data = request.data
-        equipamento_codigo = data.get('equipamento_codigo')
-        estado = data.get('estado')
-        timestamp = data.get('timestamp')
-        origem = data.get('origem', 'OPC')
+        equipamentos = Equipamento.objects.all().select_related('linha')
+        resultado = []
         
-        if not equipamento_codigo or not estado:
-            return Response({'error': 'Dados incompletos'}, status=400)
+        for eq in equipamentos:
+            ultima_metrica = MetricaProducao.objects.filter(
+                equipamento=eq
+            ).order_by('-data_hora').first()
             
-        # Busca equipamento
-        try:
-            equipamento = Equipamento.objects.get(codigo=equipamento_codigo)
-        except Equipamento.DoesNotExist:
-            return Response({'error': f'Equipamento {equipamento_codigo} não encontrado'}, status=404)
+            ultimo_evento = EventoEstadoEquipamento.objects.filter(
+                equipamento=eq
+            ).order_by('-inicio').first()
             
-        # Fecha evento anterior aberto
-        EventoEstadoEquipamento.fechar_evento_aberto(equipamento)
+            resultado.append({
+                'id': eq.id,
+                'codigo': eq.codigo,
+                'nome': eq.nome,
+                'linha_id': eq.linha.id,
+                'linha_nome': eq.linha.nome,
+                'estado': ultimo_evento.estado if ultimo_evento else 0,
+                'velocidade_nominal': eq.velocidade_nominal,
+                'velocidade_atual': ultima_metrica.velocidade_atual if ultima_metrica else 0,
+                'oee': ultima_metrica.oee if ultima_metrica else 0,
+                'disponibilidade': ultima_metrica.disponibilidade if ultima_metrica else 0,
+                'performance': ultima_metrica.performance if ultima_metrica else 0,
+                'qualidade': ultima_metrica.qualidade if ultima_metrica else 0,
+                'status': eq.status,
+            })
         
-        # Cria novo evento
-        evento = EventoEstadoEquipamento.objects.create(
-            equipamento=equipamento,
-            estado=estado,
-            inicio=timestamp if timestamp else timezone.now(),
-            origem=origem
-        )
-        
-        return Response({
-            'status': 'success',
-            'message': 'Evento registrado',
-            'id': evento.id
-        })
-        
+        return Response(resultado)
     except Exception as e:
+        logging.error(f"Erro ao buscar status dos equipamentos: {e}")
         return Response({
             'status': 'error',
             'message': str(e)
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-
-
-# ===== NOVOS ENDPOINTS PARA CONSOLIDAÇÃO =====
 
 @api_view(['GET'])
 def metricas_linha_consolidadas(request):
