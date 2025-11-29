@@ -19,6 +19,8 @@ interface EquipamentoStatus {
     disponibilidade: number;
     performance: number;
     qualidade: number;
+    sku_codigo?: string;
+    ordem_producao?: string;
   };
 }
 
@@ -50,7 +52,7 @@ const FLASK_API_URL = import.meta.env.VITE_FLASK_API_URL || 'http://localhost:50
 const LineManagement: React.FC = () => {
   const { linhaId } = useParams<{ linhaId: string }>();
   const navigate = useNavigate();
-  
+
   const [linhaStatus, setLinhaStatus] = useState<LinhaStatusResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -61,11 +63,11 @@ const LineManagement: React.FC = () => {
     try {
       setError(null);
       const response = await fetch(`${FLASK_API_URL}/linha/${linhaId}/status`);
-      
+
       if (!response.ok) {
         throw new Error(`Erro ao buscar status: ${response.statusText}`);
       }
-      
+
       const data = await response.json();
       setLinhaStatus(data);
     } catch (err) {
@@ -79,7 +81,7 @@ const LineManagement: React.FC = () => {
   // Auto-refresh a cada 10 segundos
   useEffect(() => {
     fetchLinhaStatus();
-    
+
     if (autoRefresh) {
       const interval = setInterval(fetchLinhaStatus, 10000);
       return () => clearInterval(interval);
@@ -152,7 +154,7 @@ const LineManagement: React.FC = () => {
             <p className="text-gray-600">Linha: {linhaId}</p>
           </div>
         </div>
-        
+
         <button
           onClick={fetchLinhaStatus}
           className="p-2 hover:bg-gray-200 rounded-lg transition"
@@ -269,33 +271,43 @@ const LineManagement: React.FC = () => {
         {equipamentos.map((eq, idx) => (
           <div key={idx} className="bg-white rounded-lg shadow p-4">
             <h3 className="text-lg font-bold text-gray-900 mb-4">{eq.equipamento}</h3>
-            
+
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <p className="text-xs text-gray-600">Descrição</p>
                 <p className="text-sm font-semibold text-gray-900">{eq.medicoes.descricao || 'N/A'}</p>
               </div>
-              
+
+              <div>
+                <p className="text-xs text-gray-600">SKU</p>
+                <p className="text-sm font-semibold text-gray-900">{eq.medicoes.sku_codigo || '-'}</p>
+              </div>
+
+              <div>
+                <p className="text-xs text-gray-600">Ordem Produção</p>
+                <p className="text-sm font-semibold text-gray-900">{eq.medicoes.ordem_producao || '-'}</p>
+              </div>
+
               <div>
                 <p className="text-xs text-gray-600">Formato</p>
                 <p className="text-sm font-semibold text-gray-900">{eq.medicoes.formato_gramas}g</p>
               </div>
-              
+
               <div>
                 <p className="text-xs text-gray-600">Disponibilidade</p>
                 <p className="text-sm font-semibold text-gray-900">{eq.medicoes.disponibilidade.toFixed(1)}%</p>
               </div>
-              
+
               <div>
                 <p className="text-xs text-gray-600">Performance</p>
                 <p className="text-sm font-semibold text-gray-900">{eq.medicoes.performance.toFixed(1)}%</p>
               </div>
-              
+
               <div>
                 <p className="text-xs text-gray-600">Qualidade</p>
                 <p className="text-sm font-semibold text-gray-900">{eq.medicoes.qualidade.toFixed(1)}%</p>
               </div>
-              
+
               <div>
                 <p className="text-xs text-gray-600">% Descarte</p>
                 <p className="text-sm font-semibold text-red-600">{eq.medicoes.percentual_descarte.toFixed(2)}%</p>

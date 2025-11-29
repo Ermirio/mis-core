@@ -3,8 +3,7 @@ import { Activity, Zap, Scale, Gauge, Box } from "lucide-react";
 
 /**
  * LineOverview - Visão consolidada de uma linha de produção
- * 
- * Mostra o OEE agregado da linha inteira e status geral
+ * * Mostra o OEE agregado, status geral e Projeções de Turno.
  * Design ISA 101: Grande, claro, foco no KPI principal
  */
 
@@ -21,6 +20,7 @@ interface LineOverviewProps {
   ordemProducao?: string;
   metaProducao?: number;
   toneladasProduzidasOP?: number;
+  diferencaOP?: number; // <--- NOVO: Recebe a diferença já calculada do Backend
   projecao?: {
     produzido: number;
     meta: number;
@@ -44,13 +44,12 @@ const LineOverview: React.FC<LineOverviewProps> = ({
   ordemProducao,
   metaProducao,
   toneladasProduzidasOP,
+  diferencaOP, // Usar este valor se disponível
   projecao,
 }) => {
+
   /**
    * Determina cor do OEE baseado em thresholds industriais
-   * - >= 85%: Excelente (verde)
-   * - >= 70%: Bom (amarelo)
-   * - < 70%: Ruim (vermelho)
    */
   const getOEEColor = (valor: number): string => {
     if (valor >= 85) return 'text-green-600 dark:text-green-400';
@@ -62,9 +61,20 @@ const LineOverview: React.FC<LineOverviewProps> = ({
     ? (equipamentosOnline / totalEquipamentos) * 100
     : 0;
 
+  // Lógica de Diferença: Prioriza o dado do backend (diferencaOP)
+  // Se não vier, calcula localmente como fallback
+  const diffCalculado = diferencaOP !== undefined
+    ? diferencaOP
+    : (toneladasProduzidasOP || 0) - (metaProducao || 0);
+
+  const isPositive = diffCalculado >= 0;
+
   return (
     <div className="bg-gradient-to-r from-neutral-50 to-neutral-100 dark:from-neutral-800 dark:to-neutral-900 border border-neutral-300 dark:border-neutral-700 rounded-lg shadow-md p-6">
+
+      {/* SEÇÃO SUPERIOR: KPI's Principais */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+
         {/* Coluna 1: Identificação e Status */}
         <div className="flex items-center gap-4">
           <div className="p-3 bg-blue-100 dark:bg-blue-900/30 rounded-lg">
@@ -101,19 +111,13 @@ const LineOverview: React.FC<LineOverviewProps> = ({
                       </span>
                     </div>
 
-                    {/* Diferença (Meta - Produzido) */}
-                    {(() => {
-                      const diff = (toneladasProduzidasOP || 0) - metaProducao;
-                      const isPositive = diff >= 0;
-                      return (
-                        <div className={`flex items-center gap-1 border-l border-gray-300 dark:border-gray-700 pl-2 ${isPositive ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
-                          <span>Dif:</span>
-                          <span className="font-semibold">
-                            {diff > 0 ? '+' : ''}{diff.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} ton
-                          </span>
-                        </div>
-                      );
-                    })()}
+                    {/* Diferença (Saldo) - Lógica atualizada */}
+                    <div className={`flex items-center gap-1 border-l border-gray-300 dark:border-gray-700 pl-2 ${isPositive ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                      <span>Dif:</span>
+                      <span className="font-semibold">
+                        {isPositive ? '+' : ''}{diffCalculado.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} ton
+                      </span>
+                    </div>
                   </div>
                 )}
               </div>
@@ -191,89 +195,87 @@ const LineOverview: React.FC<LineOverviewProps> = ({
         </div>
       </div>
 
-      {/* Projeção Widget */}
-      {
-        projecao && (
-          <div className="mt-4 pt-4 border-t border-neutral-200 dark:border-neutral-800">
-            <div className="flex items-center justify-between mb-3">
-              <span className="text-xs font-medium text-neutral-500 uppercase">Projeção do Turno</span>
-              <span className={`text-xs font-bold px-2 py-0.5 rounded ${projecao.status === 'AHEAD' || projecao.status === 'ON_TRACK' ? 'bg-green-100 text-green-700' :
+      {/* SEÇÃO INFERIOR: WIDGET DE PROJEÇÃO (Restaurado) */}
+      {projecao && (
+        <div className="mt-4 pt-4 border-t border-neutral-200 dark:border-neutral-800">
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-xs font-medium text-neutral-500 uppercase">Projeção do Turno</span>
+            <span className={`text-xs font-bold px-2 py-0.5 rounded ${projecao.status === 'AHEAD' || projecao.status === 'ON_TRACK' ? 'bg-green-100 text-green-700' :
                 projecao.status === 'RISK' ? 'bg-yellow-100 text-yellow-700' : 'bg-red-100 text-red-700'
-                }`}>
-                {projecao.status === 'AHEAD' ? 'Adiantado' :
-                  projecao.status === 'ON_TRACK' ? 'No Prazo' :
-                    projecao.status === 'RISK' ? 'Risco' : 'Atrasado'}
-              </span>
-            </div>
+              }`}>
+              {projecao.status === 'AHEAD' ? 'Adiantado' :
+                projecao.status === 'ON_TRACK' ? 'No Prazo' :
+                  projecao.status === 'RISK' ? 'Risco' : 'Atrasado'}
+            </span>
+          </div>
 
-            <div className="space-y-3">
-              {/* 1. Produzido (Real) */}
-              <div className="relative">
-                <div className="flex justify-between text-xs mb-1">
-                  <span className="font-medium text-neutral-700 dark:text-neutral-300">Produzido</span>
-                  <span className="font-bold text-blue-600 dark:text-blue-400">{projecao.produzido.toLocaleString()}</span>
-                </div>
-                <div className="h-3 bg-neutral-100 dark:bg-neutral-800 rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-blue-600 rounded-full transition-all duration-500"
-                    style={{ width: `${Math.min(((projecao.produzido || 0) / (projecao.meta || 1)) * 100, 100)}%` }}
-                  />
-                </div>
+          <div className="space-y-3">
+            {/* 1. Produzido (Real) */}
+            <div className="relative">
+              <div className="flex justify-between text-xs mb-1">
+                <span className="font-medium text-neutral-700 dark:text-neutral-300">Produzido</span>
+                <span className="font-bold text-blue-600 dark:text-blue-400">{projecao.produzido.toLocaleString()}</span>
               </div>
-
-              {/* 2. Esperado (Meta Atual) */}
-              <div className="relative">
-                <div className="flex justify-between text-xs mb-1">
-                  <span className="font-medium text-neutral-600 dark:text-neutral-400">Esperado (Agora)</span>
-                  <span className="font-bold text-neutral-600 dark:text-neutral-400">
-                    {projecao.meta_atual ? projecao.meta_atual.toLocaleString() : '-'}
-                  </span>
-                </div>
-                <div className="h-3 bg-neutral-100 dark:bg-neutral-800 rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-neutral-400 dark:bg-neutral-600 rounded-full transition-all duration-500"
-                    style={{ width: `${Math.min(((projecao.meta_atual || 0) / (projecao.meta || 1)) * 100, 100)}%` }}
-                  />
-                </div>
-              </div>
-
-              {/* 3. Projeção Otimista */}
-              <div className="relative">
-                <div className="flex justify-between text-xs mb-1">
-                  <span className="font-medium text-neutral-500 dark:text-neutral-500">Proj. Otimista</span>
-                  <span className="font-bold text-green-600 dark:text-green-500">
-                    {projecao.projecao_otimista.toLocaleString()}
-                  </span>
-                </div>
-                <div className="h-3 bg-neutral-100 dark:bg-neutral-800 rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-green-500/50 dark:bg-green-500/30 rounded-full transition-all duration-500"
-                    style={{ width: `${Math.min(((projecao.projecao_otimista || 0) / (projecao.meta || 1)) * 100, 100)}%` }}
-                  />
-                </div>
+              <div className="h-3 bg-neutral-100 dark:bg-neutral-800 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-blue-600 rounded-full transition-all duration-500"
+                  style={{ width: `${Math.min(((projecao.produzido || 0) / (projecao.meta || 1)) * 100, 100)}%` }}
+                />
               </div>
             </div>
 
-            <div className="flex justify-end mt-2 text-xs text-neutral-500 border-t border-neutral-100 dark:border-neutral-800 pt-2 gap-4">
-              {projecao.meta_atual !== undefined && (
-                <span className="flex items-center gap-1">
-                  Dif:
-                  <span className={`font-bold ${projecao.produzido - projecao.meta_atual >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                    {(projecao.produzido - projecao.meta_atual) > 0 ? '+' : ''}
-                    {(projecao.produzido - projecao.meta_atual).toLocaleString()}
-                  </span>
+            {/* 2. Esperado (Meta Atual) */}
+            <div className="relative">
+              <div className="flex justify-between text-xs mb-1">
+                <span className="font-medium text-neutral-600 dark:text-neutral-400">Esperado (Agora)</span>
+                <span className="font-bold text-neutral-600 dark:text-neutral-400">
+                  {projecao.meta_atual ? projecao.meta_atual.toLocaleString() : '-'}
                 </span>
-              )}
-              <span>Meta Turno: <span className="font-bold text-neutral-700 dark:text-neutral-300">{projecao.meta?.toLocaleString() ?? '-'}</span></span>
+              </div>
+              <div className="h-3 bg-neutral-100 dark:bg-neutral-800 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-neutral-400 dark:bg-neutral-600 rounded-full transition-all duration-500"
+                  style={{ width: `${Math.min(((projecao.meta_atual || 0) / (projecao.meta || 1)) * 100, 100)}%` }}
+                />
+              </div>
+            </div>
+
+            {/* 3. Projeção Otimista */}
+            <div className="relative">
+              <div className="flex justify-between text-xs mb-1">
+                <span className="font-medium text-neutral-500 dark:text-neutral-500">Proj. Otimista</span>
+                <span className="font-bold text-green-600 dark:text-green-500">
+                  {projecao.projecao_otimista.toLocaleString()}
+                </span>
+              </div>
+              <div className="h-3 bg-neutral-100 dark:bg-neutral-800 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-green-500/50 dark:bg-green-500/30 rounded-full transition-all duration-500"
+                  style={{ width: `${Math.min(((projecao.projecao_otimista || 0) / (projecao.meta || 1)) * 100, 100)}%` }}
+                />
+              </div>
             </div>
           </div>
-        )
-      }
 
-      {/* Barra de status dos equipamentos (Rodapé) */}
+          <div className="flex justify-end mt-2 text-xs text-neutral-500 border-t border-neutral-100 dark:border-neutral-800 pt-2 gap-4">
+            {projecao.meta_atual !== undefined && (
+              <span className="flex items-center gap-1">
+                Dif:
+                <span className={`font-bold ${projecao.produzido - projecao.meta_atual >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                  {(projecao.produzido - projecao.meta_atual) > 0 ? '+' : ''}
+                  {(projecao.produzido - projecao.meta_atual).toLocaleString()}
+                </span>
+              </span>
+            )}
+            <span>Meta Turno: <span className="font-bold text-neutral-700 dark:text-neutral-300">{projecao.meta?.toLocaleString() ?? '-'}</span></span>
+          </div>
+        </div>
+      )}
+
+      {/* RODAPÉ: Barra de Disponibilidade */}
       <div className="mt-6 pt-4 border-t border-neutral-200 dark:border-neutral-800">
         <div className="flex items-center justify-between mb-2">
-          <span className="text-xs text-neutral-500 dark:text-neutral-500 uppercase tracking-wider">
+          <span className="text-xs text-neutral-500 uppercase tracking-wider">
             Disponibilidade da Linha
           </span>
           <span className="text-xs font-semibold text-neutral-700 dark:text-neutral-300">
@@ -291,7 +293,8 @@ const LineOverview: React.FC<LineOverviewProps> = ({
           />
         </div>
       </div>
-    </div >
+
+    </div>
   );
 };
 

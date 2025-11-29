@@ -29,6 +29,11 @@ interface EquipamentoCardProps {
   contagem_saida?: number;
 
   metaOEE?: number;
+
+  // NOVOS: Dados de produção
+  sku?: string | number;
+  descricao?: string;
+  ordemProducao?: string | number;
 }
 
 const EquipamentoCard: React.FC<EquipamentoCardProps> = ({
@@ -44,6 +49,9 @@ const EquipamentoCard: React.FC<EquipamentoCardProps> = ({
   contagem_entrada,
   contagem_saida,
   metaOEE = 85,
+  sku,
+  descricao,
+  ordemProducao,
 }) => {
   const navigate = useNavigate();
 
@@ -177,6 +185,21 @@ const EquipamentoCard: React.FC<EquipamentoCardProps> = ({
         <p className="text-sm text-neutral-600 dark:text-neutral-400">
           {tipo}
         </p>
+
+        {/* SKU e OP - Informações de Produção */}
+        {(sku || ordemProducao) && (
+          <div className="mt-2 pt-2 border-t border-neutral-100 dark:border-neutral-700">
+            <div className="flex justify-between text-xs">
+              <span className="text-neutral-500">OP: <span className="font-medium text-neutral-700 dark:text-neutral-300">{ordemProducao || '-'}</span></span>
+              <span className="text-neutral-500">SKU: <span className="font-medium text-neutral-700 dark:text-neutral-300">{sku || '-'}</span></span>
+            </div>
+            {descricao && (
+              <div className="text-xs text-neutral-500 mt-1 truncate" title={descricao}>
+                {descricao}
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Estado - Badge com cor ISA 101 */}

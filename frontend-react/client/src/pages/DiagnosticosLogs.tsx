@@ -96,11 +96,11 @@ const DiagnosticosLogs: React.FC = () => {
 
       // Detectar erros
       const erros: string[] = [];
-      
+
       if (!dadosFlask) {
         erros.push('❌ Flask não está respondendo - Verifique se está rodando em http://127.0.0.1:5000');
       }
-      
+
       if (!dadosDjango) {
         erros.push('❌ Django não está respondendo - Verifique se está rodando em http://127.0.0.1:8000');
       }
@@ -170,13 +170,13 @@ const DiagnosticosLogs: React.FC = () => {
       // Gerar logs de diagnóstico
       const logs: DiagnosticoFluxo[] = [];
       diagnosticos.forEach(eq => {
-        eq.erros.forEach(erro => {
+        eq.erros.forEach((erro: string) => {
           logs.push({
             timestamp: new Date().toISOString(),
             equipamento: eq.codigo,
-            etapa: erro.includes('Flask') ? 'flask' : 
-                   erro.includes('Django') ? 'django' :
-                   erro.includes('OPC') ? 'coletor' : 'frontend',
+            etapa: erro.includes('Flask') ? 'flask' :
+              erro.includes('Django') ? 'django' :
+                erro.includes('OPC') ? 'coletor' : 'frontend',
             status: erro.includes('❌') ? 'erro' : 'aviso',
             mensagem: erro,
             detalhes: {}
@@ -330,8 +330,8 @@ const DiagnosticosLogs: React.FC = () => {
                         variant={eq.status === 'online' ? 'default' : 'secondary'}
                         className={
                           eq.status === 'online' ? 'bg-green-500' :
-                          eq.status === 'offline' ? 'bg-yellow-500' :
-                          'bg-red-500'
+                            eq.status === 'offline' ? 'bg-yellow-500' :
+                              'bg-red-500'
                         }
                       >
                         {eq.status.toUpperCase()}
@@ -419,8 +419,8 @@ const DiagnosticosLogs: React.FC = () => {
             {diagnosticos.map((log, idx) => (
               <Card key={idx} className={
                 log.status === 'erro' ? 'border-red-200 bg-red-50' :
-                log.status === 'aviso' ? 'border-yellow-200 bg-yellow-50' :
-                'border-green-200 bg-green-50'
+                  log.status === 'aviso' ? 'border-yellow-200 bg-yellow-50' :
+                    'border-green-200 bg-green-50'
               }>
                 <CardContent className="pt-4">
                   <div className="flex items-start gap-3">

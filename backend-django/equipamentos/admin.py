@@ -8,7 +8,11 @@ from .models import (
 )
 
 from import_export.admin import ImportExportModelAdmin
-from .resources import EquipamentoResource 
+from .resources import (
+    EquipamentoResource, FabricaResource, AreaResource, ProdutoResource,
+    LinhaProducaoResource, TagColetaResource, SensorResource, ConexaoOPCResource,
+    OrdemProducaoResource, TurnoProducaoResource
+) 
 
 # --- PERSONALIZAÇÃO DO ADMIN ---
 admin.site.site_header = "MIS - Sistema de Monitoramento Industrial"
@@ -21,19 +25,22 @@ admin.site.index_title = "Painel de Gestão do MIS"
 # ==============================
 
 @admin.register(Fabrica)
-class FabricaAdmin(admin.ModelAdmin):
+class FabricaAdmin(ImportExportModelAdmin):
+    resource_class = FabricaResource
     list_display = ['nome', 'codigo', 'localizacao']
     search_fields = ['nome', 'codigo']
 
 @admin.register(Area)
-class AreaAdmin(admin.ModelAdmin):
+class AreaAdmin(ImportExportModelAdmin):
+    resource_class = AreaResource
     list_display = ['nome', 'codigo', 'fabrica']
     list_filter = ['fabrica']
     search_fields = ['nome', 'codigo']
     autocomplete_fields = ['fabrica']
 
 @admin.register(Produto)
-class ProdutoAdmin(admin.ModelAdmin):
+class ProdutoAdmin(ImportExportModelAdmin):
+    resource_class = ProdutoResource
     list_display = ['codigo', 'descricao', 'peso_unitario', 'ativo']
     list_filter = ['ativo']
     search_fields = ['codigo', 'descricao']
@@ -50,7 +57,8 @@ class HistoricoSKUAdmin(admin.ModelAdmin):
 # ==============================
 
 @admin.register(LinhaProducao)
-class LinhaProducaoAdmin(admin.ModelAdmin):
+class LinhaProducaoAdmin(ImportExportModelAdmin):
+    resource_class = LinhaProducaoResource
     list_display = [
         'codigo', 'nome', 'ativa_badge',
         'velocidade_planejada', 'meta_producao_hora', 'meta_oee',
@@ -83,7 +91,8 @@ class LinhaProducaoAdmin(admin.ModelAdmin):
 # ==============================
 
 @admin.register(ConexaoOPC)
-class ConexaoOPCAdmin(admin.ModelAdmin):
+class ConexaoOPCAdmin(ImportExportModelAdmin):
+    resource_class = ConexaoOPCResource
     list_display = ['nome', 'url_servidor', 'ativa_badge', 'timeout', 'num_tags']
     list_filter = ['ativa', 'criado_em']
     search_fields = ['nome', 'url_servidor']
@@ -185,7 +194,8 @@ class EquipamentoAdmin(ImportExportModelAdmin):
 # ==============================
 
 @admin.register(TagColeta)
-class TagColetaAdmin(admin.ModelAdmin):
+class TagColetaAdmin(ImportExportModelAdmin):
+    resource_class = TagColetaResource
     list_display = [
         'equipamento', 'nome_metrica', 'node_id',
         'tipo_dado', 'conexao', 'ativa_badge'
@@ -217,7 +227,8 @@ class TagColetaAdmin(admin.ModelAdmin):
 # ==============================
 
 @admin.register(Sensor)
-class SensorAdmin(admin.ModelAdmin):
+class SensorAdmin(ImportExportModelAdmin):
+    resource_class = SensorResource
     list_display = ['codigo', 'nome', 'tipo', 'get_local', 'tag_influxdb', 'ativo_badge']
     list_filter = ['tipo', 'ativo', 'linha', 'equipamento__linha']
     search_fields = ['codigo', 'nome', 'tag_influxdb']
@@ -259,7 +270,8 @@ class SensorAdmin(admin.ModelAdmin):
 # ==============================
 
 @admin.register(TurnoProducao)
-class TurnoProducaoAdmin(admin.ModelAdmin):
+class TurnoProducaoAdmin(ImportExportModelAdmin):
+    resource_class = TurnoProducaoResource
     list_display = ['nome', 'codigo', 'hora_inicio', 'hora_fim', 'duracao_horas', 'ativo_badge']
     list_filter = ['ativo']
     search_fields = ['nome', 'codigo']
@@ -485,7 +497,8 @@ class DefeitoAdmin(admin.ModelAdmin):
 # ==============================
 
 @admin.register(OrdemProducao)
-class OrdemProducaoAdmin(admin.ModelAdmin):
+class OrdemProducaoAdmin(ImportExportModelAdmin):
+    resource_class = OrdemProducaoResource
     list_display = [
         'codigo', 'linha', 'produto', 'status_badge',
         'meta_total', 'producao_realizada_display', 'percentual_display',
@@ -501,7 +514,7 @@ class OrdemProducaoAdmin(admin.ModelAdmin):
             'fields': ('codigo', 'linha', 'produto', 'status')
         }),
         ('Planejamento', {
-            'fields': ('meta_total', 'meta_turno', 'eficiencia_planejada')
+            'fields': ('meta_total', 'eficiencia_planejada')
         }),
         ('Formato e Custos', {
             'fields': ('formato_gramas', 'cuc')

@@ -102,6 +102,12 @@ interface DadosTempoReal {
     temperatura: number;
     pressao: number;
     estado: string;
+    // NOVOS CAMPOS
+    cuc?: string;
+    ordem_producao?: string;
+    sku_codigo?: string;
+    formato_gramas?: number;
+    planejado_op?: number;
   };
 }
 
@@ -705,21 +711,31 @@ const EquipamentoDetalhes: React.FC = () => {
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4"> {/* Ajustado para 4 colunas */}
                     <div>
                       <p className="text-sm text-gray-500">Velocidade</p>
                       <p className="text-2xl font-bold">{(dadosTempoReal.medicoes.velocidade_atual ?? 0).toFixed(2)}</p>
                       <p className="text-xs text-gray-500">un/min</p>
                     </div>
+
+                    {/* NOVOS CAMPOS */}
                     <div>
-                      <p className="text-sm text-gray-500">Temperatura</p>
-                      <p className="text-2xl font-bold">{(dadosTempoReal.medicoes.temperatura ?? 0).toFixed(1)}</p>
-                      <p className="text-xs text-gray-500">°C</p>
+                      <p className="text-sm text-gray-500">Ordem Prod.</p>
+                      <p className="text-xl font-bold text-blue-600">{dadosTempoReal.medicoes.ordem_producao || '-'}</p>
+                      {dadosTempoReal.medicoes.cuc && (
+                        <p className="text-xs text-gray-500">CUC: {dadosTempoReal.medicoes.cuc}</p>
+                      )}
                     </div>
+
                     <div>
-                      <p className="text-sm text-gray-500">Pressão</p>
-                      <p className="text-2xl font-bold">{(dadosTempoReal.medicoes.pressao ?? 0).toFixed(2)}</p>
-                      <p className="text-xs text-gray-500">bar</p>
+                      <p className="text-sm text-gray-500">SKU / Formato</p>
+                      <p className="text-xl font-bold">{dadosTempoReal.medicoes.sku_codigo || '-'}</p>
+                      <p className="text-xs text-gray-500">{dadosTempoReal.medicoes.formato_gramas || 0} g</p>
+                    </div>
+
+                    <div>
+                      <p className="text-sm text-gray-500">Meta OP</p>
+                      <p className="text-xl font-bold text-green-600">{dadosTempoReal.medicoes.planejado_op?.toLocaleString() || '-'}</p>
                     </div>
                   </div>
                 </CardContent>

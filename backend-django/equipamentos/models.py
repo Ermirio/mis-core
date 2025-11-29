@@ -1,13 +1,16 @@
-from django.db import models
+from django.db import models, transaction
 from django.core.validators import MinValueValidator, MaxValueValidator
 from django.utils import timezone
+import logging
+
+logger = logging.getLogger(__name__)
 
 # ===== HIERARQUIA: FÁBRICA E ÁREA =====
 
 class Fabrica(models.Model):
     """Fábrica (unidade fabril)"""
     nome = models.CharField(max_length=100, verbose_name='Nome da Fábrica')
-    codigo = models.CharField(max_length=20, unique=True, verbose_name='Código')
+    codigo = models.CharField(max_length=20, unique=True, verbose_name='Código', blank=True)
     localizacao = models.CharField(max_length=200, blank=True, verbose_name='Localização')
     criado_em = models.DateTimeField(auto_now_add=True)
     atualizado_em = models.DateTimeField(auto_now=True)
@@ -16,6 +19,28 @@ class Fabrica(models.Model):
         verbose_name = 'Fábrica'
         verbose_name_plural = 'Fábricas'
         ordering = ['nome']
+
+    def save(self, *args, **kwargs):
+        """Auto-gera código sequencial se não fornecido"""
+        if not self.codigo:
+            with transaction.atomic():
+                # Busca o último código F existente
+                last_fabrica = Fabrica.objects.select_for_update().filter(
+                    codigo__startswith='F'
+                ).order_by('-codigo').first()
+                
+                if last_fabrica and last_fabrica.codigo[1:].isdigit():
+                    # Extrai o número e incrementa
+                    last_num = int(last_fabrica.codigo[1:])
+                    new_num = last_num + 1
+                else:
+                    # Primeira fábrica
+                    new_num = 1
+                
+                self.codigo = f'F{new_num:03d}'
+                logger.info(f"✓ Gerado código {self.codigo} para fábrica '{self.nome}'")
+        
+        super().save(*args, **kwargs)
 
     def __str__(self):
         return f'{self.nome} ({self.codigo})'
@@ -383,7 +408,7 @@ class Equipamento(models.Model):
         verbose_name='Linha de Produção'
     )
     nome = models.CharField(max_length=100, unique=True, verbose_name='Nome do Equipamento')
-    codigo = models.CharField(max_length=50, unique=True, verbose_name='Código')
+    codigo = models.CharField(max_length=50, unique=True, verbose_name='Código', blank=True)
     tipo = models.CharField(
         max_length=50, 
         verbose_name='Tipo',
@@ -428,6 +453,28 @@ class Equipamento(models.Model):
         verbose_name = 'Equipamento'
         verbose_name_plural = 'Equipamentos'
         ordering = ['linha', 'ordem_na_linha']
+    
+    def save(self, *args, **kwargs):
+        """Auto-gera código sequencial se não fornecido"""
+        if not self.codigo:
+            with transaction.atomic():
+                # Busca o último código E existente
+                last_equipamento = Equipamento.objects.select_for_update().filter(
+                    codigo__startswith='E'
+                ).order_by('-codigo').first()
+                
+                if last_equipamento and last_equipamento.codigo[1:].isdigit():
+                    # Extrai o número e incrementa
+                    last_num = int(last_equipamento.codigo[1:])
+                    new_num = last_num + 1
+                else:
+                    # Primeiro equipamento
+                    new_num = 1
+                
+                self.codigo = f'E{new_num:03d}'
+                logger.info(f"✓ Gerado código {self.codigo} para equipamento '{self.nome}' (Linha: {self.linha.codigo})")
+        
+        super().save(*args, **kwargs)
     
     def __str__(self):
         return f'{self.nome} ({self.tipo})'
