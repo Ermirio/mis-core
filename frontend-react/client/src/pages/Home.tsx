@@ -299,10 +299,12 @@ export default function Home() {
                   <MultiEquipmentTimeline linhaId={linha.linha_id} linhaNome={linha.linha_nome} equipamentos={linha.equipamentos} />
                 </div>
               );
-            })}
-          </div>
-        )}
-      </main>
-    </div>
+            })
+            }
+          </div >
+        )
+        }
+      </main >
+    </div >
   );
 }

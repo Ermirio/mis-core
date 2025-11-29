@@ -3,12 +3,12 @@ import { Activity, Zap, Scale, Gauge, Box } from "lucide-react";
 
 /**
  * LineOverview - Visão consolidada de uma linha de produção
- * Versão: 2.1 (Correção Semântica OEE -> OLE)
+ * Versão: 2.2 (Correção Barras de Progresso Proporcionais)
  */
 
 interface LineOverviewProps {
   nome: string;
-  ole: number; // <--- RENOMEADO DE OEE PARA OLE (Overall Line Effectiveness)
+  ole: number;
   totalEquipamentos: number;
   equipamentosOnline: number;
   toneladasTurno?: number;
@@ -23,7 +23,7 @@ interface LineOverviewProps {
   diferencaOP?: number;
   projecao?: {
     produzido: number;
-    meta: number;
+    meta: number; // Meta do Turno (100% do container)
     meta_atual?: number;
     projecao_realista: number;
     projecao_otimista: number;
@@ -33,7 +33,7 @@ interface LineOverviewProps {
 
 const LineOverview: React.FC<LineOverviewProps> = ({
   nome,
-  ole, // <--- Recebe OLE do Backend
+  ole,
   totalEquipamentos,
   equipamentosOnline,
   toneladasTurno = 0,
@@ -53,6 +53,13 @@ const LineOverview: React.FC<LineOverviewProps> = ({
     if (valor >= 85) return 'text-green-600 dark:text-green-400';
     if (valor >= 70) return 'text-yellow-600 dark:text-yellow-400';
     return 'text-red-600 dark:text-red-400';
+  };
+
+  // Função auxiliar para cálculo proporcional seguro
+  const calculateProgress = (valor: number, meta: number): number => {
+    if (!meta || meta === 0) return 0;
+    const percent = (valor / meta) * 100;
+    return Math.min(percent, 100);
   };
 
   const percentualOnline = totalEquipamentos > 0
@@ -210,7 +217,7 @@ const LineOverview: React.FC<LineOverviewProps> = ({
               <div className="h-3 bg-neutral-100 dark:bg-neutral-800 rounded-full overflow-hidden">
                 <div
                   className="h-full bg-blue-600 rounded-full transition-all duration-500"
-                  style={{ width: `${Math.min(((projecao.produzido || 0) / (projecao.meta || 1)) * 100, 100)}%` }}
+                  style={{ width: `${calculateProgress(projecao.produzido, projecao.meta)}%` }}
                 />
               </div>
             </div>
@@ -226,7 +233,7 @@ const LineOverview: React.FC<LineOverviewProps> = ({
               <div className="h-3 bg-neutral-100 dark:bg-neutral-800 rounded-full overflow-hidden">
                 <div
                   className="h-full bg-neutral-400 dark:bg-neutral-600 rounded-full transition-all duration-500"
-                  style={{ width: `${Math.min(((projecao.meta_atual || 0) / (projecao.meta || 1)) * 100, 100)}%` }}
+                  style={{ width: `${calculateProgress(projecao.meta_atual || 0, projecao.meta)}%` }}
                 />
               </div>
             </div>
@@ -242,7 +249,7 @@ const LineOverview: React.FC<LineOverviewProps> = ({
               <div className="h-3 bg-neutral-100 dark:bg-neutral-800 rounded-full overflow-hidden">
                 <div
                   className="h-full bg-green-500/50 dark:bg-green-500/30 rounded-full transition-all duration-500"
-                  style={{ width: `${Math.min(((projecao.projecao_otimista || 0) / (projecao.meta || 1)) * 100, 100)}%` }}
+                  style={{ width: `${calculateProgress(projecao.projecao_otimista, projecao.meta)}%` }}
                 />
               </div>
             </div>
@@ -262,8 +269,6 @@ const LineOverview: React.FC<LineOverviewProps> = ({
           </div>
         </div>
       )}
-
-
 
     </div>
   );
