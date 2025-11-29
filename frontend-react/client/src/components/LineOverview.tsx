@@ -3,24 +3,24 @@ import { Activity, Zap, Scale, Gauge, Box } from "lucide-react";
 
 /**
  * LineOverview - Visão consolidada de uma linha de produção
- * * Mostra o OEE agregado, status geral e Projeções de Turno.
- * Design ISA 101: Grande, claro, foco no KPI principal
+ * Versão: 2.1 (Correção Semântica OEE -> OLE)
  */
 
 interface LineOverviewProps {
   nome: string;
-  oee: number;
+  ole: number; // <--- RENOMEADO DE OEE PARA OLE (Overall Line Effectiveness)
   totalEquipamentos: number;
   equipamentosOnline: number;
   toneladasTurno?: number;
   vazaoTurno?: number;
   formatoAtual?: number;
   sku?: string;
+  cuc?: string;
   descricao?: string;
   ordemProducao?: string;
   metaProducao?: number;
   toneladasProduzidasOP?: number;
-  diferencaOP?: number; // <--- NOVO: Recebe a diferença já calculada do Backend
+  diferencaOP?: number;
   projecao?: {
     produzido: number;
     meta: number;
@@ -33,25 +33,23 @@ interface LineOverviewProps {
 
 const LineOverview: React.FC<LineOverviewProps> = ({
   nome,
-  oee,
+  ole, // <--- Recebe OLE do Backend
   totalEquipamentos,
   equipamentosOnline,
   toneladasTurno = 0,
   vazaoTurno = 0,
   formatoAtual,
   sku,
+  cuc,
   descricao,
   ordemProducao,
   metaProducao,
   toneladasProduzidasOP,
-  diferencaOP, // Usar este valor se disponível
+  diferencaOP,
   projecao,
 }) => {
 
-  /**
-   * Determina cor do OEE baseado em thresholds industriais
-   */
-  const getOEEColor = (valor: number): string => {
+  const getOLEColor = (valor: number): string => {
     if (valor >= 85) return 'text-green-600 dark:text-green-400';
     if (valor >= 70) return 'text-yellow-600 dark:text-yellow-400';
     return 'text-red-600 dark:text-red-400';
@@ -61,8 +59,6 @@ const LineOverview: React.FC<LineOverviewProps> = ({
     ? (equipamentosOnline / totalEquipamentos) * 100
     : 0;
 
-  // Lógica de Diferença: Prioriza o dado do backend (diferencaOP)
-  // Se não vier, calcula localmente como fallback
   const diffCalculado = diferencaOP !== undefined
     ? diferencaOP
     : (toneladasProduzidasOP || 0) - (metaProducao || 0);
@@ -85,8 +81,8 @@ const LineOverview: React.FC<LineOverviewProps> = ({
               {nome}
             </h2>
 
-            {/* OP e Meta - ISA 88: Rastreabilidade de Batch/Lote */}
-            {ordemProducao && (
+            {/* OP, CUC e Meta */}
+            {ordemProducao && ordemProducao !== 'N/A' && (
               <div className="flex items-center gap-3 mt-2 mb-1 p-2 bg-blue-50 dark:bg-blue-900/20 rounded border border-blue-200 dark:border-blue-800">
                 <div className="flex items-center gap-2">
                   <span className="text-xs font-bold px-2 py-1 bg-blue-600 text-white rounded">
@@ -96,26 +92,24 @@ const LineOverview: React.FC<LineOverviewProps> = ({
                     {ordemProducao.replace(/^0+/, '')}
                   </span>
                 </div>
-                {metaProducao !== undefined && metaProducao !== null && (
-                  <div className="flex items-center gap-2 text-xs text-neutral-600 dark:text-neutral-400 border-l border-blue-300 dark:border-blue-700 pl-3">
+
+                {cuc && cuc !== 'N/A' && (
+                  <div className="flex items-center gap-1 border-l border-blue-300 dark:border-blue-700 pl-2">
+                    <span className="text-xs text-neutral-500 font-semibold">CUC:</span>
+                    <span className="text-sm font-bold text-neutral-700 dark:text-neutral-300">{cuc}</span>
+                  </div>
+                )}
+
+                {metaProducao !== undefined && metaProducao > 0 && (
+                  <div className="flex items-center gap-2 text-xs text-neutral-600 dark:text-neutral-400 border-l border-blue-300 dark:border-blue-700 pl-2">
                     <div className="flex items-center gap-1">
                       <span>Meta:</span>
-                      <span className="font-semibold">{metaProducao.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} ton</span>
+                      <span className="font-semibold">{metaProducao.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} t</span>
                     </div>
-
-                    {/* Produzido na OP */}
-                    <div className="flex items-center gap-1 border-l border-gray-300 dark:border-gray-700 pl-2">
-                      <span>Prod:</span>
-                      <span className="font-semibold">
-                        {toneladasProduzidasOP?.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 }) || '0.0'} ton
-                      </span>
-                    </div>
-
-                    {/* Diferença (Saldo) - Lógica atualizada */}
                     <div className={`flex items-center gap-1 border-l border-gray-300 dark:border-gray-700 pl-2 ${isPositive ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
                       <span>Dif:</span>
                       <span className="font-semibold">
-                        {isPositive ? '+' : ''}{diffCalculado.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} ton
+                        {isPositive ? '+' : ''}{diffCalculado.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}
                       </span>
                     </div>
                   </div>
@@ -127,7 +121,7 @@ const LineOverview: React.FC<LineOverviewProps> = ({
             <div className="flex flex-col mt-1 mb-2">
               <div className="flex items-center gap-2">
                 <span className="text-sm font-bold px-2 py-0.5 bg-neutral-200 dark:bg-neutral-700 rounded text-neutral-800 dark:text-neutral-200">
-                  SKU: {sku || '-'}
+                  SKU: {sku && sku !== 'N/A' ? sku : '-'}
                 </span>
                 <span className="text-base text-neutral-700 dark:text-neutral-300 font-medium truncate max-w-[400px]" title={descricao}>
                   <span className="font-bold mr-1">Produto:</span>
@@ -145,9 +139,8 @@ const LineOverview: React.FC<LineOverviewProps> = ({
           </div>
         </div>
 
-        {/* Coluna 2: Métricas de Produção (Tonelagem e Formato) */}
+        {/* Coluna 2: Métricas de Produção */}
         <div className="flex-1 grid grid-cols-3 gap-4 border-l border-r border-neutral-200 dark:border-neutral-700 px-6 mx-2">
-          {/* Formato */}
           <div className="flex flex-col items-center justify-center text-center">
             <div className="flex items-center gap-1.5 mb-1 text-neutral-500 dark:text-neutral-400">
               <Box className="w-4 h-4" />
@@ -158,7 +151,6 @@ const LineOverview: React.FC<LineOverviewProps> = ({
             </span>
           </div>
 
-          {/* Toneladas Turno */}
           <div className="flex flex-col items-center justify-center text-center">
             <div className="flex items-center gap-1.5 mb-1 text-neutral-500 dark:text-neutral-400">
               <Scale className="w-4 h-4" />
@@ -169,7 +161,6 @@ const LineOverview: React.FC<LineOverviewProps> = ({
             </span>
           </div>
 
-          {/* Vazão Média */}
           <div className="flex flex-col items-center justify-center text-center">
             <div className="flex items-center gap-1.5 mb-1 text-neutral-500 dark:text-neutral-400">
               <Gauge className="w-4 h-4" />
@@ -181,27 +172,27 @@ const LineOverview: React.FC<LineOverviewProps> = ({
           </div>
         </div>
 
-        {/* Coluna 3: OEE Principal */}
+        {/* Coluna 3: OLE Principal */}
         <div className="text-right min-w-[120px]">
           <div className="flex items-center gap-2 justify-end mb-1">
             <Zap className="w-5 h-5 text-neutral-500" />
             <span className="text-sm font-medium text-neutral-600 dark:text-neutral-400">
-              OEE Médio
+              OLE Médio
             </span>
           </div>
-          <div className={`text-5xl font-bold ${getOEEColor(oee)}`}>
-            {oee.toFixed(1)}%
+          <div className={`text-5xl font-bold ${getOLEColor(ole)}`}>
+            {ole.toFixed(1)}%
           </div>
         </div>
       </div>
 
-      {/* SEÇÃO INFERIOR: WIDGET DE PROJEÇÃO (Restaurado) */}
+      {/* Widget de Projeção */}
       {projecao && (
         <div className="mt-4 pt-4 border-t border-neutral-200 dark:border-neutral-800">
           <div className="flex items-center justify-between mb-3">
             <span className="text-xs font-medium text-neutral-500 uppercase">Projeção do Turno</span>
             <span className={`text-xs font-bold px-2 py-0.5 rounded ${projecao.status === 'AHEAD' || projecao.status === 'ON_TRACK' ? 'bg-green-100 text-green-700' :
-                projecao.status === 'RISK' ? 'bg-yellow-100 text-yellow-700' : 'bg-red-100 text-red-700'
+              projecao.status === 'RISK' ? 'bg-yellow-100 text-yellow-700' : 'bg-red-100 text-red-700'
               }`}>
               {projecao.status === 'AHEAD' ? 'Adiantado' :
                 projecao.status === 'ON_TRACK' ? 'No Prazo' :
@@ -210,7 +201,7 @@ const LineOverview: React.FC<LineOverviewProps> = ({
           </div>
 
           <div className="space-y-3">
-            {/* 1. Produzido (Real) */}
+            {/* 1. Produzido */}
             <div className="relative">
               <div className="flex justify-between text-xs mb-1">
                 <span className="font-medium text-neutral-700 dark:text-neutral-300">Produzido</span>
@@ -224,7 +215,7 @@ const LineOverview: React.FC<LineOverviewProps> = ({
               </div>
             </div>
 
-            {/* 2. Esperado (Meta Atual) */}
+            {/* 2. Esperado */}
             <div className="relative">
               <div className="flex justify-between text-xs mb-1">
                 <span className="font-medium text-neutral-600 dark:text-neutral-400">Esperado (Agora)</span>
@@ -272,27 +263,7 @@ const LineOverview: React.FC<LineOverviewProps> = ({
         </div>
       )}
 
-      {/* RODAPÉ: Barra de Disponibilidade */}
-      <div className="mt-6 pt-4 border-t border-neutral-200 dark:border-neutral-800">
-        <div className="flex items-center justify-between mb-2">
-          <span className="text-xs text-neutral-500 uppercase tracking-wider">
-            Disponibilidade da Linha
-          </span>
-          <span className="text-xs font-semibold text-neutral-700 dark:text-neutral-300">
-            {percentualOnline.toFixed(0)}%
-          </span>
-        </div>
 
-        <div className="h-2 bg-neutral-200 dark:bg-neutral-700 rounded-full overflow-hidden">
-          <div
-            className={`h-full transition-all duration-500 ${percentualOnline >= 90 ? 'bg-green-500' :
-              percentualOnline >= 70 ? 'bg-yellow-500' :
-                'bg-red-500'
-              }`}
-            style={{ width: `${percentualOnline}%` }}
-          />
-        </div>
-      </div>
 
     </div>
   );

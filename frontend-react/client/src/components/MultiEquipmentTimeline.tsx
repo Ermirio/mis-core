@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { format } from 'date-fns';
+import { mapEstado, EstadoMapeado } from '@/utils/equipmentStateUtils';
 
 interface EventoEstado {
     id: number;
@@ -24,37 +25,6 @@ interface MultiEquipmentTimelineProps {
 }
 
 const DJANGO_API_URL = import.meta.env.VITE_DJANGO_API_URL || "http://127.0.0.1:8000/api";
-
-// Função de cores que segue o mesmo padrão de StateTimelineChart
-const getStateColor = (estado: string): string => {
-    const estadoUpper = estado.toUpperCase();
-
-    // Mapeamento completo de estados (mesmo padrão de EquipamentoDetalhes)
-    if (['RUN', 'PRODUZINDO', '1'].includes(estadoUpper)) return '#16a34a'; // green-600
-    if (['WAIT_PREV', '2'].includes(estadoUpper)) return '#06b6d4'; // cyan-500
-    if (['BLOCK_NEXT', '3'].includes(estadoUpper)) return '#f97316'; // orange-500
-    if (['FAULT', 'PARADO', '4'].includes(estadoUpper)) return '#dc2626'; // red-600
-    if (['SETUP', '5'].includes(estadoUpper)) return '#a855f7'; // purple-500
-    if (['TESTE_PROJ', '6'].includes(estadoUpper)) return '#3b82f6'; // blue-500
-    if (['AGUARD_MNT', '7'].includes(estadoUpper)) return '#eab308'; // yellow-500
-    if (['MANUTENCAO', '8'].includes(estadoUpper)) return '#991b1b'; // red-800
-    if (['FALTA_MAT', '9'].includes(estadoUpper)) return '#d97706'; // amber-600
-
-    return '#9ca3af'; // gray-400 (padrão)
-};
-
-// Labels para legenda
-const ESTADO_LABELS: Record<string, string> = {
-    'PRODUZINDO': 'Produzindo',
-    'WAIT_PREV': 'Aguardando Anterior',
-    'BLOCK_NEXT': 'Bloqueado Próximo',
-    'PARADO': 'Parado/Falha',
-    'SETUP': 'Setup',
-    'TESTE_PROJ': 'Teste/Projeto',
-    'AGUARD_MNT': 'Aguardando Manutenção',
-    'MANUTENCAO': 'Manutenção',
-    'FALTA_MAT': 'Falta de Material'
-};
 
 export default function MultiEquipmentTimeline({
     linhaId,
@@ -125,6 +95,13 @@ export default function MultiEquipmentTimeline({
         eventos: eventos.filter(e => e.equipamento === eq.id)
     }));
 
+    // Gera lista de estados únicos para a legenda (baseado no utilitário)
+    // Vamos mostrar todos os estados possíveis definidos no utilitário para consistência
+    const estadosLegenda = [
+        'PRODUZINDO', 'WAIT_PREV', 'BLOCK_NEXT', 'PARADO',
+        'SETUP', 'TESTE_PROJ', 'AGUARD_MNT', 'MANUTENCAO', 'FALTA_MAT'
+    ].map(chave => mapEstado(chave));
+
     if (loading) {
         return (
             <Card>
@@ -166,7 +143,7 @@ export default function MultiEquipmentTimeline({
                             <div className="flex-1 relative h-8 bg-gray-100 dark:bg-gray-800 rounded">
                                 {eqEventos.map((evento) => {
                                     const pos = calcularPosicao(evento.inicio, evento.fim);
-                                    const cor = getStateColor(evento.estado);
+                                    const estadoInfo = mapEstado(evento.estado);
 
                                     return (
                                         <div
@@ -175,14 +152,14 @@ export default function MultiEquipmentTimeline({
                                             style={{
                                                 left: pos.left,
                                                 width: pos.width,
-                                                backgroundColor: cor,
+                                                backgroundColor: estadoInfo.corHex,
                                                 minWidth: '2px' // Garantir visibilidade de eventos curtos
                                             }}
-                                            title={`${evento.estado}\n${format(new Date(evento.inicio), 'HH:mm')} - ${evento.fim ? format(new Date(evento.fim), 'HH:mm') : 'Agora'}`}
+                                            title={`${estadoInfo.nome}\n${format(new Date(evento.inicio), 'HH:mm')} - ${evento.fim ? format(new Date(evento.fim), 'HH:mm') : 'Agora'}`}
                                         >
                                             {/* Tooltip on hover */}
                                             <div className="hidden group-hover:block absolute bottom-full left-1/2 transform -translate-x-1/2 mb-1 px-2 py-1 bg-black text-white text-xs rounded whitespace-nowrap z-10">
-                                                {evento.estado}
+                                                {estadoInfo.nome}
                                                 <br />
                                                 {format(new Date(evento.inicio), 'HH:mm')} - {evento.fim ? format(new Date(evento.fim), 'HH:mm') : 'Agora'}
                                             </div>
@@ -193,12 +170,12 @@ export default function MultiEquipmentTimeline({
                         </div>
                     ))}
 
-                    {/* Legenda */}
+                    {/* Legenda Padronizada */}
                     <div className="flex flex-wrap gap-3 mt-4 pt-4 border-t text-xs">
-                        {Object.entries(ESTADO_LABELS).map(([estado, label]) => (
-                            <div key={estado} className="flex items-center gap-1">
-                                <div className="w-3 h-3 rounded" style={{ backgroundColor: getStateColor(estado) }} />
-                                <span className="text-gray-600 dark:text-gray-400">{label}</span>
+                        {estadosLegenda.map((estadoInfo) => (
+                            <div key={estadoInfo.chave} className="flex items-center gap-1">
+                                <div className="w-3 h-3 rounded" style={{ backgroundColor: estadoInfo.corHex }} />
+                                <span className="text-gray-600 dark:text-gray-400">{estadoInfo.nome}</span>
                             </div>
                         ))}
                     </div>

@@ -1,17 +1,7 @@
 import React from "react";
 import { useNavigate } from "react-router-dom";
-import { AlertTriangle, CheckCircle, XCircle, HelpCircle, Clock, TrendingUp } from "lucide-react";
-
-/**
- * EquipamentoCard - Card de equipamento individual
- * 
- * Design baseado em ISA 101 (High Performance HMI):
- * - Background neutro (cinza)
- * - Cores fortes APENAS para estados anormais
- * - Tipografia clara e hierárquica
- * - Foco em KPIs principais (OEE, Produção)
- * - Dados secundários menores e discretos
- */
+import { TrendingUp } from "lucide-react";
+import { mapEstado } from "@/utils/equipmentStateUtils";
 
 interface EquipamentoCardProps {
   id?: number;
@@ -20,20 +10,18 @@ interface EquipamentoCardProps {
   estado: string;
   velocidadeAtual?: number;
   velocidadePadrao?: number;
-
-  // NOVOS: métricas de produção
   oee?: number;
   pecasBoas?: number;
   pecasRuins?: number;
   contagem_entrada?: number;
   contagem_saida?: number;
-
   metaOEE?: number;
-
-  // NOVOS: Dados de produção
   sku?: string | number;
   descricao?: string;
   ordemProducao?: string | number;
+  cuc?: string | number;
+  planejado?: number;
+  diferenca?: number;
 }
 
 const EquipamentoCard: React.FC<EquipamentoCardProps> = ({
@@ -52,124 +40,17 @@ const EquipamentoCard: React.FC<EquipamentoCardProps> = ({
   sku,
   descricao,
   ordemProducao,
+  cuc,
 }) => {
   const navigate = useNavigate();
+  const estadoInfo = mapEstado(estado);
 
-  /**
-   * Determina a cor do estado seguindo ISA 101
-   */
-  const getEstadoStyle = (estadoStr: string | number) => {
-    const estadoUpper = String(estadoStr || '').toUpperCase();
-    const estadoNum = Number(estadoStr);
-
-    // Estados de PRODUÇÃO (Verde)
-    if (
-      ['PRODUZINDO', 'ONLINE', 'RUN', '1'].includes(estadoUpper) ||
-      estadoNum === 1
-    ) {
-      return {
-        color: 'text-green-700 dark:text-green-400',
-        bg: 'bg-green-50 dark:bg-green-900/20',
-        icon: <CheckCircle className="w-5 h-5" />
-      };
-    }
-
-    // Estado 2: AGUARDANDO (Azul Turquesa)
-    if (
-      ['WAIT_PREV', '2'].includes(estadoUpper) ||
-      estadoNum === 2
-    ) {
-      return {
-        color: 'text-cyan-700 dark:text-cyan-400',
-        bg: 'bg-cyan-50 dark:bg-cyan-900/20',
-        icon: <Clock className="w-5 h-5" />
-      };
-    }
-
-    // Estados de PARADA / ERRO (Vermelho)
-    if (
-      ['PARADA', 'PARADO', 'FAULT', 'MANUTENCAO', '4', '8'].includes(estadoUpper) ||
-      [4, 8].includes(estadoNum)
-    ) {
-      return {
-        color: 'text-red-700 dark:text-red-400',
-        bg: 'bg-red-50 dark:bg-red-900/20',
-        icon: <XCircle className="w-5 h-5" />
-      };
-    }
-
-    // Estados de ALERTA / ATENÇÃO (Amarelo)
-    if (
-      ['ALERTA', 'ATENCAO', 'BLOCK_NEXT', 'SETUP', 'AGUARD_MNT', 'FALTA_MAT', '3', '5', '7', '9'].includes(estadoUpper) ||
-      [3, 5, 7, 9].includes(estadoNum)
-    ) {
-      return {
-        color: 'text-yellow-700 dark:text-yellow-400',
-        bg: 'bg-yellow-50 dark:bg-yellow-900/20',
-        icon: <AlertTriangle className="w-5 h-5" />
-      };
-    }
-
-    // Estados NEUTROS / DESCONHECIDO
-    return {
-      color: 'text-neutral-600 dark:text-neutral-400',
-      bg: 'bg-neutral-100 dark:bg-neutral-800',
-      icon: <HelpCircle className="w-5 h-5" />
-    };
-  };
-
-  /**
-   * Traduz códigos de estado para texto legível
-   */
-  const getEstadoTexto = (estadoStr: string | number): string => {
-    const val = String(estadoStr || '').toUpperCase();
-    const num = Number(estadoStr);
-
-    if (val === 'RUN' || num === 1) return 'Produzindo';
-    if (val === 'WAIT_PREV' || num === 2) return 'Aguardando';
-    if (val === 'BLOCK_NEXT' || num === 3) return 'Bloqueado';
-    if (val === 'FAULT' || num === 4) return 'Falha';
-    if (val === 'SETUP' || num === 5) return 'Setup';
-    if (val === 'TESTE_PROJ' || num === 6) return 'Teste';
-    if (val === 'AGUARD_MNT' || num === 7) return 'Aguard. Manut.';
-    if (val === 'MANUTENCAO' || num === 8) return 'Manutenção';
-    if (val === 'FALTA_MAT' || num === 9) return 'Falta Material';
-    if (val === 'ONLINE') return 'Online';
-    if (val === 'OFFLINE' || val === 'SEM_DADOS') return 'Sem Dados';
-
-    return String(estadoStr);
-  };
-
-  /**
-   * Calcula performance simplificada
-   */
-  const calcularPerformance = (): number => {
-    if (!velocidadePadrao || velocidadePadrao === 0) return 0;
-    return Math.min(100, (velocidadeAtual / velocidadePadrao) * 100);
-  };
-
-  /**
-   * Cor do OEE baseada em threshold
-   */
-  const getOEEColor = (oeeVal: number): string => {
-    if (oeeVal >= metaOEE) return 'text-green-600 dark:text-green-400';
-    if (oeeVal >= metaOEE * 0.7) return 'text-yellow-600 dark:text-yellow-400';
-    return 'text-red-600 dark:text-red-400';
-  };
-
-  const estadoStyle = getEstadoStyle(estado);
-  const performance = calcularPerformance();
-
-  // Usa dados diretos do Flask (fonte de verdade em tempo real)
-  // Se não houver dados, usa 0 (não tenta calcular com fallbacks inconsistentes)
   const calculatedPecasBoas = pecasBoas ?? contagem_saida ?? 0;
-  const calculatedPecasRuins = pecasRuins ?? 0;  // Sempre usa o descarte do Flask, nunca calcula
-  const calculatedOEE = oee ?? 0;  // Sempre usa OEE do Flask, nunca usa performance calculada
+  const calculatedPecasRuins = pecasRuins ?? 0;
+  const calculatedOEE = oee ?? 0;
 
   const handleClick = () => {
-    if (id) {
-      navigate(`/equipamento/${id}`);
-    }
+    if (id) navigate(`/equipamento/${id}`);
   };
 
   return (
@@ -178,36 +59,49 @@ const EquipamentoCard: React.FC<EquipamentoCardProps> = ({
       onClick={handleClick}
     >
       {/* Header - Nome e Tipo */}
-      <div className="px-4 pt-4 pb-2 border-b border-neutral-200 dark:border-neutral-700">
+      <div className="px-4 pt-4 pb-3 border-b border-neutral-200 dark:border-neutral-700">
         <h3 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100 truncate">
           {nome}
         </h3>
-        <p className="text-sm text-neutral-600 dark:text-neutral-400">
+        <p className="text-sm text-neutral-600 dark:text-neutral-400 mb-2">
           {tipo}
         </p>
 
-        {/* SKU e OP - Informações de Produção */}
+        {/* --- ÁREA DE CONTEXTO (OP, CUC, SKU, PRODUTO) --- */}
         {(sku || ordemProducao) && (
-          <div className="mt-2 pt-2 border-t border-neutral-100 dark:border-neutral-700">
-            <div className="flex justify-between text-xs">
-              <span className="text-neutral-500">OP: <span className="font-medium text-neutral-700 dark:text-neutral-300">{ordemProducao || '-'}</span></span>
+          <div className="mt-2 pt-2 border-t border-neutral-100 dark:border-neutral-700 space-y-1.5">
+            <div className="flex justify-between items-center text-xs">
+              <div className="flex items-center gap-2">
+                <span className="text-neutral-500">OP: <span className="font-semibold text-neutral-800 dark:text-neutral-200">{ordemProducao || '-'}</span></span>
+                {cuc && cuc !== 'N/A' && (
+                  <>
+                    <span className="text-neutral-300">|</span>
+                    <span className="text-neutral-500">CUC: <span className="font-semibold text-blue-600 dark:text-blue-400">{cuc}</span></span>
+                  </>
+                )}
+              </div>
               <span className="text-neutral-500">SKU: <span className="font-medium text-neutral-700 dark:text-neutral-300">{sku || '-'}</span></span>
             </div>
-            {descricao && (
-              <div className="text-xs text-neutral-500 mt-1 truncate" title={descricao}>
-                {descricao}
-              </div>
-            )}
+            <div className="text-xs truncate" title={descricao}>
+              <span className="text-neutral-500 mr-1">Produto:</span>
+              <span className="font-medium text-neutral-800 dark:text-neutral-200">{descricao || '-'}</span>
+            </div>
           </div>
         )}
       </div>
 
-      {/* Estado - Badge com cor ISA 101 */}
+      {/* Estado Padronizado */}
       <div className="px-4 py-3">
-        <div className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-md ${estadoStyle.bg}`}>
-          {estadoStyle.icon}
-          <span className={`font-medium text-sm ${estadoStyle.color}`}>
-            {getEstadoTexto(estado)}
+        <div
+          className="inline-flex items-center gap-2 px-3 py-1.5 rounded-md transition-colors"
+          style={{ backgroundColor: estadoInfo.corFundo }}
+        >
+          <span style={{ color: estadoInfo.corHex }}>{estadoInfo.icon}</span>
+          <span
+            className="font-medium text-sm"
+            style={{ color: estadoInfo.corHex }}
+          >
+            {estadoInfo.nome}
           </span>
         </div>
       </div>
@@ -219,37 +113,28 @@ const EquipamentoCard: React.FC<EquipamentoCardProps> = ({
             <TrendingUp className="w-4 h-4 text-neutral-600 dark:text-neutral-400" />
             <span className="text-sm font-medium text-neutral-600 dark:text-neutral-400">OEE</span>
           </div>
-          <span className={`text-3xl font-bold ${getOEEColor(calculatedOEE ?? 0)}`}>
-            {(calculatedOEE ?? 0).toFixed(1)}%
+          <span className={`text-3xl font-bold ${calculatedOEE >= metaOEE ? 'text-green-600' : calculatedOEE >= metaOEE * 0.7 ? 'text-yellow-600' : 'text-red-600'}`}>
+            {calculatedOEE.toFixed(1)}%
           </span>
         </div>
-
-        {/* Barra de progresso do OEE */}
         <div className="h-2 bg-neutral-200 dark:bg-neutral-700 rounded-full overflow-hidden">
           <div
-            className={`h-full transition-all ${(calculatedOEE ?? 0) >= metaOEE ? 'bg-green-500' :
-              (calculatedOEE ?? 0) >= metaOEE * 0.7 ? 'bg-yellow-500' :
-                'bg-red-500'
-              }`}
-            style={{ width: `${Math.min(100, calculatedOEE ?? 0)}%` }}
+            className={`h-full transition-all ${calculatedOEE >= metaOEE ? 'bg-green-500' : calculatedOEE >= metaOEE * 0.7 ? 'bg-yellow-500' : 'bg-red-500'}`}
+            style={{ width: `${Math.min(100, calculatedOEE)}%` }}
           />
-        </div>
-        <div className="mt-1 text-xs text-neutral-500 dark:text-neutral-400 text-right">
-          Meta: {metaOEE}%
         </div>
       </div>
 
-      {/* Dados de Produção - Peças Boas e Ruins */}
+      {/* Dados de Produção */}
       <div className="px-4 py-3 grid grid-cols-2 gap-4">
         <div>
-          <span className="text-xs text-neutral-600 dark:text-neutral-400 block mb-1">Peças Boas</span>
+          <span className="text-xs text-neutral-600 dark:text-neutral-400 block mb-1">Aprovadas</span>
           <span className="text-xl font-bold text-green-600 dark:text-green-400">
             {calculatedPecasBoas.toLocaleString()}
           </span>
         </div>
-
         <div>
-          <span className="text-xs text-neutral-600 dark:text-neutral-400 block mb-1">Peças Ruins</span>
+          <span className="text-xs text-neutral-600 dark:text-neutral-400 block mb-1">Reprovadas</span>
           <span className="text-xl font-bold text-red-600 dark:text-red-400">
             {calculatedPecasRuins.toLocaleString()}
           </span>

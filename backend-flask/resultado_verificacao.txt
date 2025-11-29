@@ -1,0 +1,31 @@
+================================================================================
+VERIFICAÃ├O COMPLETA - SISTEMA DE DETECÃ├O DE TURNO
+================================================================================
+
+================================================================================
+1. HORA ATUAL DO SISTEMA
+================================================================================
+   Data/Hora completa: 2025-11-28 23:04:21.255327
+   Apenas hora: 23:04:21.255327
+   Formato HH:MM:SS: 23:04:21
+
+================================================================================
+2. TURNOS CADASTRADOS NO DJANGO
+================================================================================
+Traceback (most recent call last):
+  File "C:\Users\ermir\Documents\GitHub\projeto-monitoramento-industrial-completo\backend-flask\verificacao_completa_turno.py", line 36, in <module>
+    print(f"   \u2713 ConexÒo bem-sucedida (Status: {r.status_code})")
+  File "C:\Users\ermir\AppData\Local\Programs\Python\Python312\Lib\encodings\cp1252.py", line 19, in encode
+    return codecs.charmap_encode(input,self.errors,encoding_table)[0]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+UnicodeEncodeError: 'charmap' codec can't encode character '\u2713' in position 3: character maps to <undefined>
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\ermir\Documents\GitHub\projeto-monitoramento-industrial-completo\backend-flask\verificacao_completa_turno.py", line 48, in <module>
+    print(f"   \u2717 ERRO: {e}")
+  File "C:\Users\ermir\AppData\Local\Programs\Python\Python312\Lib\encodings\cp1252.py", line 19, in encode
+    return codecs.charmap_encode(input,self.errors,encoding_table)[0]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+UnicodeEncodeError: 'charmap' codec can't encode character '\u2717' in position 3: character maps to <undefined>

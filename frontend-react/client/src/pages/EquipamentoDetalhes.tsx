@@ -38,6 +38,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import StateTimelineChart from '@/components/StateTimelineChart';
+import { mapEstado } from '@/utils/equipmentStateUtils';
 
 // Configuração
 const DJANGO_API_URL = import.meta.env.VITE_DJANGO_API_URL || 'http://127.0.0.1:8000/api';
@@ -812,24 +813,34 @@ const EquipamentoDetalhes: React.FC = () => {
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-3">
-                    {paginatedEventos.map(evento => (
-                      <div key={evento.id} className="p-3 border border-gray-200 rounded-lg">
-                        <div className="flex justify-between items-start">
-                          <div>
-                            <p className="font-semibold">{evento.estado_display}</p>
-                            <p className="text-xs text-gray-500">
-                              {new Date(evento.inicio).toLocaleString('pt-BR')}
-                            </p>
+                    {paginatedEventos.map(evento => {
+                      const estadoInfo = mapEstado(evento.estado);
+                      return (
+                        <div key={evento.id} className="p-3 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
+                          <div className="flex justify-between items-start">
+                            <div className="flex items-center gap-3">
+                              <div
+                                className="w-4 h-4 rounded-full flex-shrink-0"
+                                style={{ backgroundColor: estadoInfo.corHex }}
+                                title={estadoInfo.nome}
+                              />
+                              <div>
+                                <p className="font-semibold text-gray-900">{estadoInfo.nome}</p>
+                                <p className="text-xs text-gray-500">
+                                  {new Date(evento.inicio).toLocaleString('pt-BR')}
+                                </p>
+                              </div>
+                            </div>
+                            <Badge variant="outline">{evento.origem}</Badge>
                           </div>
-                          <Badge variant="outline">{evento.origem}</Badge>
+                          {evento.duracao_segundos && (
+                            <p className="text-sm text-gray-600 mt-2 ml-7">
+                              Duração: {Math.floor(evento.duracao_segundos / 60)}m {evento.duracao_segundos % 60}s
+                            </p>
+                          )}
                         </div>
-                        {evento.duracao_segundos && (
-                          <p className="text-sm text-gray-600 mt-2">
-                            Duração: {Math.floor(evento.duracao_segundos / 60)}m {evento.duracao_segundos % 60}s
-                          </p>
-                        )}
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
 
                   {/* Paginação */}

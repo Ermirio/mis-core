@@ -5,6 +5,7 @@
 # Versão: 1.3 (Com Diagnóstico de CUC e Ingestão Dinâmica)
 
 import asyncio
+import json
 import logging
 import sys
 import time
@@ -63,10 +64,10 @@ class ColetorOPC:
         
         await self.conectar_servidores_opc()
         return True
-    
+
     async def atualizar_configuracao(self) -> bool:
         try:
-            logger.info("🔄 Buscando configuração do Django...")
+            # logger.info("🔄 Buscando configuração do Django...") # Silenciado para não poluir log
             url = f"{DJANGO_API_URL}/configuracao_coletor/"
             response = requests.get(url, timeout=TIMEOUT_REQUEST)
             response.raise_for_status()
@@ -75,21 +76,27 @@ class ColetorOPC:
             if data.get('status') != 'success':
                 return False
             
-            self.configuracao = data
-            equipamentos = data.get('equipamentos', [])
-            logger.info(f"✅ Configuração obtida: {len(equipamentos)} equipamentos.")
-
-            # --- DIAGNÓSTICO 1: O CUC VEIO DO DJANGO? ---
-            for eq in equipamentos:
-                tags = [t['nome_metrica'] for t in eq.get('tags_coleta', [])]
-                logger.info(f"[DIAGNOSTICO] Equipamento {eq['codigo']} tem as tags: {tags}")
-                if 'cuc' in tags:
-                    logger.info(f"[DIAGNOSTICO] ✅ Tag 'cuc' ENCONTRADA na configuração para {eq['codigo']}")
-                else:
-                    logger.warning(f"[DIAGNOSTICO] ❌ Tag 'cuc' NÃO ESTÁ na configuração para {eq['codigo']}")
-            # ----------------------------------------------
+            # Verifica se houve mudança na configuração
+            novo_hash = json.dumps(data, sort_keys=True)
+            atual_hash = json.dumps(self.configuracao, sort_keys=True) if self.configuracao else ""
             
-            return True
+            if novo_hash != atual_hash:
+                self.configuracao = data
+                equipamentos = data.get('equipamentos', [])
+                logger.info(f"✅ NOVA Configuração detectada: {len(equipamentos)} equipamentos.")
+
+                # --- DIAGNÓSTICO 1: O CUC VEIO DO DJANGO? ---
+                for eq in equipamentos:
+                    tags = [t['nome_metrica'] for t in eq.get('tags_coleta', [])]
+                    # logger.info(f"[DIAGNOSTICO] Equipamento {eq['codigo']} tem as tags: {tags}")
+                    if 'cuc' in tags:
+                        pass # logger.info(f"[DIAGNOSTICO] ✅ Tag 'cuc' ENCONTRADA na configuração para {eq['codigo']}")
+                    else:
+                        logger.warning(f"[DIAGNOSTICO] ❌ Tag 'cuc' NÃO ESTÁ na configuração para {eq['codigo']}")
+                # ----------------------------------------------
+                return True # Mudou
+            
+            return True # Sucesso, mas sem mudanças
         except Exception as e:
             logger.error(f"❌ Erro config Django: {e}")
             return False
@@ -196,6 +203,14 @@ class ColetorOPC:
                         val = float(tag['formato'])
                         if val > 0: formato_gramas = val
                     except: pass
+                
+                # --- CAPTURA DE VELOCIDADE REAL ---
+                nome_lower = nome.lower()
+                if any(x in nome_lower for x in ['velocidade', 'vel', 'rpm', 'speed']):
+                    try:
+                        medicoes['velocidade_atual'] = float(valor)
+                    except: pass
+                # ----------------------------------
             
             if not medicoes: return None
             
@@ -259,7 +274,7 @@ class ColetorOPC:
             while True:
                 ciclo += 1
                 await self.ciclo_coleta()
-                if ciclo % 60 == 0:
+                if ciclo % 15 == 0: # A cada 30 segundos (15 * 2s)
                     await self.atualizar_configuracao()
                     await self.conectar_servidores_opc()
                 await asyncio.sleep(INTERVALO_COLETA)
