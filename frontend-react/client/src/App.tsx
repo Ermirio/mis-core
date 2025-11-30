@@ -9,6 +9,7 @@ import EquipamentoDetalhes from "./pages/EquipamentoDetalhes.tsx";
 import FactoryManagement from "./pages/FactoryManagement";
 import DiagnosticosLogs from "./pages/DiagnosticosLogs";
 import LineManagement from "./pages/LineManagement.tsx";
+import LineDeepView from "./pages/LineDeepView";
 
 function App() {
   return (
@@ -19,8 +20,9 @@ function App() {
           <Route path="dashboard-fabrica" element={<FactoryDashboard />} />
           <Route path="fabrica" element={<FabricaDetalhes />} />
           <Route path="linha/:linhaId" element={<LinhaDetalhes />} />
+          <Route path="linha/:linhaId/detalhes" element={<LineDeepView />} />
           <Route path="equipamento/:equipamentoId" element={<EquipamentoDetalhes />} />
-            <Route path="factory-management" element={<FactoryManagement />} />
+          <Route path="factory-management" element={<FactoryManagement />} />
           <Route path="diagnosticos" element={<DiagnosticosLogs />} />
           <Route path="linha-management/:linhaId" element={<LineManagement />} />
         </Route>

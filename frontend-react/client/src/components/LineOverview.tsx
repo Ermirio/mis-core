@@ -1,4 +1,5 @@
 import React from "react";
+import { useNavigate } from "react-router-dom";
 import { Activity, Zap, Scale, Gauge, Box, TrendingUp } from "lucide-react";
 
 /**
@@ -46,6 +47,7 @@ const LineOverview: React.FC<LineOverviewProps> = ({
   descricao,
   ordemProducao,
 }) => {
+  const navigate = useNavigate();
 
   const getOLEColor = (valor: number): string => {
     if (valor >= 85) return 'text-green-600 dark:text-green-400';
@@ -72,7 +74,10 @@ const LineOverview: React.FC<LineOverviewProps> = ({
   const projecaoEstimada = metaTotal > 0 ? metaTotal * (ole / 100) : 0;
 
   return (
-    <div className="bg-gradient-to-r from-neutral-50 to-neutral-100 dark:from-neutral-800 dark:to-neutral-900 border border-neutral-300 dark:border-neutral-700 rounded-lg shadow-md p-6">
+    <div
+      onClick={() => navigate(`/linha/${nome}/detalhes`)}
+      className="bg-gradient-to-r from-neutral-50 to-neutral-100 dark:from-neutral-800 dark:to-neutral-900 border border-neutral-300 dark:border-neutral-700 rounded-lg shadow-md p-6 cursor-pointer hover:shadow-lg transition-shadow"
+    >
 
       {/* SEÇÃO SUPERIOR: KPI's Principais */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">

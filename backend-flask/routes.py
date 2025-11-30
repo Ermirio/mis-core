@@ -1,7 +1,11 @@
 import logging
 import time
+import requests
+from decouple import config
 from datetime import datetime, timedelta
 from flask import Blueprint, jsonify, request, current_app
+
+DJANGO_API_URL = config('DJANGO_API_URL', default='http://localhost:8000/api')
 
 api_bp = Blueprint('api', __name__)
 
@@ -32,6 +36,48 @@ def changed_state(eq, state):
 # ==============================================================================
 # ROTAS
 # ==============================================================================
+
+@api_bp.route('/api/linha/<linha_nome>/status', methods=['GET'])
+def get_linha_status(linha_nome):
+    """
+    Retorna o status atual de todos os equipamentos da linha.
+    """
+    try:
+        influx_client = current_app.extensions.get('influx_client')
+        if not influx_client:
+            return jsonify({'error': 'DB not initialized'}), 500
+
+        query = f"SELECT last(estado_maquina) as estado_maquina, last(ordem_producao) as ordem_producao, last(sku_codigo) as sku_codigo, last(descricao) as descricao, last(cuc) as cuc FROM production WHERE \"line\" = '{linha_nome}' GROUP BY \"equipment\""
+        rs = influx_client.query(query)
+        
+        equipamentos = []
+        # rs.items() retorna ((nome_serie, tags), gerador_pontos)
+        for (name, tags), points in rs.items():
+            equipment_name = tags.get('equipment', 'Unknown')
+            # Pega o último ponto (deve haver apenas um por causa do last())
+            for point in points:
+                equipamentos.append({
+                    'nome': equipment_name,
+                    'medicoes': {
+                        'estado_maquina': int(point.get('estado_maquina', 0) or 0),
+                        'ordem_producao': point.get('ordem_producao', 'N/A'),
+                        'sku_codigo': point.get('sku_codigo', 'N/A'),
+                        'descricao': point.get('descricao', 'N/A'),
+                        'cuc': point.get('cuc', 'N/A')
+                    }
+                })
+                break # Apenas o mais recente
+
+        return jsonify({
+            'equipamentos': equipamentos,
+            'agregados': {
+                'total_equipamentos': len(equipamentos)
+            }
+        })
+
+    except Exception as e:
+        logger.error(f"Error getting line status: {e}")
+        return jsonify({'error': str(e)}), 500
 
 @api_bp.route('/api/linha/<linha_nome>/realtime', methods=['GET'])
 def get_linha_realtime(linha_nome):
@@ -382,6 +428,220 @@ def inserir():
     except Exception as e:
         logger.error(f"Erro: {e}")
         return jsonify({'error': str(e)}), 500
+
+@api_bp.route('/api/linha/<linha_nome>/ole-realtime', methods=['GET'])
+def get_ole_realtime(linha_nome):
+    """
+    Retorna OLE (OMAC/ISA) e dados de progresso do turno.
+    OLE = ProducaoReal / ProducaoEsperadaAteAgora * 100
+    """
+    try:
+        influx_client = current_app.extensions.get('influx_client')
+        production_engine = current_app.extensions.get('production_engine')
+        
+        if not influx_client or not production_engine:
+            return jsonify({'error': 'Engine/DB not initialized'}), 500
+
+        # 1. Busca Produção Real (Toneladas) - Máximo entre os equipamentos
+        query = f"SELECT last(toneladas_turno) FROM production WHERE \"line\" = '{linha_nome}' GROUP BY \"equipment\""
+        rs = influx_client.query(query)
+        points = list(rs.get_points())
+        toneladas_real = 0.0
+        if points:
+            toneladas_real = max([float(p['last']) for p in points if p['last'] is not None], default=0.0)
+
+        # 2. Busca Meta do Turno (Django) e Calcula Tempo
+        meta_toneladas = 0.0
+        tempo_decorrido = 0
+        tempo_total_turno = 0
+        
+        # Dados do Turno Atual
+        turno_info = production_engine.shift_manager.get_turno_info()
+        
+        # Busca ID da Linha
+        resp_linha = requests.get(f"{DJANGO_API_URL}/linhas/?codigo={linha_nome}", timeout=2)
+        if resp_linha.status_code == 200:
+            data_linha = resp_linha.json()
+            results_linha = data_linha.get('results', data_linha)
+            if results_linha:
+                linha_id = results_linha[0]['id']
+                
+                # Busca Calendário (com correção de data do turno)
+                if turno_info and 'inicio_timestamp' in turno_info:
+                     dt_inicio = datetime.fromtimestamp(turno_info['inicio_timestamp'])
+                     query_date = dt_inicio.strftime('%Y-%m-%d')
+                else:
+                     query_date = datetime.now().strftime('%Y-%m-%d')
+                     
+                resp_cal = requests.get(f"{DJANGO_API_URL}/calendario/?linha_id={linha_id}&data={query_date}", timeout=2)
+                
+                if resp_cal.status_code == 200:
+                    data_cal = resp_cal.json()
+                    results_cal = data_cal.get('results', data_cal)
+                    if results_cal:
+                        for entry in results_cal:
+                            if entry.get('programado') and entry.get('meta_producao_turno'):
+                                val = float(entry.get('meta_producao_turno'))
+                                if val > 1000: val /= 1000.0
+                                
+                                # Tenta casar com o turno atual
+                                if turno_info and entry.get('turno_nome') == turno_info.get('nome'):
+                                    meta_toneladas = val
+                                    break
+                                
+                                # Fallback
+                                if meta_toneladas == 0:
+                                    meta_toneladas = val
+
+        # 3. Calcula Tempo Decorrido e Total
+        if turno_info:
+            now = datetime.now()
+            inicio = datetime.combine(now.date(), turno_info['inicio'])
+            fim = datetime.combine(now.date(), turno_info['fim'])
+            
+            # Ajuste para virada de dia
+            if turno_info['inicio'] > turno_info['fim']:
+                if now.time() < turno_info['inicio']:
+                    inicio -= timedelta(days=1)
+                else:
+                    fim += timedelta(days=1)
+            
+            tempo_total_turno = (fim - inicio).total_seconds()
+            tempo_decorrido = (now - inicio).total_seconds()
+            
+            # Cap no tempo decorrido (não pode ser maior que o total se o turno acabou)
+            if tempo_decorrido > tempo_total_turno:
+                tempo_decorrido = tempo_total_turno
+        
+        # 4. Cálculo OLE (OMAC)
+        producao_esperada = 0.0
+        ole = 0.0
+        projecao = 0.0
+        
+        if meta_toneladas > 0 and tempo_total_turno > 0:
+            producao_esperada = meta_toneladas * (tempo_decorrido / tempo_total_turno)
+            
+            if producao_esperada > 0:
+                ole = (toneladas_real / producao_esperada) * 100.0
+            
+            # Projeção Linear
+            if tempo_decorrido > 0:
+                taxa_atual = toneladas_real / tempo_decorrido
+                projecao = taxa_atual * tempo_total_turno
+
+        return jsonify({
+            'ole': round(ole, 1),
+            'producao_real': round(toneladas_real, 3),
+            'producao_esperada': round(producao_esperada, 3),
+            'projecao': round(projecao, 1),
+            'meta_turno': round(meta_toneladas, 1),
+            'tempo_decorrido_perc': round((tempo_decorrido / tempo_total_turno * 100) if tempo_total_turno > 0 else 0, 1)
+        })
+
+    except Exception as e:
+        logger.error(f"Erro OLE Realtime: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@api_bp.route('/api/linha/<linha_nome>/kpis', methods=['GET'])
+def get_linha_kpis(linha_nome):
+    """
+    Retorna KPIs agregados da linha e gargalo.
+    """
+    try:
+        influx_client = current_app.extensions.get('influx_client')
+        if not influx_client: return jsonify({'error': 'No DB'}), 500
+
+        # Busca últimos dados de todos os equipamentos da linha
+        query = f"SELECT last(availability_realtime), last(performance_realtime), last(quality_realtime), last(estado_maquina) FROM production WHERE \"line\" = '{linha_nome}' GROUP BY \"equipment\""
+        rs = influx_client.query(query)
+        points = list(rs.get_points())
+        
+        if not points:
+            return jsonify({
+                'availability': 0, 'performance': 0, 'quality': 0,
+                'bottleneck': {'name': 'N/A', 'oee': 0}
+            })
+
+        # Calcula Médias
+        avg_avail = sum([p['last'] for p in points if p['last'] is not None]) / len(points)
+        avg_perf = sum([p['last_1'] for p in points if p['last_1'] is not None]) / len(points)
+        avg_qual = sum([p['last_2'] for p in points if p['last_2'] is not None]) / len(points)
+
+        # Identifica Gargalo (Menor OEE = Avail * Perf * Qual)
+        bottleneck = None
+        min_oee = 101.0
+        
+        for p in points:
+            # Recalcula OEE localmente pois não buscamos o campo OEE direto (opcional)
+            a = p['last'] or 0
+            pe = p['last_1'] or 0
+            q = p['last_2'] or 0
+            oee = (a * pe * q) / 10000.0 # Se estiverem em 0-100
+            
+            # Influx retorna tags como chaves no get_points se group by
+            # Mas aqui points é lista de dicts com valores. O nome do equipamento está nas tags do resultset original
+            # Ajuste: get_points() retorna generator, list() flattens it but loses tags if not careful.
+            # Melhor iterar sobre rs.items()
+            pass
+
+        # Re-iterando corretamente para pegar nomes
+        items = list(rs.items())
+        equip_stats = []
+        
+        for (tags, generator) in items:
+            for p in generator:
+                eq_name = tags['equipment']
+                a = p['last'] or 0
+                pe = p['last_1'] or 0
+                q = p['last_2'] or 0
+                oee = (a/100) * (pe/100) * (q/100) * 100
+                equip_stats.append({'name': eq_name, 'oee': oee})
+
+        if equip_stats:
+            bottleneck = min(equip_stats, key=lambda x: x['oee'])
+        else:
+            bottleneck = {'name': 'N/A', 'oee': 0}
+
+        return jsonify({
+            'availability': round(avg_avail, 1),
+            'performance': round(avg_perf, 1),
+            'quality': round(avg_qual, 1),
+            'bottleneck': {
+                'name': bottleneck['name'],
+                'oee': round(bottleneck['oee'], 1)
+            }
+        })
+
+    except Exception as e:
+        logger.error(f"Erro KPIs: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@api_bp.route('/api/linha/<linha_nome>/timeline', methods=['GET'])
+def get_linha_timeline(linha_nome):
+    """
+    Retorna timeline agregada (mockada ou real).
+    Por enquanto retorna estrutura vazia ou mockada para o frontend.
+    """
+    # TODO: Implementar busca real de machine_status
+    return jsonify({
+        'events': [] 
+    })
+
+@api_bp.route('/api/linha/<linha_nome>/upstream', methods=['GET'])
+def get_linha_upstream(linha_nome):
+    return jsonify([
+        {'name': 'Silo 04', 'status': 'Normal', 'detail': 'Nível 78%'},
+        {'name': 'Rosca 02', 'status': 'Warning', 'detail': 'Vibração Alta'},
+        {'name': 'Misturador 01', 'status': 'Normal', 'detail': 'Disponível'}
+    ])
+
+@api_bp.route('/api/linha/<linha_nome>/downstream', methods=['GET'])
+def get_linha_downstream(linha_nome):
+    return jsonify([
+        {'name': 'Armazém', 'percentage': 84},
+        {'name': 'WIP', 'percentage': 12},
+        {'name': 'Reprocesso', 'percentage': 4}
+    ])
 
 @api_bp.route('/api/system/refresh-shifts', methods=['POST'])
 def refresh_shifts():
