@@ -542,79 +542,79 @@ def get_ole_realtime(linha_nome):
         logger.error(f"Erro OLE Realtime: {e}")
         return jsonify({'error': str(e)}), 500
 
-@api_bp.route('/api/linha/<linha_nome>/kpis', methods=['GET'])
-def get_linha_kpis(linha_nome):
-    """
-    Retorna KPIs agregados da linha e gargalo.
-    """
-    try:
-        influx_client = current_app.extensions.get('influx_client')
-        if not influx_client: return jsonify({'error': 'No DB'}), 500
-
-        # Busca últimos dados de todos os equipamentos da linha
-        query = f"SELECT last(availability_realtime), last(performance_realtime), last(quality_realtime), last(estado_maquina) FROM production WHERE \"line\" = '{linha_nome}' GROUP BY \"equipment\""
-        rs = influx_client.query(query)
-        points = list(rs.get_points())
-        
-        if not points:
-            return jsonify({
-                'availability': 0, 'performance': 0, 'quality': 0,
-                'bottleneck': {'name': 'N/A', 'oee': 0}
-            })
-
-        # Calcula Médias
-        avg_avail = sum([p['last'] for p in points if p['last'] is not None]) / len(points)
-        avg_perf = sum([p['last_1'] for p in points if p['last_1'] is not None]) / len(points)
-        avg_qual = sum([p['last_2'] for p in points if p['last_2'] is not None]) / len(points)
-
-        # Identifica Gargalo (Menor OEE = Avail * Perf * Qual)
-        bottleneck = None
-        min_oee = 101.0
-        
-        for p in points:
-            # Recalcula OEE localmente pois não buscamos o campo OEE direto (opcional)
-            a = p['last'] or 0
-            pe = p['last_1'] or 0
-            q = p['last_2'] or 0
-            oee = (a * pe * q) / 10000.0 # Se estiverem em 0-100
-            
-            # Influx retorna tags como chaves no get_points se group by
-            # Mas aqui points é lista de dicts com valores. O nome do equipamento está nas tags do resultset original
-            # Ajuste: get_points() retorna generator, list() flattens it but loses tags if not careful.
-            # Melhor iterar sobre rs.items()
-            pass
-
-        # Re-iterando corretamente para pegar nomes
-        items = list(rs.items())
-        equip_stats = []
-        
-        for (tags, generator) in items:
-            for p in generator:
-                eq_name = tags['equipment']
-                a = p['last'] or 0
-                pe = p['last_1'] or 0
-                q = p['last_2'] or 0
-                oee = (a/100) * (pe/100) * (q/100) * 100
-                equip_stats.append({'name': eq_name, 'oee': oee})
-
-        if equip_stats:
-            bottleneck = min(equip_stats, key=lambda x: x['oee'])
-        else:
-            bottleneck = {'name': 'N/A', 'oee': 0}
-
-        return jsonify({
-            'availability': round(avg_avail, 1),
-            'performance': round(avg_perf, 1),
-            'quality': round(avg_qual, 1),
-            'bottleneck': {
-                'name': bottleneck['name'],
-                'oee': round(bottleneck['oee'], 1)
-            }
-        })
-
-    except Exception as e:
-        logger.error(f"Erro KPIs: {e}")
-        return jsonify({'error': str(e)}), 500
+# @api_bp.route('/api/linha/<linha_nome>/kpis', methods=['GET'])
+# def get_linha_kpis(linha_nome):
+#     """
+#     Retorna KPIs agregados da linha e gargalo.
+#     """
+#     try:
+#         influx_client = current_app.extensions.get('influx_client')
+#         if not influx_client: return jsonify({'error': 'No DB'}), 500
+#
+#         # Busca últimos dados de todos os equipamentos da linha
+#         query = f"SELECT last(availability_realtime), last(performance_realtime), last(quality_realtime), last(estado_maquina) FROM production WHERE \"line\" = '{linha_nome}' GROUP BY \"equipment\""
+#         rs = influx_client.query(query)
+#         points = list(rs.get_points())
+#         
+#         if not points:
+#             return jsonify({
+#                 'availability': 0, 'performance': 0, 'quality': 0,
+#                 'bottleneck': {'name': 'N/A', 'oee': 0}
+#             })
+#
+#         # Calcula Médias
+#         avg_avail = sum([p['last'] for p in points if p['last'] is not None]) / len(points)
+#         avg_perf = sum([p['last_1'] for p in points if p['last_1'] is not None]) / len(points)
+#         avg_qual = sum([p['last_2'] for p in points if p['last_2'] is not None]) / len(points)
+#
+#         # Identifica Gargalo (Menor OEE = Avail * Perf * Qual)
+#         bottleneck = None
+#         min_oee = 101.0
+#         
+#         for p in points:
+#             # Recalcula OEE localmente pois não buscamos o campo OEE direto (opcional)
+#             a = p['last'] or 0
+#             pe = p['last_1'] or 0
+#             q = p['last_2'] or 0
+#             oee = (a * pe * q) / 10000.0 # Se estiverem em 0-100
+#             
+#             # Influx retorna tags como chaves no get_points se group by
+#             # Mas aqui points é lista de dicts com valores. O nome do equipamento está nas tags do resultset original
+#             # Ajuste: get_points() retorna generator, list() flattens it but loses tags if not careful.
+#             # Melhor iterar sobre rs.items()
+#             pass
+#
+#         # Re-iterando corretamente para pegar nomes
+#         items = list(rs.items())
+#         equip_stats = []
+#         
+#         for (tags, generator) in items:
+#             for p in generator:
+#                 eq_name = tags['equipment']
+#                 a = p['last'] or 0
+#                 pe = p['last_1'] or 0
+#                 q = p['last_2'] or 0
+#                 oee = (a/100) * (pe/100) * (q/100) * 100
+#                 equip_stats.append({'name': eq_name, 'oee': oee})
+#
+#         if equip_stats:
+#             bottleneck = min(equip_stats, key=lambda x: x['oee'])
+#         else:
+#             bottleneck = {'name': 'N/A', 'oee': 0}
+#
+#         return jsonify({
+#             'availability': round(avg_avail, 1),
+#             'performance': round(avg_perf, 1),
+#             'quality': round(avg_qual, 1),
+#             'bottleneck': {
+#                 'name': bottleneck['name'],
+#                 'oee': round(bottleneck['oee'], 1)
+#             }
+#         })
+#
+#     except Exception as e:
+#         logger.error(f"Erro KPIs: {e}")
+#         return jsonify({'error': str(e)}), 500
 
 @api_bp.route('/api/linha/<linha_nome>/timeline', methods=['GET'])
 def get_linha_timeline(linha_nome):

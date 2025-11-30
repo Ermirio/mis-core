@@ -302,10 +302,13 @@ const LineDeepView: React.FC = () => {
                 {/* Right Column (KPIs & Details) - Span 4 */}
                 <div className="lg:col-span-4 space-y-6">
                     <KPIs
-                        availability={kpisData?.disponibilidade || 0}
-                        performance={kpisData?.desempenho || 0}
-                        quality={kpisData?.qualidade || 0}
-                        bottleneck={kpisData?.gargalo || { name: 'N/A', oee: 0 }}
+                        availability={kpisData?.kpis?.disponibilidade || 0}
+                        performance={kpisData?.kpis?.performance || 0}
+                        quality={kpisData?.kpis?.qualidade || 0}
+                        bottleneck={{
+                            name: kpisData?.gargalo?.nome || 'N/A',
+                            oee: kpisData?.gargalo?.oee || 0
+                        }}
                         ritmoAtual={vazaoCalculada}
                         ritmoNecessario={ritmoNecessario}
                         desvioProjetado={desvioProjetado}
