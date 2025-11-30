@@ -78,7 +78,13 @@ class ShiftManager:
             None: se não houver turno ativo
         """
         if not self.turnos:
-            return None
+            # Tenta recarregar se estiver vazio (pode ter falhado na inicialização)
+            if time.time() - getattr(self, 'last_attempt', 0) > 60:
+                self.last_attempt = time.time()
+                self.forcar_atualizacao()
+            
+            if not self.turnos:
+                return None
         
         now = datetime.now()
         now_time = now.time()

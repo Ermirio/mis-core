@@ -1,6 +1,6 @@
 import logging
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 from flask import Blueprint, jsonify, request, current_app
 
 api_bp = Blueprint('api', __name__)
@@ -113,8 +113,14 @@ def get_linha_realtime(linha_nome):
                     linha_id = results_linha[0]['id']
                     
                     # Busca Calendário
-                    today = datetime.now().strftime('%Y-%m-%d')
-                    resp_cal = requests.get(f"{DJANGO_API_URL}/calendario/?linha_id={linha_id}&data={today}", timeout=2)
+                    # Se tiver info do turno, usa a data de INÍCIO do turno (para lidar com virada de dia)
+                    if turno_info and 'inicio_timestamp' in turno_info:
+                         dt_inicio = datetime.fromtimestamp(turno_info['inicio_timestamp'])
+                         query_date = dt_inicio.strftime('%Y-%m-%d')
+                    else:
+                         query_date = datetime.now().strftime('%Y-%m-%d')
+                         
+                    resp_cal = requests.get(f"{DJANGO_API_URL}/calendario/?linha_id={linha_id}&data={query_date}", timeout=2)
                     
                     meta_toneladas = 0.0
                     if resp_cal.status_code == 200:
@@ -126,8 +132,15 @@ def get_linha_realtime(linha_nome):
                                     # USER FIX: Valor já está em Toneladas (ou Kg se > 1000)
                                     val = float(entry.get('meta_producao_turno'))
                                     if val > 1000: val /= 1000.0
-                                    meta_toneladas = val
-                                    break
+                                    
+                                    # Tenta casar com o turno atual
+                                    if turno_info and entry.get('turno_nome') == turno_info.get('nome'):
+                                        meta_toneladas = val
+                                        break
+                                    
+                                    # Se não casar, guarda o primeiro como fallback
+                                    if meta_toneladas == 0:
+                                        meta_toneladas = val
                     
                     # Fallback: Meta da Linha
                     if meta_toneladas == 0:
