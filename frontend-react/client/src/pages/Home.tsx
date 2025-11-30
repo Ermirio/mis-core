@@ -16,6 +16,7 @@ interface EquipamentoConfig {
   tipo_display: string;
   linha: number;
   linha_nome: string;
+  linha_codigo: string; // Added
   ordem_na_linha?: number;
   velocidade_nominal: number;
   velocidade_maxima: number;
@@ -50,8 +51,16 @@ interface EquipamentoCompleto extends EquipamentoConfig {
 interface LinhaAgrupada {
   linha_id: number;
   linha_nome: string;
+  linha_codigo: string; // Added
   equipamentos: EquipamentoCompleto[];
-  ole_realtime?: number; // OLE vindo do Backend
+  ole_data?: {
+    ole: number;
+    producao_real: number;
+    producao_planejada_ate_agora: number;
+    producao_planejada_total: number;
+    equipamentos_online: number;
+    equipamentos_total: number;
+  };
 }
 
 const DJANGO_API_URL = import.meta.env.VITE_DJANGO_API_URL || "http://127.0.0.1:8000/api";
@@ -66,7 +75,6 @@ export default function Home() {
   const [lastUpdate, setLastUpdate] = useState<Date>(new Date());
   const [metricasConsolidadas, setMetricasConsolidadas] = useState<any[]>([]);
 
-  // Funções de Fetch (Mantidas iguais ao anterior)
   const fetchConfiguracao = async (): Promise<EquipamentoConfig[]> => {
     try {
       const response = await fetch(`${DJANGO_API_URL}/equipamentos/`);
@@ -132,16 +140,15 @@ export default function Home() {
     }
   };
 
-  const fetchLinhaOLE = async (nomeLinha: string): Promise<number> => {
+  const fetchLinhaOLE = async (nomeLinha: string): Promise<any> => {
     try {
       const response = await fetch(`${FLASK_API_URL}/linha/${encodeURIComponent(nomeLinha)}/realtime`);
       if (response.ok) {
-        const data = await response.json();
-        return data.ole || 0;
+        return await response.json();
       }
-      return 0;
+      return null;
     } catch (error) {
-      return 0;
+      return null;
     }
   };
 
@@ -173,8 +180,9 @@ export default function Home() {
           linhasMap.set(eq.linha, {
             linha_id: eq.linha,
             linha_nome: eq.linha_nome,
+            linha_codigo: eq.linha_codigo || eq.linha_nome, // Fallback
             equipamentos: [],
-            ole_realtime: 0
+            ole_data: undefined
           });
         }
         linhasMap.get(eq.linha)!.equipamentos.push(eq);
@@ -183,8 +191,10 @@ export default function Home() {
       const linhasArray = Array.from(linhasMap.values());
 
       const promisesLinhas = linhasArray.map(async (linha) => {
-        const ole = await fetchLinhaOLE(linha.linha_nome);
-        linha.ole_realtime = ole;
+        // Use linha_codigo if available, otherwise name
+        const idParaBusca = linha.linha_codigo || linha.linha_nome;
+        const oleData = await fetchLinhaOLE(idParaBusca);
+        linha.ole_data = oleData;
         linha.equipamentos.sort((a, b) => (a.ordem_na_linha || 0) - (b.ordem_na_linha || 0));
         return linha;
       });
@@ -248,11 +258,15 @@ export default function Home() {
                 <div key={linha.linha_id} className="space-y-4">
                   <div className="flex items-center justify-between gap-4">
                     <div className="flex-1">
+                      {console.log(`[Home] Rendering LineOverview for ${linha.linha_nome}:`, linha.ole_data)}
                       <LineOverview
                         nome={linha.linha_nome}
 
-                        // USA OLE DIRETO DO BACKEND
-                        ole={linha.ole_realtime || 0}
+                        // OLE Oficial (OMAC/ISA)
+                        ole={linha.ole_data?.ole || 0}
+                        producaoReal={linha.ole_data?.producao_real}
+                        producaoEsperada={linha.ole_data?.producao_planejada_ate_agora}
+                        metaTotal={linha.ole_data?.producao_planejada_total}
 
                         totalEquipamentos={linha.equipamentos.length}
                         equipamentosOnline={linha.equipamentos.filter(eq => eq.status !== 'Offline').length}
@@ -262,12 +276,7 @@ export default function Home() {
                         ordemProducao={dadosProducao?.ordem_producao || metricas.ordem_producao}
                         cuc={dadosProducao?.cuc}
                         formatoAtual={dadosProducao?.formato_gramas || metricas.formato_gramas}
-                        metaProducao={dadosProducao?.planejado_op || metricas.meta_producao}
-                        toneladasTurno={metricas.toneladas_produzidas}
                         vazaoTurno={metricas.vazao_real_ton_hora}
-                        toneladasProduzidasOP={dadosProducao?.toneladas_op}
-                        diferencaOP={dadosProducao?.diferenca_op}
-                        projecao={metricas.projecao}
                       />
                     </div>
 
@@ -299,12 +308,10 @@ export default function Home() {
                   <MultiEquipmentTimeline linhaId={linha.linha_id} linhaNome={linha.linha_nome} equipamentos={linha.equipamentos} />
                 </div>
               );
-            })
-            }
-          </div >
-        )
-        }
-      </main >
-    </div >
+            })}
+          </div>
+        )}
+      </main>
+    </div>
   );
 }

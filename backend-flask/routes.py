@@ -40,54 +40,150 @@ def get_linha_realtime(linha_nome):
     """
     try:
         influx_client = current_app.extensions.get('influx_client')
-        if not influx_client:
-            return jsonify({'error': 'InfluxDB not initialized'}), 500
+        production_engine = current_app.extensions.get('production_engine')
+        
+        if not influx_client or not production_engine:
+            return jsonify({'error': 'Engine/DB not initialized'}), 500
 
-        # Busca último registro de TODAS as máquinas desta linha
-        query = f"SELECT last(*) FROM production WHERE \"line\" = '{linha_nome}' GROUP BY \"equipment\""
+        # 1. Busca Produção Real (Toneladas) - Máximo entre os equipamentos (Gargalo/Final)
+        query = f"SELECT last(toneladas_turno), last(formato_gramas), last(estado_maquina) FROM production WHERE \"line\" = '{linha_nome}' GROUP BY \"equipment\""
         rs = influx_client.query(query)
         points = list(rs.get_points())
         
-        if not points:
-            return jsonify({'ole': 0, 'status': 'Sem dados'}), 200
-
-        total_oee = 0
-        count = 0
+        producao_real_ton = 0.0
+        formato_gramas = 0.0
         equipamentos_online = 0
+        equipamentos_total = len(points)
         
         for p in points:
-            # Pega o OEE calculado de cada máquina
-            oee = float(p.get('last_oee_realtime', 0) or 0)
-            total_oee += oee
-            count += 1
+            ton = float(p.get('last', 0) or 0)
+            if ton > producao_real_ton:
+                producao_real_ton = ton
+                formato_gramas = float(p.get('last_1', 0) or 0)
             
-            # Verifica se está online
-            estado = int(p.get('last_estado_maquina', 0))
-            if estado in [1, 2, 3]: # Produzindo, Aguardando, Bloqueado
+            estado = int(p.get('last_2', 0) or 0)
+            if estado in [1, 2, 3]: 
                 equipamentos_online += 1
 
-        # Cálculo do OLE (Média)
-        ole = total_oee / count if count > 0 else 0
+        # 2. Busca Meta do Turno (Django) e Calcula Tempo
+        producao_planejada_total = 0.0
+        producao_planejada_ate_agora = 0.0
+        tempo_decorrido = 0
+        tempo_total_turno = 28800 # Default 8h
         
-        # Persistência Opcional (Grava na tabela line_metrics)
+        try:
+            # Dados do Turno Atual via ShiftManager
+            turno_info = production_engine.shift_manager.get_turno_info()
+            if turno_info:
+                agora = datetime.now()
+                
+                # Converte inicio/fim para datetime
+                if 'inicio_timestamp' in turno_info:
+                    inicio = datetime.fromtimestamp(turno_info['inicio_timestamp'])
+                else:
+                    # Fallback se não tiver timestamp
+                    inicio = datetime.combine(agora.date(), turno_info['inicio'])
+                
+                fim = datetime.combine(inicio.date(), turno_info['fim'])
+                
+                # Ajusta fim se for no dia seguinte (turno noturno)
+                if fim <= inicio:
+                    fim += timedelta(days=1)
+                
+                if agora > fim: agora = fim # Clamp se estiver olhando histórico ou fim de turno
+                
+                delta_total = (fim - inicio).total_seconds()
+                delta_decorrido = (agora - inicio).total_seconds()
+                
+                if delta_total > 0:
+                    tempo_total_turno = delta_total
+                    tempo_decorrido = max(0, delta_decorrido)
+
+            # Busca Meta no Django
+            import requests
+            from decouple import config
+            DJANGO_API_URL = config('DJANGO_API_URL', default='http://127.0.0.1:8000/api')
+            
+            # Busca ID da Linha
+            resp_linha = requests.get(f"{DJANGO_API_URL}/linhas/?codigo={linha_nome}", timeout=2)
+            if resp_linha.status_code == 200:
+                data_linha = resp_linha.json()
+                results_linha = data_linha.get('results', data_linha)
+                if results_linha:
+                    linha_id = results_linha[0]['id']
+                    
+                    # Busca Calendário
+                    today = datetime.now().strftime('%Y-%m-%d')
+                    resp_cal = requests.get(f"{DJANGO_API_URL}/calendario/?linha_id={linha_id}&data={today}", timeout=2)
+                    
+                    meta_toneladas = 0.0
+                    if resp_cal.status_code == 200:
+                        data_cal = resp_cal.json()
+                        results_cal = data_cal.get('results', data_cal)
+                        if results_cal:
+                            for entry in results_cal:
+                                if entry.get('programado') and entry.get('meta_producao_turno'):
+                                    # USER FIX: Valor já está em Toneladas (ou Kg se > 1000)
+                                    val = float(entry.get('meta_producao_turno'))
+                                    if val > 1000: val /= 1000.0
+                                    meta_toneladas = val
+                                    break
+                    
+                    # Fallback: Meta da Linha
+                    if meta_toneladas == 0:
+                        val = float(results_linha[0].get('meta_toneladas_turno') or 0)
+                        if val > 1000: val /= 1000.0
+                        meta_toneladas = val
+
+                    producao_planejada_total = meta_toneladas
+
+        except Exception as e:
+            logger.error(f"Erro Meta/Turno: {e}")
+            error_msg = str(e)
+
+        # 3. Calcula Esperado até Agora
+        proporcao = 0.0
+        if tempo_total_turno > 0:
+            proporcao = tempo_decorrido / tempo_total_turno
+            proporcao = min(1.0, max(0.0, proporcao))
+            
+        producao_planejada_ate_agora = producao_planejada_total * proporcao
+
+        # 4. Calcula OLE (OMAC/ISA)
+        ole = 0.0
+        if producao_planejada_ate_agora > 0.001: # Evita div por zero
+            ole = (producao_real_ton / producao_planejada_ate_agora) * 100
+            ole = min(ole, 120.0)
+        
+        ole = round(ole, 1)
+
+        # 5. Persistência
         try:
             point_ole = {
                 "measurement": "line_metrics",
                 "tags": { "line": linha_nome },
                 "fields": { 
                     "ole": float(ole),
+                    "producao_real": float(producao_real_ton),
+                    "producao_planejada_ate_agora": float(producao_planejada_ate_agora),
+                    "producao_planejada_total": float(producao_planejada_total),
                     "equipamentos_online": int(equipamentos_online),
-                    "equipamentos_total": int(count)
+                    "equipamentos_total": int(equipamentos_total)
                 },
                 "time": datetime.now().isoformat()
             }
             influx_client.write_points([point_ole])
-        except: pass # Ignora erro de gravação para não travar leitura
+        except: pass
 
         return jsonify({
             "linha": linha_nome,
-            "ole": round(ole, 1),
-            "equipamentos_total": count,
+            "ole": ole,
+            "producao_real": round(producao_real_ton, 3),
+            "producao_planejada_ate_agora": round(producao_planejada_ate_agora, 3),
+            "producao_planejada_total": round(producao_planejada_total, 3),
+            "tempo_decorrido": int(tempo_decorrido),
+            "tempo_total_turno": int(tempo_total_turno),
+            "equipamentos_total": equipamentos_total,
             "equipamentos_online": equipamentos_online,
             "timestamp": datetime.now().isoformat()
         })
