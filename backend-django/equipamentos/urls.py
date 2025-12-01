@@ -65,4 +65,9 @@ urlpatterns = [
     
     # Endpoint de Histórico Detalhado
     path('linhas/<int:linha_id>/historico-detalhado/', views.historico_linha_detalhado, name='historico-detalhado'),
+    
+    # Endpoints de Vazão Necessária (Throughput Required)
+    path('linhas/<int:linha_id>/vazao-necessaria/', views.vazao_necessaria_linha, name='vazao-necessaria-linha'),
+    path('vazao-necessaria/', views.vazao_necessaria_todas_linhas, name='vazao-necessaria-todas'),
+    path('dashboard/factory-manage/', views.dashboard_factory_manage, name='dashboard-factory-manage'),
 ]

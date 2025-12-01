@@ -430,3 +430,133 @@ def importar_ordens_producao_excel(request):
 
 # Mantenha outros ViewSets e endpoints que não foram refatorados aqui... 
 # Ex: EquipamentoViewSet, LinhaProducaoViewSet, etc.
+
+
+# ===== ENDPOINTS DE VAZÃO NECESSÁRIA (THROUGHPUT REQUIRED) =====
+
+@api_view(['GET'])
+def vazao_necessaria_linha(request, linha_id):
+    """
+    Endpoint para obter vazão necessária de uma linha
+    
+    Query params:
+    - periodo: 'TURNO', 'DIA', 'SEMANA', 'MÊS' (padrão: todos)
+    
+    Retorna dados de planejado, produzido, falta produzir, horas restantes e vazão necessária
+    """
+    try:
+        from .vazao_helpers import VazaoCalculator
+        
+        linha = LinhaProducao.objects.get(id=linha_id)
+        periodo = request.query_params.get('periodo', 'TODOS').upper()
+        
+        if periodo == 'TURNO':
+            dados = VazaoCalculator.calcular_vazao_necessaria_turno(linha)
+        elif periodo == 'DIA':
+            dados = VazaoCalculator.calcular_vazao_necessaria_dia(linha)
+        elif periodo == 'SEMANA':
+            dados = VazaoCalculator.calcular_vazao_necessaria_semana(linha)
+        elif periodo == 'MÊS':
+            dados = VazaoCalculator.calcular_vazao_necessaria_mes(linha)
+        else:
+            # Retorna todos os períodos
+            dados = VazaoCalculator.calcular_todas_vazoes(linha)
+        
+        return Response({
+            'status': 'success',
+            'data': dados
+        })
+    
+    except LinhaProducao.DoesNotExist:
+        return Response(
+            {'error': 'Linha não encontrada'},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    except Exception as e:
+        logger.error(f"[vazao_necessaria_linha] Erro: {e}")
+        return Response(
+            {'error': str(e)},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['GET'])
+def vazao_necessaria_todas_linhas(request):
+    """
+    Endpoint para obter vazão necessária de todas as linhas
+    
+    Retorna um array com dados de vazão para cada linha
+    """
+    try:
+        from .vazao_helpers import VazaoCalculator
+        
+        linhas = LinhaProducao.objects.filter(ativa=True)
+        dados = []
+        
+        for linha in linhas:
+            dados.append(VazaoCalculator.calcular_todas_vazoes(linha))
+        
+        return Response({
+            'status': 'success',
+            'total_linhas': len(dados),
+            'data': dados
+        })
+    
+    except Exception as e:
+        logger.error(f"[vazao_necessaria_todas_linhas] Erro: {e}")
+        return Response(
+            {'error': str(e)},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['GET'])
+def dashboard_factory_manage(request):
+    """
+    Endpoint consolidado para a tela FactoryManagement
+    
+    Retorna:
+    - Vazão necessária para todas as linhas (turno, dia, semana, mês)
+    - Status geral de cada linha
+    - Alertas críticos
+    """
+    try:
+        from .vazao_helpers import VazaoCalculator
+        
+        linhas = LinhaProducao.objects.filter(ativa=True)
+        linhas_data = []
+        alertas_criticos = []
+        
+        for linha in linhas:
+            vazoes = VazaoCalculator.calcular_todas_vazoes(linha)
+            linhas_data.append(vazoes)
+            
+            # Verificar se há alertas críticos
+            for periodo in ['turno', 'dia', 'semana', 'mes']:
+                if vazoes[periodo]['status'] == 'CRÍTICO':
+                    alertas_criticos.append({
+                        'linha_id': linha.id,
+                        'linha_codigo': linha.codigo,
+                        'linha_nome': linha.nome,
+                        'periodo': periodo.upper(),
+                        'vazao_necessaria': vazoes[periodo]['vazao_necessaria'],
+                        'meta_vazao': vazoes[periodo]['meta_vazao'],
+                        'falta_produzir': vazoes[periodo]['falta_produzir'],
+                        'horas_restantes': vazoes[periodo]['horas_restantes']
+                    })
+        
+        return Response({
+            'status': 'success',
+            'timestamp': timezone.now().isoformat(),
+            'total_linhas': len(linhas_data),
+            'alertas_criticos': len(alertas_criticos),
+            'linhas': linhas_data,
+            'alertas': alertas_criticos
+        })
+    
+    except Exception as e:
+        logger.error(f"[dashboard_factory_manage] Erro: {e}")
+        return Response(
+            {'error': str(e)},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
