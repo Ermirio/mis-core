@@ -258,7 +258,7 @@ export default function Home() {
                 <div key={linha.linha_id} className="space-y-4">
                   <div className="flex items-center justify-between gap-4">
                     <div className="flex-1">
-                      {console.log(`[Home] Rendering LineOverview for ${linha.linha_nome}:`, linha.ole_data)}
+
                       <LineOverview
                         nome={linha.linha_nome}
 

@@ -680,6 +680,9 @@ class CalendarioProducao(models.Model):
         verbose_name_plural = 'Calendários de Produção'
         ordering = ['-data', 'linha', 'turno']
         unique_together = ['data', 'linha', 'turno']
+        indexes = [
+            models.Index(fields=['data', 'turno']),
+        ]
     
     def __str__(self):
         status = 'Programado' if self.programado else 'Não Programado'
@@ -1257,12 +1260,24 @@ class RegistroProducaoTurno(models.Model):
         # Calcula OEE
         self.oee = (self.disponibilidade * self.performance * self.qualidade) / 10000
         
-        # Calcula Eficiência (vs meta da OP)
-        if self.ordem_producao and self.ordem_producao.meta_turno > 0:
-            self.eficiencia = min(100, (self.producao_unidades / self.ordem_producao.meta_turno) * 100)
+        # Calcula Eficiência (vs meta do Calendário)
+        meta = 0
+        try:
+            cal = CalendarioProducao.objects.filter(
+                linha=self.linha, 
+                turno=self.turno, 
+                data=self.data
+            ).first()
+            if cal:
+                meta = cal.meta_producao_turno
+        except Exception:
+            pass
+            
+        if meta > 0:
+            self.eficiencia = min(100, (self.producao_unidades / meta) * 100)
         else:
             self.eficiencia = 0.0
-        
+
         # Calcula Velocidade Média
         if self.tempo_producao_min > 0:
             self.velocidade_media = self.producao_unidades / self.tempo_producao_min

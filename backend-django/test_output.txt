@@ -1,0 +1,50 @@
+Creating test database for alias 'default'...
+
+EEE
+======================================================================
+ERROR: test_day_view_planned_tons (equipamentos.tests.FactoryProductionViewTest.test_day_view_planned_tons)
+Verify that Day View returns 198t (120 + 78 + 0)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\ermir\AppData\Local\Programs\Python\Python312\Lib\unittest\mock.py", line 1396, in patched
+    return func(*newargs, **newkeywargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ermir\Documents\GitHub\projeto-monitoramento-industrial-completo\backend-django\equipamentos\tests.py", line 63, in test_day_view_planned_tons
+    fixed_now = tz.localize(fixed_now) if fixed_now.tzinfo is None else fixed_now
+                ^^^^^^^^^^^
+AttributeError: 'zoneinfo.ZoneInfo' object has no attribute 'localize'
+
+======================================================================
+ERROR: test_shift_view_planned_tons (equipamentos.tests.FactoryProductionViewTest.test_shift_view_planned_tons)
+Verify that Shift View (T2) returns 78t
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\ermir\AppData\Local\Programs\Python\Python312\Lib\unittest\mock.py", line 1396, in patched
+    return func(*newargs, **newkeywargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ermir\Documents\GitHub\projeto-monitoramento-industrial-completo\backend-django\equipamentos\tests.py", line 102, in test_shift_view_planned_tons
+    fixed_now = tz.localize(fixed_now) if fixed_now.tzinfo is None else fixed_now
+                ^^^^^^^^^^^
+AttributeError: 'zoneinfo.ZoneInfo' object has no attribute 'localize'
+
+======================================================================
+ERROR: test_tph_calculations (equipamentos.tests.FactoryProductionViewTest.test_tph_calculations)
+Verify TPH calculations and edge cases
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\ermir\AppData\Local\Programs\Python\Python312\Lib\unittest\mock.py", line 1396, in patched
+    return func(*newargs, **newkeywargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ermir\Documents\GitHub\projeto-monitoramento-industrial-completo\backend-django\equipamentos\tests.py", line 129, in test_tph_calculations
+    fixed_now = tz.localize(fixed_now) if fixed_now.tzinfo is None else fixed_now
+                ^^^^^^^^^^^
+AttributeError: 'zoneinfo.ZoneInfo' object has no attribute 'localize'
+
+----------------------------------------------------------------------
+Ran 3 tests in 0.015s
+
+FAILED (errors=3)
+Destroying test database for alias 'default'...
+
+Found 3 test(s).
+System check identified no issues (0 silenced).

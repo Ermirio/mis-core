@@ -4,8 +4,6 @@ from . import views
 from . import tonnage_views
 from . import loss_analysis_views
 
-
-
 router = DefaultRouter()
 router.register(r'linhas', views.LinhaProducaoViewSet, basename='linha')
 router.register(r'equipamentos', views.EquipamentoViewSet, basename='equipamento')
@@ -65,4 +63,7 @@ urlpatterns = [
     
     # Endpoint de Histórico Detalhado
     path('linhas/<int:linha_id>/historico-detalhado/', views.historico_linha_detalhado, name='historico-detalhado'),
+    
+    # Endpoint de KPIs de Produção da Fábrica (Novo)
+    path('production/window/throughput/', views.FactoryProductionView.as_view({'get': 'throughput'}), name='factory-production-throughput'),
 ]

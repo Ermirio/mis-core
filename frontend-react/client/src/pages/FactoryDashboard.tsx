@@ -106,7 +106,7 @@ const FactoryDashboard: React.FC = () => {
                                 >
                                     <LineOverview
                                         nome={metric.linha_nome}
-                                        oee={metric.oee || 0}
+                                        ole={metric.oee || 0}
                                         totalEquipamentos={metric.total_equipamentos || 0}
                                         equipamentosOnline={metric.equipamentos_online || 0}
                                         toneladasTurno={metric.toneladas_produzidas || 0}
