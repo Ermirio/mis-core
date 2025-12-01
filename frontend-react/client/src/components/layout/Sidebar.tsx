@@ -44,10 +44,10 @@ const Sidebar: React.FC = () => {
         </NavLink>
 
         <NavLink
-          to="/dashboard-fabrica"
+          to="/factory-panel"
           className={({ isActive }) => isActive ? "sidebar-link active" : "sidebar-link"}
         >
-          🏢 Gestão Fábrica
+          🏢 Gestão Fabril
         </NavLink>
 
         <div className="sidebar-divider"></div>
