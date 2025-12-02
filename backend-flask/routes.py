@@ -37,6 +37,54 @@ def changed_state(eq, state):
 # ROTAS
 # ==============================================================================
 
+@api_bp.route('/api/realtime/all', methods=['GET'])
+def get_all_realtime():
+    """
+    Retorna o status atual de TODOS os equipamentos da fábrica.
+    Otimizado para reduzir chamadas de API.
+    """
+    try:
+        influx_client = current_app.extensions.get('influx_client')
+        if not influx_client:
+            return jsonify({'error': 'DB not initialized'}), 500
+
+        # Query otimizada: pega o último ponto de cada equipamento
+        query = "SELECT last(estado_maquina) as estado_maquina, last(velocidade_atual) as velocidade_atual, last(ordem_producao) as ordem_producao, last(sku_codigo) as sku_codigo, last(descricao) as descricao, last(cuc) as cuc, last(oee_realtime) as oee, last(formato_gramas) as formato_gramas, last(contagem_saida) as contagem_saida, last(descarte) as descarte, last(temperatura) as temperatura, last(pressao) as pressao FROM production GROUP BY \"equipment\""
+        rs = influx_client.query(query)
+        
+        equipamentos = {}
+        # rs.items() retorna ((nome_serie, tags), gerador_pontos)
+        for (name, tags), points in rs.items():
+            equipment_code = tags.get('equipment')
+            if not equipment_code: continue
+            
+            # Pega o último ponto
+            for point in points:
+                equipamentos[equipment_code] = {
+                    'medicoes': {
+                        'estado_maquina': int(point.get('estado_maquina', 0) or 0),
+                        'velocidade_atual': float(point.get('velocidade_atual', 0) or 0),
+                        'ordem_producao': point.get('ordem_producao', 'N/A'),
+                        'sku_codigo': point.get('sku_codigo', 'N/A'),
+                        'descricao': point.get('descricao', 'N/A'),
+                        'cuc': point.get('cuc', 'N/A'),
+                        'oee': float(point.get('oee', 0) or 0),
+                        'formato_gramas': float(point.get('formato_gramas', 0) or 0),
+                        'contagem_saida': float(point.get('contagem_saida', 0) or 0),
+                        'descarte': float(point.get('descarte', 0) or 0),
+                        'temperatura': float(point.get('temperatura', 0) or 0),
+                        'pressao': float(point.get('pressao', 0) or 0)
+                    },
+                    'timestamp': point.get('time')
+                }
+                break 
+
+        return jsonify(equipamentos)
+
+    except Exception as e:
+        logger.error(f"Error getting all realtime: {e}")
+        return jsonify({'error': str(e)}), 500
+
 @api_bp.route('/api/linha/<linha_nome>/status', methods=['GET'])
 def get_linha_status(linha_nome):
     """

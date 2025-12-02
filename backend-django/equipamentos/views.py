@@ -29,6 +29,13 @@ class LinhaProducaoViewSet(viewsets.ModelViewSet):
     queryset = LinhaProducao.objects.all()
     serializer_class = LinhaProducaoSerializer
     
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        codigo = self.request.query_params.get('codigo')
+        if codigo:
+            queryset = queryset.filter(codigo=codigo)
+        return queryset
+
     @action(detail=False, methods=['get'])
     def ativas(self, request):
         """Retorna apenas linhas ativas"""

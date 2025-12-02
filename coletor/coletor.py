@@ -166,18 +166,25 @@ class ColetorOPC:
             metadata = {'equipamento_codigo': codigo, 'op_codigo': None, 'sku_codigo': None, 'descricao': None, 'formato': None, 'meta_producao': None}
             
             for tag in tags:
+                nome = tag['nome_metrica']
+                logger.info(f"Tag: {nome}")
                 cliente = self.clientes_opc.get(tag.get('conexao_detalhes', {}).get('url_servidor'))
                 if not cliente: continue
                 
                 valor = await self.ler_tag_opc(cliente, tag['node_id'], tag['tipo_dado'], tag.get('fator_conversao', 1.0))
                 
+                if valor is None and 'formato' in nome:
+                    logger.warning(f"[DIAGNOSTICO] ❌ Falha ao ler FORMATO: {nome}")
+                
                 if valor is not None:
-                    nome = tag['nome_metrica']
+                    # nome = tag['nome_metrica']
                     medicoes[nome] = valor
                     
                     # --- DIAGNÓSTICO 2: O VALOR FOI LIDO? ---
                     if nome == 'cuc':
                         logger.info(f"[DIAGNOSTICO] 👁️ CUC LIDO do PLC: '{valor}' (Tipo: {type(valor)})")
+                    if 'formato' in nome:
+                        logger.info(f"[DIAGNOSTICO] 👁️ FORMATO LIDO do PLC: '{nome}' = '{valor}'")
                     # ----------------------------------------
 
                     # Preenchimento de Metadata e Estado (Lógica Padrão)
@@ -185,7 +192,11 @@ class ColetorOPC:
                     elif nome == 'sku_codigo': metadata['sku_codigo'] = str(valor)
                     elif nome == 'descricao': metadata['descricao'] = str(valor)
                     elif nome == 'formato': 
-                        try: metadata['formato'] = float(valor)
+                        try: 
+                            val = float(valor)
+                            metadata['formato'] = val
+                            medicoes['formato_gramas'] = val
+                            logger.info(f"[DIAGNOSTICO] Formato lido: {val}")
                         except: pass
                     elif nome == 'planejado_op':
                         try: metadata['meta_producao'] = int(float(valor))

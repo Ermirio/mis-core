@@ -70,25 +70,9 @@ const DiagnosticosLogs: React.FC = () => {
     'qualidade'
   ];
 
-  // Função para diagnosticar um equipamento
-  const diagnosticarEquipamento = async (equipamento: any) => {
+  // Função para diagnosticar um equipamento (agora síncrona/local)
+  const diagnosticarEquipamento = (equipamento: any, dadosFlask: any) => {
     try {
-      // 1. Buscar dados em tempo real do Flask
-      const flaskResponse = await fetch(
-        `${FLASK_API_URL}/realtime/status/${equipamento.codigo}`,
-        { signal: AbortSignal.timeout(5000) }
-      ).catch(() => null);
-
-      const dadosFlask = flaskResponse?.ok ? await flaskResponse.json() : null;
-
-      // 2. Buscar configuração do Django
-      const djangoResponse = await fetch(
-        `${DJANGO_API_URL}/equipamentos/${equipamento.id}/`,
-        { signal: AbortSignal.timeout(5000) }
-      ).catch(() => null);
-
-      const dadosDjango = djangoResponse?.ok ? await djangoResponse.json() : null;
-
       // Analisar campos presentes
       const medicoes = dadosFlask?.medicoes || {};
       const camposPresentesSet = new Set(Object.keys(medicoes));
@@ -98,11 +82,7 @@ const DiagnosticosLogs: React.FC = () => {
       const erros: string[] = [];
 
       if (!dadosFlask) {
-        erros.push('❌ Flask não está respondendo - Verifique se está rodando em http://127.0.0.1:5000');
-      }
-
-      if (!dadosDjango) {
-        erros.push('❌ Django não está respondendo - Verifique se está rodando em http://127.0.0.1:8000');
+        erros.push('❌ Flask não retornou dados para este equipamento');
       }
 
       if (camposFaltandoSet.has('sku_codigo')) {
@@ -129,7 +109,7 @@ const DiagnosticosLogs: React.FC = () => {
         codigo: equipamento.codigo,
         nome: equipamento.nome,
         linha: equipamento.linha_nome || 'N/A',
-        status: dadosFlask ? 'online' : (dadosDjango ? 'offline' : 'erro'),
+        status: dadosFlask ? 'online' : 'offline',
         ultima_leitura: dadosFlask?.timestamp || 'N/A',
         campos_presentes: Array.from(camposPresentesSet),
         campos_faltando: Array.from(camposFaltandoSet),
@@ -151,25 +131,36 @@ const DiagnosticosLogs: React.FC = () => {
     }
   };
 
-  // Carregar dados iniciais
+  // Carregar dados iniciais (Otimizado)
   const carregarDados = async () => {
     try {
       setLoading(true);
 
-      // Buscar lista de equipamentos
-      const response = await fetch(`${DJANGO_API_URL}/equipamentos/`);
-      const data = await response.json();
+      // 1. Buscar lista de equipamentos do Django (uma vez)
+      const djangoResponse = await fetch(`${DJANGO_API_URL}/equipamentos/`);
+      const djangoData = await djangoResponse.json();
+      const listaEquipamentos = djangoData.results || djangoData;
 
-      // Diagnosticar cada equipamento
-      const diagnosticos = await Promise.all(
-        data.results.map((eq: any) => diagnosticarEquipamento(eq))
-      );
+      // 2. Buscar dados em tempo real de TODOS os equipamentos do Flask (uma vez)
+      const flaskResponse = await fetch(`${FLASK_API_URL}/realtime/all`);
+      const flaskData = flaskResponse.ok ? await flaskResponse.json() : {};
+
+      // 3. Cruzar dados localmente
+      const diagnosticos = listaEquipamentos.map((eq: any) => {
+        const dadosEq = flaskData[eq.codigo];
+        return diagnosticarEquipamento(eq, dadosEq);
+      });
 
       setEquipamentos(diagnosticos);
 
       // Gerar logs de diagnóstico
       const logs: DiagnosticoFluxo[] = [];
-      diagnosticos.forEach(eq => {
+
+      // Log global se APIs falharem
+      if (!djangoResponse.ok) logs.push({ timestamp: new Date().toISOString(), equipamento: 'SISTEMA', etapa: 'django', status: 'erro', mensagem: 'API Django inacessível', detalhes: {} });
+      if (!flaskResponse.ok) logs.push({ timestamp: new Date().toISOString(), equipamento: 'SISTEMA', etapa: 'flask', status: 'erro', mensagem: 'API Flask inacessível', detalhes: {} });
+
+      diagnosticos.forEach((eq: any) => {
         eq.erros.forEach((erro: string) => {
           logs.push({
             timestamp: new Date().toISOString(),
@@ -197,7 +188,7 @@ const DiagnosticosLogs: React.FC = () => {
     carregarDados();
 
     if (autoRefresh) {
-      const interval = setInterval(carregarDados, 10000); // 10 segundos
+      const interval = setInterval(carregarDados, 30000); // 30 segundos
       return () => clearInterval(interval);
     }
   }, [autoRefresh]);
