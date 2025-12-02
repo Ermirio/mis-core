@@ -4,6 +4,7 @@ from datetime import datetime, timedelta, time
 from flask import current_app
 from decouple import config
 import calendar
+from constants import ESTADOS_MAQUINA
 
 logger = logging.getLogger(__name__)
 
@@ -53,6 +54,50 @@ def calculate_day_metrics(client, line_code, start_dt, end_dt):
         logger.error(f"Error calc day metrics for {line_code}: {e}")
         
     return total_prod
+
+def get_primeiro_equipamento_por_linha():
+    """
+    Retorna um dict { 'L10': 'L10_Enchedora', 'L06': 'L06_Enchedora', ... }
+    usando Django /equipamentos/por_linha/ e ordenando por ordem_na_linha.
+    """
+    mapping = {}
+    try:
+        resp = requests.get(f"{DJANGO_API_URL}/linhas/", timeout=3)
+        if not resp.ok:
+            return mapping
+        data = resp.json()
+        linhas = data.get('results', data) if isinstance(data, dict) else data
+
+        for linha in linhas:
+            line_code = linha.get('codigo')
+            line_id = linha.get('id')
+            if not line_code or not line_id:
+                continue
+
+            # Usa a action por_linha que você já tem ou filtra equipamentos
+            # Assumindo que /equipamentos/?linha=<id> funciona
+            r_eq = requests.get(
+                f"{DJANGO_API_URL}/equipamentos/",
+                params={"linha": line_id},
+                timeout=3
+            )
+            if not r_eq.ok:
+                continue
+
+            eqs_data = r_eq.json()
+            eqs_list = eqs_data.get('results', eqs_data) if isinstance(eqs_data, dict) else eqs_data
+
+            # Garante ordenação pelo campo ordem_na_linha
+            eqs_ordenados = sorted(
+                eqs_list,
+                key=lambda e: e.get('ordem_na_linha') or 999
+            )
+
+            if eqs_ordenados:
+                mapping[line_code] = eqs_ordenados[0].get('codigo')
+    except Exception as e:
+        logger.error(f"Erro ao montar mapa primeiro equipamento por linha: {e}")
+    return mapping
 
 def get_factory_kpis(period='turno'):
     try:
@@ -154,6 +199,9 @@ def get_factory_kpis(period='turno'):
         django_lines_map = {l.get('codigo'): l for l in active_lines if l.get('codigo')}
         all_line_codes = set(layout_config.keys()).union(django_lines_map.keys())
         
+        # Load 1st Equipment Map
+        primeiro_eq_map = get_primeiro_equipamento_por_linha()
+        
         for line_code in all_line_codes:
             line_data = django_lines_map.get(line_code)
             line_id = line_data.get('id') if line_data else None
@@ -195,6 +243,8 @@ def get_factory_kpis(period='turno'):
             line_oee = 0.0
             line_tph = 0.0
             line_status = "Sem Dados"
+            estado_primeiro_codigo = None
+            estado_primeiro_texto = None
             
             try:
                 if period == 'turno':
@@ -206,16 +256,38 @@ def get_factory_kpis(period='turno'):
                         line_real = max([p['val'] for p in points if p['val'] is not None] or [0])
                         line_oee = max([p['oee'] for p in points if p['oee'] is not None] or [0])
                         
-                        # Instantaneous TPH for Shift View (as requested)
+                        # Instantaneous TPH for Shift View
                         line_tph = calculate_instantaneous_tph(client, line_code)
                         
-                        states = [p['state'] for p in points if p['state']]
-                        if any(s == 1 for s in states): 
-                             line_status = "Rodando"
-                        elif line_tph > 0:
-                             line_status = "Rodando"
+                        # --- NEW STATUS LOGIC: 1st Equipment ---
+                        # ESTADOS_MAQUINA imported from constants
+                        
+                        estado_primeiro_codigo = None
+                        estado_primeiro_texto = "Sem Dados"
+                        
+                        primeiro_eq = primeiro_eq_map.get(line_code)
+                        if primeiro_eq:
+                            try:
+                                q_state = f"SELECT last(estado_maquina) as state FROM production WHERE \"equipment\" = '{primeiro_eq}'"
+                                rs_state = client.query(q_state)
+                                pts_state = list(rs_state.get_points())
+                                if pts_state:
+                                    estado_primeiro_codigo = int(pts_state[0].get('state', 0) or 0)
+                                    estado_primeiro_texto = ESTADOS_MAQUINA.get(estado_primeiro_codigo, str(estado_primeiro_codigo))
+                            except Exception as e:
+                                logger.error(f"Erro lendo estado 1o eq {primeiro_eq}: {e}")
+
+                        if estado_primeiro_codigo is not None:
+                            line_status = estado_primeiro_texto
+                            logger.info(f"[{line_code}] Status via 1o Eq ({primeiro_eq}): {line_status} ({estado_primeiro_codigo})")
                         else:
-                             line_status = "Parada"
+                            # Fallback to old logic
+                            states = [p['state'] for p in points if p.get('state') is not None]
+                            logger.warning(f"[{line_code}] Fallback triggered. 1o Eq: {primeiro_eq}, States: {states}, TPH: {line_tph}")
+                            if any(s == 1 for s in states) or line_tph > 0:
+                                line_status = "Rodando"
+                            else:
+                                line_status = "Parada"
                 else:
                     # Day/Week/Month View: Aggregated Production + Average TPH
                     line_real = calculate_day_metrics(client, line_code, start_dt, end_dt)
@@ -246,7 +318,9 @@ def get_factory_kpis(period='turno'):
                 "producao_real_t": round(line_real, 1),
                 "producao_planejada_t": round(line_planned, 1),
                 "tph_real": round(line_tph, 1),
-                "status": line_status
+                "status": line_status,
+                "estado_primeiro_equipamento_codigo": estado_primeiro_codigo if period == 'turno' else None,
+                "estado_primeiro_equipamento": estado_primeiro_texto if period == 'turno' else None
             })
             
             total_planned += line_planned
@@ -300,3 +374,86 @@ def get_factory_kpis(period='turno'):
             "linhas": [],
             "layout_fabrica": []
         }
+
+def get_factory_map_data():
+    """
+    Retorna dados específicos para o mapa do chão de fábrica:
+    - Status da linha (baseado no 1º equipamento)
+    - OLE (OEE da linha)
+    - Layout
+    """
+    try:
+        # 1. Access Dependencies
+        client = current_app.extensions.get('influx_client')
+        if not client:
+            raise RuntimeError("Influx Client not initialized")
+            
+        # 2. Layout Configuration (Same as get_factory_kpis)
+        layout_config = {
+            "L20": {"area": "PREPARO", "pos_x": 0, "pos_y": 0, "w": 2, "h": 1, "critico": False},
+            "L15": {"area": "PREPARO", "pos_x": 0, "pos_y": 1.2, "w": 2, "h": 1, "critico": False},
+            "L19": {"area": "PREPARO", "pos_x": 0, "pos_y": 2.4, "w": 1.5, "h": 1.5, "critico": False},
+            "L20_B": {"area": "PREPARO", "pos_x": 1.6, "pos_y": 2.4, "w": 1.5, "h": 1.5, "critico": False},
+            "L16": {"area": "MISTURA", "pos_x": 3.5, "pos_y": 2.4, "w": 1, "h": 1.5, "critico": False},
+            "L06": {"area": "ENVASE PÓS", "pos_x": 4.8, "pos_y": 2.4, "w": 1, "h": 1.5, "critico": False},
+            "L18": {"area": "MISTURA", "pos_x": 6, "pos_y": 1.5, "w": 2, "h": 0.8, "critico": False},
+            "L17": {"area": "MISTURA", "pos_x": 6, "pos_y": 2.5, "w": 2, "h": 1.2, "critico": False},
+            "L10": {"area": "EMBALAGEM", "pos_x": 8.5, "pos_y": 0, "w": 1, "h": 4, "critico": True},
+            "L02": {"area": "MISTURA", "pos_x": 9.8, "pos_y": 0, "w": 1, "h": 4, "critico": True},
+            "L01": {"area": "ENVASE LÍQ", "pos_x": 11.1, "pos_y": 0, "w": 1, "h": 4, "critico": False},
+            "L09": {"area": "ENVASE", "pos_x": 12.4, "pos_y": 0, "w": 1, "h": 4, "critico": False}
+        }
+        
+        # 3. Load 1st Equipment Map
+        primeiro_eq_map = get_primeiro_equipamento_por_linha()
+        
+        map_data = []
+        
+        for line_code, meta in layout_config.items():
+            line_status = "Sem Dados"
+            line_ole = 0.0
+            estado_codigo = None
+            
+            # --- Status via 1st Equipment ---
+            primeiro_eq = primeiro_eq_map.get(line_code)
+            if primeiro_eq:
+                try:
+                    q_state = f"SELECT last(estado_maquina) as state FROM production WHERE \"equipment\" = '{primeiro_eq}'"
+                    rs_state = client.query(q_state)
+                    pts_state = list(rs_state.get_points())
+                    if pts_state:
+                        estado_codigo = int(pts_state[0].get('state', 0) or 0)
+                        line_status = ESTADOS_MAQUINA.get(estado_codigo, str(estado_codigo))
+                except Exception as e:
+                    logger.error(f"Error fetching map status for {line_code}: {e}")
+            
+            # --- OLE (Realtime) ---
+            try:
+                q_oee = f"SELECT last(oee_realtime) as oee FROM production WHERE \"line\" = '{line_code}' GROUP BY equipment"
+                rs_oee = client.query(q_oee)
+                points_oee = list(rs_oee.get_points())
+                if points_oee:
+                    # Max OEE of equipments in line (simplification for realtime)
+                    line_ole = max([p['oee'] for p in points_oee if p['oee'] is not None] or [0])
+            except Exception as e:
+                logger.error(f"Error fetching map OLE for {line_code}: {e}")
+
+            map_data.append({
+                "linha": line_code,
+                "status": line_status,
+                "ole": round(line_ole, 1),
+                "layout": {
+                    "area": meta["area"],
+                    "pos_x": meta["pos_x"],
+                    "pos_y": meta["pos_y"],
+                    "w": meta.get("w", 1),
+                    "h": meta.get("h", 1),
+                    "critico": meta["critico"]
+                }
+            })
+            
+        return map_data
+
+    except Exception as e:
+        logger.error(f"Critical error in factory map data: {e}")
+        return []

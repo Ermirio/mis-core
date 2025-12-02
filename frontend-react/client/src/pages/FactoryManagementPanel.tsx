@@ -54,17 +54,29 @@ const FactoryManagementPanel: React.FC = () => {
     const [lastUpdate, setLastUpdate] = useState<Date>(new Date());
     const [period, setPeriod] = useState<string>('turno');
 
+    const [mapData, setMapData] = useState<any[]>([]);
+
     const fetchData = async () => {
         setLoading(true);
         try {
-            const response = await fetch(`${FLASK_API_URL}/fabrica/kpis?period=${period}`);
-            if (response.ok) {
-                const jsonData = await response.json();
+            // Fetch KPIs
+            const responseKpis = await fetch(`${FLASK_API_URL}/fabrica/kpis?period=${period}`);
+            if (responseKpis.ok) {
+                const jsonData = await responseKpis.json();
                 setData(jsonData);
-                setLastUpdate(new Date());
             }
+
+            // Fetch Map Data (Dedicated Route)
+            // Add timestamp to prevent caching
+            const responseMap = await fetch(`${FLASK_API_URL}/fabrica/mapa?t=${new Date().getTime()}`);
+            if (responseMap.ok) {
+                const jsonMap = await responseMap.json();
+                setMapData(jsonMap);
+            }
+
+            setLastUpdate(new Date());
         } catch (error) {
-            console.error("Error fetching factory KPIs:", error);
+            console.error("Error fetching factory data:", error);
         } finally {
             setLoading(false);
         }
@@ -189,7 +201,7 @@ const FactoryManagementPanel: React.FC = () => {
                                 <div>
                                     <p className="text-sm font-medium text-gray-500">Linhas Ativas</p>
                                     <h3 className="text-3xl font-bold text-orange-700 mt-2">
-                                        {data.linhas.filter(l => l.status === 'Rodando').length} / {data.linhas.length}
+                                        {data.linhas.filter(l => ['Rodando', 'Produzindo', 'Online'].includes(l.status)).length} / {data.linhas.length}
                                     </h3>
                                 </div>
                                 <AlertTriangle className="w-6 h-6 text-orange-200" />
@@ -246,21 +258,22 @@ const FactoryManagementPanel: React.FC = () => {
                             </div>
 
                             {/* Layout Rendering */}
-                            {data.layout_fabrica.map((item) => {
-                                // Find KPI for this line
-                                const kpi = data.linhas.find(l => l.linha === item.linha);
-                                const isRunning = kpi?.status === 'Rodando';
-                                const isGhost = !kpi || kpi.status === 'Sem Dados';
-                                const isAlert = item.critico || (kpi && kpi.oee_real < 60 && !isGhost);
+                            {mapData.map((item) => {
+                                // item structure: { linha, status, ole, layout: { ... } }
+                                const layout = item.layout;
+                                const isRunning = item.status === 'Produzindo' || item.status === 'Rodando' || item.status === 'Online';
+                                const isGhost = !item.status || item.status === 'Sem Dados';
+                                // Fix: Critical lines shouldn't be red unless there's an issue
+                                const isAlert = (item.ole < 60 && !isGhost) || item.status === 'Falha' || item.status === 'Parado/Falha';
 
                                 // Positioning logic (14x5 grid approx based on previous code)
                                 const unitW = 100 / 14;
                                 const unitH = 100 / 5;
 
-                                const left = `${item.posicao_x * unitW}%`;
-                                const top = `${item.posicao_y * unitH}%`;
-                                const width = `${(item.w || 1) * unitW - 1}%`; // -1% gap
-                                const height = `${(item.h || 1) * unitH - 1}%`; // -1% gap
+                                const left = `${layout.pos_x * unitW}%`;
+                                const top = `${layout.pos_y * unitH}%`;
+                                const width = `${(layout.w || 1) * unitW - 1}%`; // -1% gap
+                                const height = `${(layout.h || 1) * unitH - 1}%`; // -1% gap
 
                                 return (
                                     <div
@@ -279,17 +292,20 @@ const FactoryManagementPanel: React.FC = () => {
                                             {isAlert && <AlertTriangle className="w-3 h-3 text-red-500 animate-pulse" />}
                                         </div>
 
-                                        {kpi ? (
+                                        {!isGhost ? (
                                             <div className="space-y-1 mt-1">
                                                 <div className="flex justify-between text-[10px]">
-                                                    <span>OEE</span>
-                                                    <span className="font-bold">{kpi.oee_real}%</span>
+                                                    <span>OLE</span>
+                                                    <span className="font-bold">{item.ole}%</span>
                                                 </div>
                                                 <div className="w-full bg-gray-200 rounded-full h-1">
                                                     <div
-                                                        className={`h-1 rounded-full ${kpi.oee_real < 60 ? 'bg-red-500' : 'bg-green-500'}`}
-                                                        style={{ width: `${Math.min(kpi.oee_real, 100)}%` }}
+                                                        className={`h-1 rounded-full ${item.ole < 60 ? 'bg-red-500' : 'bg-green-500'}`}
+                                                        style={{ width: `${Math.min(item.ole, 100)}%` }}
                                                     />
+                                                </div>
+                                                <div className="text-[9px] text-gray-500 truncate">
+                                                    {item.status}
                                                 </div>
                                             </div>
                                         ) : (

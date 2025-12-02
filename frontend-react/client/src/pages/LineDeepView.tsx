@@ -117,35 +117,42 @@ const LineDeepView: React.FC = () => {
         try {
             setLoading(true);
 
-            // 1. Fetch Line Config from Django (to get ID and Name/Code)
-            const resLinha = await fetch(`${DJANGO_API_URL}/linhas/?codigo=${linhaId}`);
+            // 1. Fetch Line Config from Django (Robust Resolution: Code or Name)
+            let resLinha = await fetch(`${DJANGO_API_URL}/linhas/?codigo=${linhaId}`);
+            let linhaData = await resLinha.json();
+            let results = linhaData.results || linhaData;
+
+            // If not found by code, try searching by name/search
+            if (!results || results.length === 0) {
+                resLinha = await fetch(`${DJANGO_API_URL}/linhas/?search=${linhaId}`);
+                linhaData = await resLinha.json();
+                results = linhaData.results || linhaData;
+            }
+
             let linhaIdNumeric = 0;
             let linhaIdentifier = linhaId || '';
             let currentEquipamentosConfig: EquipamentoConfig[] = [];
 
-            if (resLinha.ok) {
-                const data = await resLinha.json();
-                const results = data.results || data;
-                if (results && results.length > 0) {
-                    const lConfig = results[0];
-                    setLinhaConfig(lConfig);
-                    linhaIdNumeric = lConfig.id;
-                    // Use code or name for Flask API, matching Home.tsx logic
-                    linhaIdentifier = lConfig.codigo || lConfig.nome;
+            if (results && results.length > 0) {
+                const lConfig = results[0];
+                setLinhaConfig(lConfig);
+                linhaIdNumeric = lConfig.id;
 
-                    // 2. Fetch Equipments Config from Django (using numeric ID)
-                    const resEquipamentos = await fetch(`${DJANGO_API_URL}/equipamentos/?linha=${linhaIdNumeric}`);
-                    if (resEquipamentos.ok) {
-                        const dataEq = await resEquipamentos.json();
-                        currentEquipamentosConfig = dataEq.results || dataEq;
-                        setEquipamentosConfig(currentEquipamentosConfig);
-                    }
+                // CRITICAL: Always use the CODE for Flask API calls
+                linhaIdentifier = lConfig.codigo;
+
+                // 2. Fetch Equipments Config from Django (using numeric ID)
+                const resEquipamentos = await fetch(`${DJANGO_API_URL}/equipamentos/?linha=${linhaIdNumeric}`);
+                if (resEquipamentos.ok) {
+                    const dataEq = await resEquipamentos.json();
+                    currentEquipamentosConfig = dataEq.results || dataEq;
+                    setEquipamentosConfig(currentEquipamentosConfig);
                 }
             }
 
-            // 3. Parallel requests for Flask Realtime Data (Line Level) - Using correct identifier
+            // 3. Parallel requests for Flask Realtime Data (Line Level) - Using resolved identifier
             const [resStatus, resOle, resKpis] = await Promise.all([
-                fetch(`${FLASK_API_URL}/linha/${encodeURIComponent(linhaIdentifier)}/status`),
+                fetch(`${FLASK_API_URL}/linha/${encodeURIComponent(linhaIdentifier)}/overview-status`),
                 fetch(`${FLASK_API_URL}/linha/${encodeURIComponent(linhaIdentifier)}/realtime`),
                 fetch(`${FLASK_API_URL}/linha/${encodeURIComponent(linhaIdentifier)}/kpis`)
             ]);

@@ -56,6 +56,13 @@ class EquipamentoViewSet(viewsets.ModelViewSet):
     queryset = Equipamento.objects.select_related('linha').prefetch_related('sensores')
     serializer_class = EquipamentoSerializer
     
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        linha = self.request.query_params.get('linha')
+        if linha:
+            queryset = queryset.filter(linha_id=linha)
+        return queryset
+    
     @action(detail=False, methods=['post'])
     def sync_metadata(self, request):
         """

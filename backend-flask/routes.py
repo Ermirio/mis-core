@@ -11,11 +11,7 @@ api_bp = Blueprint('api', __name__)
 
 logger = logging.getLogger(__name__)
 
-ESTADOS_MAQUINA = {
-    0: "Online", 1: "Produzindo", 2: "Aguardando Anterior", 3: "Bloqueado Próximo",
-    4: "Parado/Falha", 5: "Setup", 6: "Teste/Projeto", 7: "Aguardando Manutenção",
-    8: "Manutenção", 9: "Falta de Material"
-}
+from constants import ESTADOS_MAQUINA
 
 # Cache simples para velocidade
 _last_counts = {}
@@ -31,18 +27,6 @@ def changed_state(eq, state):
     if prev != state:
         _last_states[eq] = state
         return True
-    return False
-
-# ==============================================================================
-# ROTAS
-# ==============================================================================
-
-@api_bp.route('/api/realtime/all', methods=['GET'])
-def get_all_realtime():
-    """
-    Retorna o status atual de TODOS os equipamentos da fábrica.
-    Otimizado para reduzir chamadas de API.
-    """
     try:
         influx_client = current_app.extensions.get('influx_client')
         if not influx_client:
@@ -701,3 +685,17 @@ def refresh_shifts():
 
 @api_bp.route('/api/health', methods=['GET'])
 def health(): return jsonify({'status': 'ok'})
+
+@api_bp.route('/api/fabrica/mapa', methods=['GET'])
+def get_factory_map_route():
+    """
+    Rota dedicada para o mapa do chão de fábrica.
+    Retorna status (1o equipamento), OLE e layout.
+    """
+    try:
+        from factory_kpis_engine import get_factory_map_data
+        data = get_factory_map_data()
+        return jsonify(data)
+    except Exception as e:
+        logger.error(f"Erro na rota de mapa: {e}")
+        return jsonify([]), 500
