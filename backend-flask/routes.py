@@ -699,3 +699,135 @@ def get_factory_map_route():
     except Exception as e:
         logger.error(f"Erro na rota de mapa: {e}")
         return jsonify([]), 500
+@api_bp.route('/api/equipamento/<codigo>/historico-detalhado', methods=['GET'])
+def get_equipamento_historico_detalhado(codigo):
+    """
+    Retorna histórico detalhado e AGREGADO do equipamento para a aba Histórico.
+    Suporta filtros por período: hora, turno, dia, semana.
+    """
+    try:
+        influx_client = current_app.extensions.get('influx_client')
+        if not influx_client:
+            return jsonify({'error': 'DB not initialized'}), 500
+
+        # Parâmetros avançados
+        start_param = request.args.get('start') # ISO format
+        end_param = request.args.get('end')     # ISO format
+        interval_param = request.args.get('interval') # 1h, 8h, 1d, total
+
+        # Parâmetros legados (mantidos para compatibilidade)
+        periodo = request.args.get('period', 'hora') 
+        data_ref = request.args.get('date')
+
+        start_time = None
+        end_time = None
+        group_by = "1h"
+
+        # Lógica de Tempo: Prioriza start/end, fallback para period/date
+        if start_param and end_param:
+            try:
+                # Tenta analisar ISO format (pode vir do JS como YYYY-MM-DDTHH:mm:ss.sssZ)
+                start_time = datetime.fromisoformat(start_param.replace('Z', '+00:00'))
+                end_time = datetime.fromisoformat(end_param.replace('Z', '+00:00'))
+            except ValueError:
+                # Fallback simples se falhar parse
+                start_time = datetime.now() - timedelta(hours=24)
+                end_time = datetime.now()
+        else:
+            # Lógica Legada
+            now = datetime.now()
+            if data_ref:
+                try:
+                    dt_ref = datetime.strptime(data_ref, '%Y-%m-%d')
+                    start_time = dt_ref.replace(hour=0, minute=0, second=0, microsecond=0)
+                    end_time = dt_ref.replace(hour=23, minute=59, second=59, microsecond=999999)
+                except:
+                    start_time = now - timedelta(hours=24)
+                    end_time = now
+            else:
+                start_time = now - timedelta(hours=24)
+                end_time = now
+                
+                # Ajustes específicos do modo legado
+                if periodo == 'dia':
+                    start_time = now - timedelta(days=7)
+                elif periodo == 'semana':
+                    start_time = now - timedelta(weeks=4)
+                elif periodo == 'mes':
+                    start_time = now - timedelta(days=30)
+                elif periodo == 'turno':
+                    start_time = now - timedelta(hours=48)
+
+        # Lógica de Agrupamento
+        if interval_param:
+            if interval_param == 'total' or interval_param == 'consolidado':
+                group_by = None # Sem agrupamento por tempo (agregação total)
+            else:
+                group_by = interval_param
+        else:
+            # Fallback legado
+            if periodo == 'dia' or periodo == 'mes':
+                group_by = "1d"
+            elif periodo == 'semana':
+                group_by = "1w"
+            elif periodo == 'turno':
+                group_by = "8h"
+            else:
+                group_by = "1h"
+
+        # Formata para Influx
+        s_str = start_time.strftime('%Y-%m-%dT%H:%M:%SZ')
+        e_str = end_time.strftime('%Y-%m-%dT%H:%M:%SZ')
+
+        # Query Agregada
+        # Usa spread() para contadores (max - min) e mean() para gauges
+        query = f"""
+            SELECT 
+                spread(contagem_saida) as producao, 
+                spread(contagem_entrada) as entrada,
+                spread(descarte) as descarte,
+                mean(velocidade_atual) as velocidade_media,
+                mean(oee_realtime) as oee_medio,
+                mean(disponibilidade) as disp_media,
+                mean(performance) as perf_media,
+                mean(qualidade) as qual_media
+            FROM production 
+            WHERE "equipment" = '{codigo}' 
+            AND time >= '{s_str}' AND time <= '{e_str}' 
+            GROUP BY time({group_by}) fill(0)
+        """
+        
+        rs = influx_client.query(query)
+        points = list(rs.get_points())
+        
+        historico = []
+        for p in points:
+            # Ignora pontos zerados se desejar, ou mantém para mostrar buracos
+            # Se producao e OEE forem 0, provavelmente estava parado ou sem dados
+            if p['producao'] == 0 and p['oee_medio'] == 0:
+                continue
+
+            historico.append({
+                'data_hora': p['time'],
+                'producao': int(p['producao']),
+                'entrada': int(p['entrada']),
+                'descarte': int(p['descarte']),
+                'velocidade_media': float(p['velocidade_media']),
+                'oee': float(p['oee_medio']),
+                'disponibilidade': float(p['disp_media']),
+                'performance': float(p['perf_media']),
+                'qualidade': float(p['qual_media'])
+            })
+
+        # Ordena decrescente (mais recente primeiro) - REMOVIDO para corrigir gráfico
+        # historico.reverse()
+
+        return jsonify({
+            'equipamento': codigo,
+            'periodo': periodo,
+            'historico': historico
+        })
+
+    except Exception as e:
+        logger.error(f"Error getting equipment history: {e}")
+        return jsonify({'error': str(e)}), 500

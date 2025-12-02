@@ -285,7 +285,7 @@ const FactoryManagementPanel: React.FC = () => {
                                                     isRunning ? 'border-green-400 bg-white' : 'border-gray-300 bg-gray-50'}
                                         `}
                                         style={{ left, top, width, height }}
-                                        onClick={() => !isGhost && navigate(`/linha/${item.linha}`)}
+                                        onClick={() => !isGhost && navigate(`/linha/${item.linha}/detalhes`)}
                                     >
                                         <div className="flex justify-between items-start">
                                             <span className={`font-bold text-xs truncate ${isGhost ? 'text-gray-400' : 'text-gray-800'}`}>{item.linha}</span>

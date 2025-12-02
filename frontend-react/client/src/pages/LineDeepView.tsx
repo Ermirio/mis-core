@@ -249,7 +249,7 @@ const LineDeepView: React.FC = () => {
             {/* Top Bar */}
             <div className="flex items-center justify-between mb-6">
                 <button
-                    onClick={() => navigate('/home')}
+                    onClick={() => navigate('/')}
                     className="flex items-center gap-2 text-gray-600 hover:text-gray-900 transition"
                 >
                     <ArrowLeft className="w-5 h-5" />
