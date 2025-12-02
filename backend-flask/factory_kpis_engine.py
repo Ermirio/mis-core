@@ -130,13 +130,26 @@ def get_factory_kpis(period='turno'):
                     # Optimization: Fetch range if possible, or loop.
                     # Given strict constraints, we loop.
                     while curr_d <= end_d:
-                        r = requests.get(f"{DJANGO_API_URL}/calendario/", params={"data": curr_d.strftime('%Y-%m-%d'), "linha": line_id})
+                        # FIX: Use 'linha_id' instead of 'linha' to match Django ViewSet
+                        r = requests.get(f"{DJANGO_API_URL}/calendario/", params={"data": curr_d.strftime('%Y-%m-%d'), "linha_id": line_id})
                         if r.ok:
                             res = r.json()
                             entries = res.get('results', []) if isinstance(res, dict) else res
                             for entry in entries:
+                                # Filter by shift if period is 'turno'
+                                if period == 'turno' and turno_info:
+                                    entry_turno = str(entry.get('turno_nome') or '').strip().upper()
+                                    current_turno = str(turno_info.get('nome') or '').strip().upper()
+                                    
+                                    if entry_turno and current_turno and entry_turno != current_turno:
+                                        continue
+                                
                                 meta = float(entry.get('meta_producao_turno', 0) or 0)
-                                line_planned += (meta / 1000.0)
+                                # Smart conversion: If > 1000, assume KG and convert to Tons. Else assume Tons.
+                                if meta > 1000:
+                                    meta /= 1000.0
+                                    
+                                line_planned += meta
                         curr_d += timedelta(days=1)
                 except Exception as e:
                     logger.error(f"Error fetching calendar for {line_code}: {e}")
@@ -158,22 +171,12 @@ def get_factory_kpis(period='turno'):
                         # OEE
                         line_oee = max([p['oee'] for p in points if p['oee'] is not None] or [0])
                         
-                        # TPH Calculation: (Speed * 60 * Format) / 1,000,000
-                        # We need to pair speed with its format if possible, or use max format found.
-                        # Since we group by equipment, each point is an equipment.
-                        # We calculate TPH for each equipment and take the max (bottleneck throughput usually defines line capacity, or last machine).
-                        # Actually, for a line, the output TPH is what matters.
-                        # Let's calculate TPH for each valid point and take the max.
+                        # TPH Calculation: Average Throughput (Total Produced / Elapsed Time)
+                        # This matches the logic in Django backend and user expectation
+                        elapsed_seconds = (now - start_dt).total_seconds()
+                        elapsed_hours = max(0.016, elapsed_seconds / 3600.0) # Min 1 min
                         
-                        tphs = []
-                        for p in points:
-                            vel = float(p.get('vel') or 0)
-                            fmt = float(p.get('fmt') or 0)
-                            if vel > 0 and fmt > 0:
-                                tph = (vel * 60 * fmt) / 1_000_000.0
-                                tphs.append(tph)
-                        
-                        line_tph = max(tphs) if tphs else 0.0
+                        line_tph = line_real / elapsed_hours if elapsed_hours > 0 else 0.0
                         
                         states = [p['state'] for p in points if p['state']]
                         if any(s == 1 for s in states): # Assuming 1 is running

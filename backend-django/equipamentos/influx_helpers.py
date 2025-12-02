@@ -127,7 +127,7 @@ def calculate_tonnage(delta_pecas: float, formato_gramas: float) -> float:
     if formato_gramas <= 0:
         return 0.0
     
-    return (delta_pecas * formato_gramas) / 1_000_000.0
+    return (delta_pecas * float(formato_gramas)) / 1_000_000.0
 
 
 def calculate_throughput(delta_pecas_min: float, formato_gramas: float) -> float:
@@ -170,15 +170,25 @@ def get_realtime_metrics(equipamento_codigo: str, formato_gramas: float,
     """
     client = get_influx_client()
     
-    # Buscar contagens
-    contagem_atual = get_current_count(equipamento_codigo, client)
-    contagem_inicio = get_count_at_time(equipamento_codigo, inicio_turno, client)
-    contagem_1min = get_count_1min_ago(equipamento_codigo, client)
+    # Query otimizada para buscar tudo de uma vez
+    query = f"""
+        SELECT last("contagem_saida") as contagem, last("toneladas_turno") as toneladas
+        FROM "production"
+        WHERE "equipment" = '{equipamento_codigo}'
+    """
     
-    # IMPORTANTE: Tonelagem deve refletir a produção TOTAL acumulada no contador
-    # Não apenas a produção desde o início do turno
-    # Isso mantém a tonelagem sempre sincronizada com as peças boas exibidas
-    toneladas = calculate_tonnage(contagem_atual, formato_gramas)
+    result = client.query(query)
+    points = list(result.get_points())
+    
+    contagem_atual = 0.0
+    toneladas = 0.0
+    
+    if points:
+        contagem_atual = float(points[0].get('contagem', 0))
+        toneladas = float(points[0].get('toneladas', 0))
+        
+    # Buscamos contagem de 1 min atrás para vazão (mantido calculado pois é taxa instantânea)
+    contagem_1min = get_count_1min_ago(equipamento_codigo, client)
     
     # Vazão usa delta de 1 minuto para calcular taxa atual
     delta_min = max(0, contagem_atual - contagem_1min)
@@ -186,7 +196,7 @@ def get_realtime_metrics(equipamento_codigo: str, formato_gramas: float,
     
     return {
         'contagem_atual': contagem_atual,
-        'contagem_inicio_turno': contagem_inicio,
+        'contagem_inicio_turno': 0, # Não mais necessário para toneladas
         'contagem_1min_ago': contagem_1min,
         'toneladas_turno': toneladas,
         'vazao_ton_hora': vazao
