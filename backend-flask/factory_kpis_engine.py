@@ -9,6 +9,51 @@ logger = logging.getLogger(__name__)
 
 DJANGO_API_URL = config('DJANGO_API_URL', default='http://127.0.0.1:8000/api')
 
+def calculate_instantaneous_tph(client, line_code):
+    """
+    Calculates Instantaneous TPH based on current speed and format.
+    Formula: (RPM * 60 * Format(g)) / 1,000,000
+    """
+    try:
+        q = f"SELECT last(velocidade_atual) as vel, last(formato_gramas) as fmt, last(formato) as fmt_fallback FROM production WHERE \"line\" = '{line_code}'"
+        rs = client.query(q)
+        points = list(rs.get_points())
+        if points:
+            p = points[0]
+            vel = float(p.get('vel', 0) or 0)
+            fmt = float(p.get('fmt') or p.get('fmt_fallback') or 0)
+            
+            # TPH = (RPM * 60 * Grams) / 1,000,000
+            tph = (vel * 60 * fmt) / 1000000.0
+            return tph
+    except Exception as e:
+        logger.error(f"Error calc instantaneous TPH for {line_code}: {e}")
+    return 0.0
+
+def calculate_day_metrics(client, line_code, start_dt, end_dt):
+    """
+    Calculates Day Metrics by summing the max production of each shift in the day.
+    """
+    total_prod = 0.0
+    try:
+        # Query max production per shift within the day window
+        # We group by shift tag to get the peak of each shift
+        s_str = start_dt.strftime('%Y-%m-%dT%H:%M:%SZ')
+        e_str = end_dt.strftime('%Y-%m-%dT%H:%M:%SZ')
+        
+        q = f"SELECT max(toneladas_turno) as val FROM production WHERE \"line\" = '{line_code}' AND time >= '{s_str}' AND time <= '{e_str}' GROUP BY shift"
+        rs = client.query(q)
+        
+        # rs.items() returns (tags, generator)
+        for (tags, points) in rs.items():
+            for p in points:
+                total_prod += float(p.get('val', 0) or 0)
+                
+    except Exception as e:
+        logger.error(f"Error calc day metrics for {line_code}: {e}")
+        
+    return total_prod
+
 def get_factory_kpis(period='turno'):
     try:
         # 1. Access Dependencies
@@ -28,18 +73,14 @@ def get_factory_kpis(period='turno'):
         end_dt = now
         remaining_hours = 0.0
         
+        # Define Production Day Start (usually 06:00)
+        # If we are before 06:00, we belong to the previous day's production cycle?
+        # For simplicity, let's assume standard day 00:00-23:59 for "Dia" filter unless specified otherwise.
+        # User said "terceiro turno da 00 até a hora atual", implying calendar day logic for "Dia".
+        
         if period == 'turno':
             turno_info = shift_manager.get_turno_info()
             if turno_info:
-                # Start is shift start (today or yesterday if night shift)
-                # This is tricky without full shift logic, relying on ShiftManager to be correct
-                # Assuming ShiftManager gives us the current shift's start/end times relative to today
-                # For simplicity, let's use the 'inicio' and 'fim' times.
-                
-                # We need absolute datetimes for Influx
-                # If current time is 07:00 and shift started at 06:00, start is today 06:00
-                # If current time is 02:00 and shift started at 22:00 (yesterday), start is yesterday 22:00
-                
                 start_time = turno_info['inicio']
                 end_time = turno_info['fim']
                 
@@ -51,14 +92,16 @@ def get_factory_kpis(period='turno'):
                 
                 if end_time < start_time: # Ends next day
                     if now.time() < start_time: # We are in the "next day" part
-                        pass # end_dt is today, start_dt was yesterday
+                        pass 
                     else:
-                        end_dt += timedelta(days=1) # end_dt is tomorrow
+                        end_dt += timedelta(days=1)
                 
                 remaining_seconds = (end_dt - now).total_seconds()
                 remaining_hours = max(0, remaining_seconds / 3600.0)
                 
         elif period == 'dia':
+            # User logic: "produção total é os 3 turnos do dia... pegando terceiro turno da 00 até a hora atual"
+            # This implies we start at 00:00 today.
             start_dt = datetime.combine(today, time.min)
             end_dt = datetime.combine(today, time.max)
             remaining_hours = max(0, (end_dt - now).total_seconds() / 3600.0)
@@ -74,7 +117,7 @@ def get_factory_kpis(period='turno'):
             end_dt = datetime.combine(today.replace(day=last_day), time.max)
             remaining_hours = max(0, (end_dt - now).total_seconds() / 3600.0)
 
-        # 3. Layout Configuration (Restored from legacy)
+        # 3. Layout Configuration
         layout_config = {
             "L20": {"area": "PREPARO", "pos_x": 0, "pos_y": 0, "w": 2, "h": 1, "critico": False},
             "L15": {"area": "PREPARO", "pos_x": 0, "pos_y": 1.2, "w": 2, "h": 1, "critico": False},
@@ -108,12 +151,7 @@ def get_factory_kpis(period='turno'):
         total_oee_real = 0.0
         active_line_count = 0
         
-        # We need to process all lines in the layout, even if not in Django active_lines (ghosts)
-        # But usually Django has the master list.
-        # Let's map Django lines by code for easy access
         django_lines_map = {l.get('codigo'): l for l in active_lines if l.get('codigo')}
-        
-        # Combine layout keys and django keys
         all_line_codes = set(layout_config.keys()).union(django_lines_map.keys())
         
         for line_code in all_line_codes:
@@ -127,10 +165,8 @@ def get_factory_kpis(period='turno'):
                     curr_d = start_dt.date()
                     end_d = end_dt.date()
                     
-                    # Optimization: Fetch range if possible, or loop.
-                    # Given strict constraints, we loop.
                     while curr_d <= end_d:
-                        # FIX: Use 'linha_id' instead of 'linha' to match Django ViewSet
+                        # FIX: Use 'linha_id' instead of 'linha'
                         r = requests.get(f"{DJANGO_API_URL}/calendario/", params={"data": curr_d.strftime('%Y-%m-%d'), "linha_id": line_id})
                         if r.ok:
                             res = r.json()
@@ -162,55 +198,41 @@ def get_factory_kpis(period='turno'):
             
             try:
                 if period == 'turno':
-                    q_real = f"SELECT last(toneladas_turno) as val, last(oee_realtime) as oee, last(velocidade_atual) as vel, last(formato) as fmt, last(estado_maquina) as state FROM production WHERE \"line\" = '{line_code}' GROUP BY equipment"
+                    # Shift View: Realtime Production + Instantaneous TPH
+                    q_real = f"SELECT last(toneladas_turno) as val, last(oee_realtime) as oee, last(estado_maquina) as state FROM production WHERE \"line\" = '{line_code}' GROUP BY equipment"
                     rs = client.query(q_real)
                     points = list(rs.get_points())
                     if points:
-                        # Max of equipments
                         line_real = max([p['val'] for p in points if p['val'] is not None] or [0])
-                        # OEE
                         line_oee = max([p['oee'] for p in points if p['oee'] is not None] or [0])
                         
-                        # TPH Calculation: Average Throughput (Total Produced / Elapsed Time)
-                        # This matches the logic in Django backend and user expectation
-                        elapsed_seconds = (now - start_dt).total_seconds()
-                        elapsed_hours = max(0.016, elapsed_seconds / 3600.0) # Min 1 min
-                        
-                        line_tph = line_real / elapsed_hours if elapsed_hours > 0 else 0.0
+                        # Instantaneous TPH for Shift View (as requested)
+                        line_tph = calculate_instantaneous_tph(client, line_code)
                         
                         states = [p['state'] for p in points if p['state']]
-                        if any(s == 1 for s in states): # Assuming 1 is running
+                        if any(s == 1 for s in states): 
                              line_status = "Rodando"
                         elif line_tph > 0:
                              line_status = "Rodando"
                         else:
                              line_status = "Parada"
                 else:
-                    # Aggregation logic (Day/Week/Month)
-                    # Ensure timestamps are in UTC format or compatible string
-                    # InfluxDB prefers: 'YYYY-MM-DDTHH:MM:SSZ'
-                    s_str = start_dt.strftime('%Y-%m-%dT%H:%M:%SZ')
-                    e_str = end_dt.strftime('%Y-%m-%dT%H:%M:%SZ')
-                    
-                    # Real
-                    q_agg = f"SELECT max(toneladas_turno) as val FROM production WHERE \"line\" = '{line_code}' AND time >= '{s_str}' AND time <= '{e_str}' GROUP BY time(4h)"
-                    rs_agg = client.query(q_agg)
-                    points_agg = list(rs_agg.get_points())
-                    line_real = sum([p['val'] for p in points_agg if p['val'] is not None])
+                    # Day/Week/Month View: Aggregated Production + Average TPH
+                    line_real = calculate_day_metrics(client, line_code, start_dt, end_dt)
                     
                     # OEE (Mean)
+                    s_str = start_dt.strftime('%Y-%m-%dT%H:%M:%SZ')
+                    e_str = end_dt.strftime('%Y-%m-%dT%H:%M:%SZ')
                     q_oee = f"SELECT mean(oee_realtime) as oee FROM production WHERE \"line\" = '{line_code}' AND time >= '{s_str}' AND time <= '{e_str}'"
                     rs_oee = client.query(q_oee)
                     points_oee = list(rs_oee.get_points())
                     if points_oee:
                         line_oee = points_oee[0].get('oee', 0) or 0
                         
-                    # TPH (Mean)
-                    q_vel = f"SELECT mean(velocidade_atual) as vel FROM production WHERE \"line\" = '{line_code}' AND time >= '{s_str}' AND time <= '{e_str}'"
-                    rs_vel = client.query(q_vel)
-                    points_vel = list(rs_vel.get_points())
-                    if points_vel:
-                        line_tph = points_vel[0].get('vel', 0) or 0
+                    # Average TPH = Total Produced / Elapsed Time
+                    elapsed_seconds = (now - start_dt).total_seconds()
+                    elapsed_hours = max(0.016, elapsed_seconds / 3600.0)
+                    line_tph = line_real / elapsed_hours if elapsed_hours > 0 else 0.0
                     
                     line_status = "Histórico"
 
@@ -231,7 +253,6 @@ def get_factory_kpis(period='turno'):
             total_real += line_real
             total_flow_real += line_tph
             
-            # Only count OEE for active lines (Rodando or with data)
             if line_oee > 0 or line_status == "Rodando":
                 total_oee_real += line_oee
                 active_line_count += 1
@@ -239,7 +260,6 @@ def get_factory_kpis(period='turno'):
         # 6. Factory Totals
         avg_oee = (total_oee_real / active_line_count) if active_line_count > 0 else 0.0
         
-        # Required Flow Rate
         required_flow = 0.0
         if remaining_hours > 0 and total_planned > total_real:
             required_flow = (total_planned - total_real) / remaining_hours
