@@ -72,6 +72,10 @@ const LineDeepView: React.FC = () => {
     const [linhaConfig, setLinhaConfig] = useState<LinhaConfig | null>(null);
     const [equipamentosConfig, setEquipamentosConfig] = useState<EquipamentoConfig[]>([]);
 
+    // New State for Consolidated Metrics and Diagnostics
+    const [metricasConsolidadas, setMetricasConsolidadas] = useState<any>(null);
+    const [diagnosticAlerts, setDiagnosticAlerts] = useState<string[]>([]);
+
     const fetchTempoReal = async (codigoEquipamento: string): Promise<Partial<EquipamentoCompleto> | null> => {
         try {
             const [resOperacao, resEquipamento] = await Promise.all([
@@ -151,20 +155,42 @@ const LineDeepView: React.FC = () => {
             }
 
             // 3. Parallel requests for Flask Realtime Data (Line Level) - Using resolved identifier
-            const [resStatus, resOle, resKpis] = await Promise.all([
+            const [resStatus, resOle, resKpis, resConsolidadas] = await Promise.all([
                 fetch(`${FLASK_API_URL}/linha/${encodeURIComponent(linhaIdentifier)}/overview-status`),
                 fetch(`${FLASK_API_URL}/linha/${encodeURIComponent(linhaIdentifier)}/realtime`),
-                fetch(`${FLASK_API_URL}/linha/${encodeURIComponent(linhaIdentifier)}/kpis`)
+                fetch(`${FLASK_API_URL}/linha/${encodeURIComponent(linhaIdentifier)}/kpis`),
+                fetch(`${DJANGO_API_URL}/metricas_fabrica_consolidadas/`)
             ]);
 
             if (resStatus.ok) setLineStatus(await resStatus.json());
             if (resOle.ok) setOleData(await resOle.json());
             if (resKpis.ok) setKpisData(await resKpis.json());
 
-            // 4. Fetch Detailed Data for Each Equipment
+            let metricasLinha = null;
+            if (resConsolidadas.ok) {
+                const consolidadas = await resConsolidadas.json();
+                metricasLinha = consolidadas.find((m: any) => m.linha_id === linhaIdNumeric);
+            }
+
+            // 4. Fetch Detailed Data for Each Equipment AND Diagnostics
+            const allAlerts: string[] = [];
             if (currentEquipamentosConfig.length > 0) {
                 const promises = currentEquipamentosConfig.map(async (eq) => {
-                    const dadosReais = await fetchTempoReal(eq.codigo);
+                    const [dadosReais, resAlerts] = await Promise.all([
+                        fetchTempoReal(eq.codigo),
+                        fetch(`${FLASK_API_URL}/diagnostics/alerts/${eq.codigo}`)
+                    ]);
+
+                    // Collect Alerts
+                    if (resAlerts.ok) {
+                        const alertsData = await resAlerts.json();
+                        if (alertsData.alerts && Array.isArray(alertsData.alerts)) {
+                            alertsData.alerts.forEach((a: any) => {
+                                allAlerts.push(`${eq.nome}: ${a.message}`);
+                            });
+                        }
+                    }
+
                     return {
                         ...eq,
                         ...dadosReais
@@ -176,6 +202,9 @@ const LineDeepView: React.FC = () => {
                 equipamentosDetalhadosResult.sort((a, b) => (a.ordem_na_linha || 0) - (b.ordem_na_linha || 0));
                 setEquipamentosDetalhados(equipamentosDetalhadosResult);
             }
+
+            setDiagnosticAlerts(allAlerts);
+            setMetricasConsolidadas(metricasLinha);
 
             setLastUpdate(new Date());
         } catch (error) {
@@ -215,8 +244,8 @@ const LineDeepView: React.FC = () => {
     const metaTotal = oleData?.producao_planejada_total || 0;
     const oleAtual = oleData?.ole || 0;
 
-    // Vazão (t/h)
-    const vazaoCalculada = tempoDecorridoHoras > 0 ? (producaoReal / tempoDecorridoHoras) : 0;
+    // Vazão (t/h) - Use consolidated metrics if available, else calc
+    const vazaoCalculada = metricasConsolidadas?.vazao_real_ton_hora ?? (tempoDecorridoHoras > 0 ? (producaoReal / tempoDecorridoHoras) : 0);
 
     // Projeção Linear (Match Home.tsx: Meta * OLE%)
     // Home.tsx: const projecaoEstimada = metaTotal > 0 ? metaTotal * (ole / 100) : 0;
@@ -321,7 +350,7 @@ const LineDeepView: React.FC = () => {
                         desvioProjetado={desvioProjetado}
                     />
 
-                    <Diagnostics />
+                    <Diagnostics alerts={diagnosticAlerts} />
 
                     <Upstream />
                     <Downstream />

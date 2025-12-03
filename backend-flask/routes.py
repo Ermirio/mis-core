@@ -12,6 +12,10 @@ api_bp = Blueprint('api', __name__)
 logger = logging.getLogger(__name__)
 
 from constants import ESTADOS_MAQUINA
+from services.diagnostics import capture_golden_state, get_latest_golden_state
+from services.diagnostics_engine import run_diagnostics
+from services.realtime_store import get_equipamento_realtime
+
 
 # Cache simples para velocidade
 _last_counts = {}
@@ -790,7 +794,8 @@ def get_equipamento_historico_detalhado(codigo):
                 mean(oee_realtime) as oee_medio,
                 mean(disponibilidade) as disp_media,
                 mean(performance) as perf_media,
-                mean(qualidade) as qual_media
+                mean(qualidade) as qual_media,
+                mean(*)
             FROM production 
             WHERE "equipment" = '{codigo}' 
             AND time >= '{s_str}' AND time <= '{e_str}' 
@@ -807,7 +812,7 @@ def get_equipamento_historico_detalhado(codigo):
             if p['producao'] == 0 and p['oee_medio'] == 0:
                 continue
 
-            historico.append({
+            item = {
                 'data_hora': p['time'],
                 'producao': int(p['producao']),
                 'entrada': int(p['entrada']),
@@ -817,7 +822,19 @@ def get_equipamento_historico_detalhado(codigo):
                 'disponibilidade': float(p['disp_media']),
                 'performance': float(p['perf_media']),
                 'qualidade': float(p['qual_media'])
-            })
+            }
+            
+            # Add dynamic fields (mean_*)
+            for k, v in p.items():
+                if k.startswith('mean_'):
+                    # Clean key name
+                    clean_key = k.replace('mean_', '')
+                    # Skip fields we already handled explicitly
+                    if clean_key in ['velocidade_atual', 'oee_realtime', 'disponibilidade', 'performance', 'qualidade', 'contagem_saida', 'contagem_entrada', 'descarte']:
+                        continue
+                    item[clean_key] = v
+            
+            historico.append(item)
 
         # Ordena decrescente (mais recente primeiro) - REMOVIDO para corrigir gráfico
         # historico.reverse()
@@ -830,4 +847,161 @@ def get_equipamento_historico_detalhado(codigo):
 
     except Exception as e:
         logger.error(f"Error getting equipment history: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@api_bp.route('/api/diagnostics/capture/<equipamento_codigo>', methods=['POST'])
+def capture_golden_state_endpoint(equipamento_codigo):
+    """
+    Captura o estado atual como Golden State.
+    """
+    try:
+        profile = capture_golden_state(equipamento_codigo)
+        if profile:
+            return jsonify({
+                'status': 'success',
+                'message': 'Golden State captured successfully',
+                'profile': profile
+            })
+        else:
+            return jsonify({
+                'status': 'error',
+                'message': 'Failed to capture Golden State (no data?)'
+            }), 400
+    except Exception as e:
+        logger.error(f"Error capturing Golden State: {e}")
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+@api_bp.route('/api/diagnostics/alerts/<equipamento_codigo>', methods=['GET'])
+def get_diagnostics_alerts(equipamento_codigo):
+    """
+    Retorna alertas de diagnóstico para o equipamento.
+    """
+    try:
+        realtime_data = get_equipamento_realtime(equipamento_codigo)
+        alerts = run_diagnostics(equipamento_codigo, realtime_data)
+        golden_state = get_latest_golden_state(equipamento_codigo)
+        
+        return jsonify({
+            'status': 'success',
+            'alerts': alerts,
+            'golden_state': golden_state
+        })
+    except Exception as e:
+        logger.error(f"Error getting diagnostics: {e}")
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+@api_bp.route('/api/linha/<linha_nome>/overview-status', methods=['GET'])
+def get_linha_overview_status(linha_nome):
+    """
+    Retorna status geral da linha (Online/Offline, etc).
+    """
+    try:
+        influx_client = current_app.extensions.get('influx_client')
+        if not influx_client: return jsonify({'error': 'No DB'}), 500
+
+        # Verifica se algum equipamento está rodando
+        query = f"SELECT last(estado_maquina) FROM production WHERE \"line\" = '{linha_nome}' GROUP BY \"equipment\""
+        rs = influx_client.query(query)
+        points = list(rs.get_points())
+        
+        online_count = 0
+        total_count = len(points)
+        
+        for p in points:
+            if int(p.get('last', 0) or 0) in [1, 2, 3]: # Produzindo, Aguardando, Bloqueado
+                online_count += 1
+                
+        status = "Offline"
+        if online_count > 0:
+            status = "Produzindo" if online_count == total_count else "Parcial"
+            
+        return jsonify({
+            'status': status,
+            'online_count': online_count,
+            'total_count': total_count
+        })
+    except Exception as e:
+        logger.error(f"Error getting overview status: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@api_bp.route('/linha/<linha_nome>/historico', methods=['GET'])
+def get_linha_historico(linha_nome):
+    """
+    Retorna histórico agregado da linha (Produção Total, OEE Médio, etc.)
+    respeitando filtros de data.
+    """
+    try:
+        start_str = request.args.get('start')
+        end_str = request.args.get('end')
+        interval = request.args.get('interval', '1h')
+        influx_client = current_app.extensions.get('influx_client')
+
+        if not start_str or not end_str:
+            # Default last 24h
+            end_dt = datetime.utcnow()
+            start_dt = end_dt - timedelta(hours=24)
+            s_str = start_dt.strftime('%Y-%m-%dT%H:%M:%SZ')
+            e_str = end_dt.strftime('%Y-%m-%dT%H:%M:%SZ')
+        else:
+            # Validate format
+            try:
+                # Se vier com timezone Z
+                if start_str.endswith('Z'):
+                    s_dt = datetime.strptime(start_str, '%Y-%m-%dT%H:%M:%S.%fZ')
+                else:
+                    s_dt = datetime.fromisoformat(start_str)
+                
+                if end_str.endswith('Z'):
+                    e_dt = datetime.strptime(end_str, '%Y-%m-%dT%H:%M:%S.%fZ')
+                else:
+                    e_dt = datetime.fromisoformat(end_str)
+                    
+                s_str = s_dt.strftime('%Y-%m-%dT%H:%M:%SZ')
+                e_str = e_dt.strftime('%Y-%m-%dT%H:%M:%SZ')
+            except:
+                # Fallback simple
+                s_str = start_str
+                e_str = end_str
+
+        # Adjust interval for Influx
+        group_by = interval
+        if interval == 'total':
+            group_by = '1000d' # Hack to group all
+
+        # Query: Sum of production across all equipment, Mean of OEE across all equipment
+        # InfluxQL subquery
+        query = f"""
+            SELECT 
+                sum(producao) as producao_total,
+                mean(oee) as oee_medio
+            FROM (
+                SELECT 
+                    spread(contagem_saida) as producao,
+                    mean(oee_realtime) as oee
+                FROM production 
+                WHERE "line" = '{linha_nome}' 
+                AND time >= '{s_str}' AND time <= '{e_str}' 
+                GROUP BY time({group_by}), "equipment"
+            ) 
+            GROUP BY time({group_by}) fill(0)
+        """
+        
+        rs = influx_client.query(query)
+        points = list(rs.get_points())
+        
+        historico = []
+        for p in points:
+            historico.append({
+                'data_hora': p['time'],
+                'producao_total': int(p['producao_total'] or 0),
+                'oee_medio': float(p['oee_medio'] or 0)
+            })
+
+        return jsonify({
+            'linha': linha_nome,
+            'historico': historico
+        })
+
+    except Exception as e:
+        logger.error(f"Erro ao buscar histórico da linha: {e}")
         return jsonify({'error': str(e)}), 500

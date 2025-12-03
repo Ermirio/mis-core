@@ -48,6 +48,8 @@ import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import StateTimelineChart from '@/components/StateTimelineChart';
+import DiagnosticsPanel from '@/components/GoldenState/DiagnosticsPanel';
+import VariablesTab from '@/components/EquipamentoDetalhes/VariablesTab';
 import { mapEstado } from '@/utils/equipmentStateUtils';
 
 // Configuração
@@ -84,6 +86,7 @@ interface Metrica {
   qualidade: number;
   oee: number;
   tempo_producao: number;
+  [key: string]: any; // Allow dynamic keys
 }
 
 interface EventoEstado {
@@ -322,6 +325,7 @@ const EquipamentoDetalhes: React.FC = () => {
         const data = await response.json();
 
         const mapped: Metrica[] = data.historico.map((h: any, idx: number) => ({
+          ...h, // Spread all dynamic fields
           id: idx,
           data_hora: h.data_hora,
           periodo: filterType,
@@ -529,10 +533,25 @@ const EquipamentoDetalhes: React.FC = () => {
         <Tabs defaultValue="grafico">
           <TabsList>
             <TabsTrigger value="grafico">Gráfico</TabsTrigger>
+            <TabsTrigger value="variaveis">Variáveis</TabsTrigger>
             <TabsTrigger value="tabela">Tabela</TabsTrigger>
             <TabsTrigger value="estados">Estados</TabsTrigger>
             <TabsTrigger value="eventos">Eventos</TabsTrigger>
+            <TabsTrigger value="diagnosticos">Diagnósticos</TabsTrigger>
           </TabsList>
+
+          <TabsContent value="variaveis">
+            <VariablesTab
+              equipamento={equipamento}
+              historico={historico}
+              timeRange={timeRange}
+              isConsolidated={isConsolidated}
+            />
+          </TabsContent>
+
+          <TabsContent value="diagnosticos" className="space-y-4">
+            <DiagnosticsPanel equipamentoCodigo={equipamento.codigo} />
+          </TabsContent>
 
           <TabsContent value="grafico" className="h-[400px]">
             <Card className="h-full">
