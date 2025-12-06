@@ -267,8 +267,8 @@ const LineDeepView: React.FC = () => {
         sku: dadosProducao?.sku_codigo || 'N/A',
         produto: dadosProducao?.descricao || 'Produto Genérico',
         cuc: dadosProducao?.cuc || 'N/A',
-        equipamentosOnline: oleData?.equipamentos_online || 0,
-        totalEquipamentos: oleData?.equipamentos_total || equipamentosConfig.length,
+        equipamentosOnline: equipamentosDetalhados.filter(eq => eq.status !== 'Offline').length,
+        totalEquipamentos: equipamentosDetalhados.length,
         vazao: vazaoCalculada,
         ole: oleAtual
     };
@@ -312,6 +312,7 @@ const LineDeepView: React.FC = () => {
                         {equipamentosDetalhados.map((eq, idx) => (
                             <EquipmentCard
                                 key={idx}
+                                id={eq.id} // Pass ID for navigation
                                 nome={eq.nome}
                                 funcao={eq.tipo}
                                 estado={eq.medicoes?.estado === 'Produzindo' ? 1 : eq.medicoes?.estado === 'Parado' ? 2 : 0} // Map string to number if needed by component, or update component

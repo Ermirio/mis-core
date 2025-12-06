@@ -119,3 +119,4 @@ backup*/
 # Test files (optional - uncomment if you don't want to track test files)
 # test_*.py
 # *_test.py
+docker-images/all-images.tar

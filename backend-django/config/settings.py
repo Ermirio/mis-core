@@ -6,23 +6,26 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 SECRET_KEY = config('DJANGO_SECRET_KEY', default='django-insecure-dev-key')
 DEBUG = config('DJANGO_DEBUG', default=True, cast=bool)
 
-# DEFINIÇÃO ÚNICA
-ALLOWED_HOSTS = ['*'] # Lembre-se de restringir isso em produção
+ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='*').split(',')
 
-# DEFINIÇÃO ÚNICA E CORRIGIDA
 CSRF_TRUSTED_ORIGINS = [
     "http://localhost:3000",
     "http://127.0.0.1:3000",
-    "http://localhost:3001",  # Adicionado para o React
-    "http://127.0.0.1:3001", # Adicionado para o React
+    "http://localhost:3001",
+    "http://127.0.0.1:3001",
+    "http://localhost:3004",
+    "http://127.0.0.1:3004",
     "http://localhost:5000",
     "http://127.0.0.1:5000",
+    "http://localhost:5005",
+    "http://127.0.0.1:5005",
     "http://localhost:8000",
     "http://127.0.0.1:8000",
+    "http://localhost:8001",
+    "http://127.0.0.1:8001",
     "http://localhost:5173",
     "http://127.0.0.1:5173",
 ]
-
 
 INSTALLED_APPS = [
     'django.contrib.admin',
@@ -33,14 +36,15 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'rest_framework',
     'corsheaders',
-    'django_apscheduler',  # Scheduler automático
+    'django_apscheduler',
     'equipamentos',
     'import_export',
 ]
 
 MIDDLEWARE = [
-    'corsheaders.middleware.CorsMiddleware',   # tem que ser o PRIMEIRO
+    'corsheaders.middleware.CorsMiddleware',
     'django.middleware.security.SecurityMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -48,7 +52,6 @@ MIDDLEWARE = [
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
-
 
 ROOT_URLCONF = 'config.urls'
 
@@ -70,25 +73,18 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'config.wsgi.application'
 
-# DATABASES = {
-#     'default': {
-#         'ENGINE': 'django.db.backends.mysql',
-#         'NAME': config('MYSQL_DB', default='efficiency_db'),
-#         'USER': config('MYSQL_USER', default='root'),
-#         'PASSWORD': config('MYSQL_PASSWORD', default='ixvq10A@10'),
-#         'HOST': config('MYSQL_HOST', default='localhost'),
-#         'PORT': config('MYSQL_PORT', default='3307'),
-#         'OPTIONS': {
-#             'init_command': "SET sql_mode='STRICT_TRANS_TABLES'",
-#             'charset': 'utf8mb4',
-#         }
-#     }
-# }
-
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+        'ENGINE': 'django.db.backends.mysql',
+        'NAME': config('MYSQL_DB', default='industrial_db'),
+        'USER': config('MYSQL_USER', default='root'),
+        'PASSWORD': config('MYSQL_PASSWORD', default='ixvq10A@10'),
+        'HOST': config('MYSQL_HOST', default='localhost'),
+        'PORT': config('MYSQL_PORT', default='3308'),
+        'OPTIONS': {
+            'init_command': "SET sql_mode='STRICT_TRANS_TABLES'",
+            'charset': 'utf8mb4',
+        }
     }
 }
 
@@ -105,32 +101,17 @@ USE_I18N = True
 USE_TZ = True
 
 STATIC_URL = 'static/'
+STATIC_ROOT = BASE_DIR / 'staticfiles'
+STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
+
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
-# --- CORS ---
-# Permite todas as origens para facilitar o desenvolvimento e evitar erros de bloqueio
 CORS_ALLOW_ALL_ORIGINS = True
-
-# CORS_ALLOWED_ORIGINS = [
-#     "http://127.0.0.1:3000",
-#     "http://127.0.0.1:3001",
-#     "http://127.0.0.1:5000",
-#     "http://127.0.0.1:8000",
-#     "http://127.0.0.1:5173",
-#     "http://localhost:3000",
-#     "http://localhost:3001",
-#     "http://localhost:5000",
-#     "http://localhost:8000",
-#     "http://localhost:5173",
-# ]
-
 CORS_ALLOW_CREDENTIALS = True
 
-# REST Framework
 REST_FRAMEWORK = {
     'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
     'PAGE_SIZE': 100
 }
-
 
 IMPORT_EXPORT_USE_TRANSACTIONS = True

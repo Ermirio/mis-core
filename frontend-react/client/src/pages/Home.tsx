@@ -7,6 +7,7 @@ import { RefreshCw, AlertCircle, Sun, Moon, ExternalLink } from "lucide-react";
 import { useTheme } from "@/contexts/ThemeContext";
 import { APP_TITLE } from "@/const";
 import MultiEquipmentTimeline from "@/components/MultiEquipmentTimeline";
+import { config } from "@/config";
 
 interface EquipamentoConfig {
   id: number;
@@ -63,8 +64,8 @@ interface LinhaAgrupada {
   };
 }
 
-const DJANGO_API_URL = import.meta.env.VITE_DJANGO_API_URL || "http://127.0.0.1:8000/api";
-const FLASK_API_URL = import.meta.env.VITE_FLASK_API_URL || "http://127.0.0.1:5000/api";
+const DJANGO_API_URL = config.DJANGO_API_URL;
+const FLASK_API_URL = config.FLASK_API_URL;
 
 export default function Home() {
   const navigate = useNavigate();

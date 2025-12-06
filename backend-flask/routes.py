@@ -406,8 +406,11 @@ def inserir():
             formato_gramas=fmt,
             planejado=plan,
             velocidade_atual=vel_calc,
-            estado_maquina=est
+            estado_maquina=est,
+            linha_codigo=line # Passando código da linha
         )
+
+        logger.info(f"Processar dados result: {res}")
 
         fields = {
             "velocidade_atual": vel_calc,
@@ -419,6 +422,7 @@ def inserir():
             "diferenca_op": res['diferenca_op'],
             "producao_turno_acumulada": res['producao_turno'],
             "toneladas_turno": res['toneladas_turno'],
+            "meta_producao_turno": res.get('meta_producao_turno', 0), # Safely get meta
             "oee_realtime": res['oee_realtime'],
             "performance_realtime": res['performance_realtime'],
             "quality_realtime": res['quality_realtime'],
@@ -447,22 +451,32 @@ def inserir():
             "fields": fields
         }]
         
-        if ts: points[0]["time"] = ts
+        if ts:
+            try:
+                # Força conversão para float e então para ISO
+                ts_float = float(ts)
+                points[0]["time"] = datetime.fromtimestamp(ts_float).isoformat()
+            except Exception as e:
+                logger.warning(f"Falha ao converter timestamp {ts}: {e}")
+                points[0]["time"] = ts
 
         if changed_state(eq, est):
             points.append({
                 "measurement": "machine_status",
                 "tags": {"line": line, "equipment": eq, "estado_maquina": str(est)},
                 "fields": {"value": 1},
-                "time": ts if ts else None
+                "time": points[0]["time"]
             })
 
+        logger.info(f"Writing points: {points}")
         if influx_client: influx_client.write_points(points)
         
         return jsonify({'status': 'success', 'data': res})
 
     except Exception as e:
-        logger.error(f"Erro: {e}")
+        import traceback
+        logger.error(f"Erro Inserir: {e}")
+        logger.error(traceback.format_exc())
         return jsonify({'error': str(e)}), 500
 
 @api_bp.route('/api/linha/<linha_nome>/ole-realtime', methods=['GET'])
@@ -1004,4 +1018,48 @@ def get_linha_historico(linha_nome):
 
     except Exception as e:
         logger.error(f"Erro ao buscar histórico da linha: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@api_bp.route('/api/realtime/status/<eq_code>', methods=['GET'])
+def get_equipamento_status(eq_code):
+    """
+    Retorna o status atual de um equipamento específico.
+    """
+    try:
+        influx_client = current_app.extensions.get('influx_client')
+        if not influx_client:
+            return jsonify({'error': 'DB not initialized'}), 500
+
+        query = f"SELECT last(estado_maquina) as estado_maquina, last(velocidade_atual) as velocidade_atual, last(ordem_producao) as ordem_producao, last(sku_codigo) as sku_codigo, last(descricao) as descricao, last(cuc) as cuc FROM production WHERE \"equipment\" = '{eq_code}'"
+        rs = influx_client.query(query)
+        points = list(rs.get_points())
+        
+        if not points:
+            return jsonify({
+                'nome': eq_code,
+                'medicoes': {
+                    'estado_maquina': 0,
+                    'velocidade_atual': 0,
+                    'ordem_producao': 'N/A',
+                    'sku_codigo': 'N/A',
+                    'descricao': 'Aguardando dados...',
+                    'cuc': 0
+                }
+            })
+
+        point = points[0]
+        return jsonify({
+            'nome': eq_code,
+            'medicoes': {
+                'estado_maquina': int(point.get('estado_maquina', 0) or 0),
+                'velocidade_atual': float(point.get('velocidade_atual', 0) or 0),
+                'ordem_producao': point.get('ordem_producao', 'N/A'),
+                'sku_codigo': point.get('sku_codigo', 'N/A'),
+                'descricao': point.get('descricao', 'N/A'),
+                'cuc': point.get('cuc', 'N/A')
+            }
+        })
+
+    except Exception as e:
+        logger.error(f"Error getting equipment status: {e}")
         return jsonify({'error': str(e)}), 500

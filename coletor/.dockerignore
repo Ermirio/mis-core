@@ -1,0 +1,58 @@
+# Coletor-specific dockerignore
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+.venv/
+*.egg-info/
+dist/
+build/
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Git
+.git/
+.gitignore
+
+# Docker
+Dockerfile
+.dockerignore
+
+# Logs
+*.log
+logs/
+
+# Database
+*.sqlite3
+*.db
+
+# Environment
+.env.local
+.env.*.local
+
+# Testing
+.coverage
+htmlcov/
+.pytest_cache/
+
+# Documentation
+*.md
+docs/
+
+# Temporary files
+tmp/
+temp/
+*.tmp

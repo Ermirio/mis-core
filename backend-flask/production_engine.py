@@ -120,17 +120,56 @@ class ShiftManager:
         
         return None  # Fora de turno
 
+# ===== GERENCIADOR DE METAS =====
+class TargetManager:
+    def __init__(self, django_url):
+        self.django_url = django_url
+        self.metas = {}  # {linha_id: {turno_id: meta}}
+        self.last_update = 0
+        self.CACHE_DURATION = 300
+
+    def get_meta(self, linha_codigo, turno_nome):
+        # Atualiza cache se necessário
+        if time.time() - self.last_update > self.CACHE_DURATION:
+            self._atualizar_cache()
+            
+        # Busca meta
+        # Nota: Aqui assumimos que linha_codigo mapeia para linha_id ou o endpoint retorna por código
+        # Simplificação: Retorna 0 se não encontrar
+        # Implementação real precisaria mapear linha_codigo -> linha_id
+        return self.metas.get(f"{linha_codigo}_{turno_nome}", 0)
+
+    def _atualizar_cache(self):
+        try:
+            # Endpoint ideal: /api/metas/atuais/ ou similar
+            # Fallback: Busca do calendário
+            url = f"{self.django_url}/calendario/"
+            resp = requests.get(url, timeout=5)
+            if resp.status_code == 200:
+                data = resp.json()
+                # Processar dados para preencher self.metas
+                # Estrutura esperada: [{linha: 'L01', turno: 'Turno A', meta: 1000}, ...]
+                for item in data:
+                    key = f"{item.get('linha')}_{item.get('turno')}"
+                    self.metas[key] = float(item.get('meta_producao', 0))
+                self.last_update = time.time()
+                logger.info(f"🎯 Metas atualizadas: {len(self.metas)}")
+        except Exception as e:
+            logger.error(f"Erro ao buscar metas: {e}")
+
 # ===== MOTOR DE PRODUÇÃO =====
 class ProductionEngine:
     def __init__(self, influx_client, django_api_url):
         self.client = influx_client
         self.shift_manager = ShiftManager(django_api_url)
         self.config_manager = ConfigManager(django_api_url)
+        self.target_manager = TargetManager(django_api_url)
         self._cache = {}
         self.MAX_TIME_DELTA = 300  # 5 minutos - proteção contra server offline
 
     def recarregar_configuracoes(self):
         self.config_manager._atualizar_cache()
+        self.target_manager._atualizar_cache()
         return self.shift_manager.forcar_atualizacao()
 
     def _get_state(self, equipment_code):
@@ -206,7 +245,7 @@ class ProductionEngine:
             logger.error(f"Erro load state: {e}")
             state['initialized'] = True
 
-    def processar_dados(self, equipamento, op_atual, contagem_bruta, descarte, formato_gramas, planejado, velocidade_atual, estado_maquina):
+    def processar_dados(self, equipamento, op_atual, contagem_bruta, descarte, formato_gramas, planejado, velocidade_atual, estado_maquina, linha_codigo=None):
         # 1. Contexto
         now_timestamp = time.time()
         turno_info = self.shift_manager.get_turno_info()
@@ -263,6 +302,10 @@ class ProductionEngine:
         if state['last_raw'] is not None:
             delta = max(0, contagem_bruta - state['last_raw'])
             if delta < 0: delta = contagem_bruta  # Reset físico
+        
+        # DEBUG LOG
+        logger.info(f"[{equipamento}] Raw={contagem_bruta}, Last={state['last_raw']}, Delta={delta}, AccShift={state['acc_shift']}")
+
         state['last_raw'] = contagem_bruta
 
         delta_waste = 0
@@ -331,6 +374,11 @@ class ProductionEngine:
         total_turno = state['acc_shift']
         ton_turno = (total_turno * formato_gramas) / 1_000_000.0 if formato_gramas else 0
         
+        # Meta do Turno
+        meta_turno = 0
+        if linha_codigo:
+            meta_turno = self.target_manager.get_meta(linha_codigo, turno_atual)
+        
         return {
             'producao_op': int(total_prod_op),
             'refugo_op_acumulado': int(total_waste_op),
@@ -339,6 +387,7 @@ class ProductionEngine:
             'producao_turno': int(total_turno),
             'toneladas_turno': float(ton_turno),
             'turno_atual_nome': turno_atual,
+            'meta_producao_turno': float(meta_turno),
             
             # Métricas OEE
             'oee_realtime': float(oee),

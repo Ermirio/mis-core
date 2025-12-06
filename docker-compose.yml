@@ -1,40 +1,223 @@
 version: '3.8'
 
+# ==========================================
+# ARQUIVO PRINCIPAL DE ORQUESTRAÇÃO DOCKER
+# ==========================================
+# Este arquivo define todos os serviços da aplicação.
+# Para iniciar: docker-compose --profile with-databases up -d
+#
+# Serviços:
+# - mysql: Banco de dados relacional (Porta 3307)
+# - influxdb: Banco de dados temporal (Porta 8087)
+# - chronograf: Interface para InfluxDB (Porta 8889)
+# - backend-django: API Principal e Admin (Porta 8001)
+# - backend-flask: API de Processamento e Engine (Porta 5005)
+# - frontend-react: Interface do Usuário (Porta 3004)
+# - coletor: Serviço de coleta OPC UA
+
 services:
+  # ----------------------------------------
+  # BANCO DE DADOS MYSQL
+  # ----------------------------------------
+  mysql:
+    image: mysql:8.0
+    container_name: mysql-industrial
+    ports:
+      - "${MYSQL_PORT:-3308}:3306" # Mapeia porta do host para container
+    environment:
+      - MYSQL_ROOT_PASSWORD=${MYSQL_PASSWORD}
+      - MYSQL_DATABASE=${MYSQL_DB}
+    volumes:
+      - mysql-data:/var/lib/mysql
+      - .\mysql-init:/docker-entrypoint-initdb.d:ro # Script de inicialização
+    networks:
+      - industrial-network
+    restart: always
+    healthcheck:
+      test: [ "CMD", "mysqladmin", "ping", "-h", "localhost" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    profiles:
+      - with-databases
+
+  # ----------------------------------------
+  # BANCO DE DADOS INFLUXDB
+  # ----------------------------------------
   influxdb:
     image: influxdb:1.8
     container_name: influxdb-industrial
     ports:
-      - "8086:8086"
+      - "${INFLUXDB_PORT:-8087}:8086"
     environment:
-      - INFLUXDB_DB=industrial_db
-      - INFLUXDB_ADMIN_USER=admin
-      - INFLUXDB_ADMIN_PASSWORD=admin123
-      - INFLUXDB_HTTP_AUTH_ENABLED=false
+      - INFLUXDB_DB=${INFLUXDB_DATABASE}
+      - INFLUXDB_ADMIN_USER=${INFLUXDB_USER}
+      - INFLUXDB_ADMIN_PASSWORD=${INFLUXDB_USER_PASSWORD}
+      - INFLUXDB_HTTP_AUTH_ENABLED=true
     volumes:
       - influxdb-data:/var/lib/influxdb
     networks:
       - industrial-network
-    restart: unless-stopped
+    restart: always
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:8086/ping" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    profiles:
+      - with-databases
 
-  postgres:
-    image: postgres:15
-    container_name: postgres-industrial
+  # ----------------------------------------
+  # INTERFACE CHRONOGRAF
+  # ----------------------------------------
+  chronograf:
+    image: chronograf:1.10
+    container_name: chronograf-industrial
     ports:
-      - "5432:5432"
+      - "${CHRONOGRAF_PORT:-8888}:8888"
     environment:
-      - POSTGRES_DB=django_industrial
-      - POSTGRES_USER=django_user
-      - POSTGRES_PASSWORD=django_pass123
+      - INFLUXDB_URL=http://influxdb:8086
+      - INFLUXDB_USERNAME=${INFLUXDB_USER}
+      - INFLUXDB_PASSWORD=${INFLUXDB_USER_PASSWORD}
     volumes:
-      - postgres-data:/var/lib/postgresql/data
+      - chronograf-data:/var/lib/chronograf
+    depends_on:
+      - influxdb
     networks:
       - industrial-network
-    restart: unless-stopped
+    restart: always
+    profiles:
+      - with-databases
+
+  # ----------------------------------------
+  # BACKEND DJANGO (API & ADMIN)
+  # ----------------------------------------
+  backend-django:
+    build:
+      context: .\backend-django
+      dockerfile: Dockerfile
+    container_name: backend-django-prod
+    ports:
+      - "${DJANGO_PORT:-8001}:8000"
+    env_file:
+      - .env
+    environment:
+      - DEBUG=False
+      - DJANGO_SETTINGS_MODULE=config.settings
+      # Conexão com bancos internos via nome do serviço
+      - MYSQL_HOST=${MYSQL_HOST:-mysql}
+      - MYSQL_PORT=${MYSQL_PORT_INTERNAL:-3306}
+      - MYSQL_DB=${MYSQL_DB}
+      - MYSQL_USER=${MYSQL_USER}
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD}
+      - INFLUXDB_HOST=${INFLUXDB_HOST:-influxdb}
+      - INFLUXDB_PORT=${INFLUXDB_PORT_INTERNAL:-8086}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - industrial-network
+    restart: always
+    # Healthcheck desabilitado temporariamente para evitar timeouts no Windows
+    # healthcheck:
+    #   test: [ "CMD-SHELL", "curl -f http://localhost:8000/api/health/ || exit 1" ]
+    #   interval: 30s
+    #   timeout: 10s
+    #   retries: 3
+    #   start_period: 40s
+
+    # ----------------------------------------
+    # BACKEND FLASK (ENGINE)
+    # ----------------------------------------
+  backend-flask:
+    build:
+      context: .\backend-flask
+      dockerfile: Dockerfile
+    container_name: backend-flask-prod
+    ports:
+      - "${FLASK_PORT:-5005}:5000"
+    env_file:
+      - .env
+    environment:
+      - INFLUXDB_HOST=${INFLUXDB_HOST:-influxdb}
+      - INFLUXDB_PORT=${INFLUXDB_PORT_INTERNAL:-8086}
+      - DJANGO_API_URL=http://backend-django:8000/api
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      - backend-django
+    networks:
+      - industrial-network
+    restart: always
+    # healthcheck:
+    #   test: [ "CMD-SHELL", "curl -f http://localhost:5000/api/health || exit 1" ]
+    #   interval: 30s
+    #   timeout: 10s
+    #   retries: 3
+    #   start_period: 40s
+
+    # ----------------------------------------
+    # FRONTEND REACT
+    # ----------------------------------------
+  frontend-react:
+    build:
+      context: .\frontend-react
+      dockerfile: Dockerfile
+    container_name: frontend-react-prod
+    ports:
+      - "${REACT_PORT:-3004}:3000"
+    env_file:
+      - .env
+    environment:
+      - NODE_ENV=production
+      # Variáveis injetadas no build do Vite
+      - VITE_DJANGO_API_URL=${VITE_DJANGO_API_URL}
+      - VITE_FLASK_API_URL=${VITE_FLASK_API_URL}
+    depends_on:
+      - backend-flask
+      - backend-django
+    networks:
+      - industrial-network
+    restart: always
+    healthcheck:
+      test: [ "CMD-SHELL", "curl -f http://localhost:3000 || exit 1" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ----------------------------------------
+  # COLETOR OPC UA
+  # ----------------------------------------
+  coletor:
+    build:
+      context: .\coletor
+      dockerfile: Dockerfile
+    container_name: coletor-prod
+    env_file:
+      - .env
+    environment:
+      # Sobrescreve URLs para comunicação interna Docker
+      - DJANGO_API_URL=http://backend-django:8000/api
+      - FLASK_API_URL=http://backend-flask:5000/api
+      - OPC_SERVER_URL=${OPC_SERVER_URL}
+      - OPC_USERNAME=${OPC_USERNAME:-}
+      - OPC_PASSWORD=${OPC_PASSWORD:-}
+      - INTERVALO_COLETA=${INTERVALO_COLETA:-2}
+      - TIMEOUT_REQUEST=${TIMEOUT_REQUEST:-10}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      - backend-flask
+    networks:
+      - industrial-network
+    restart: always
 
 volumes:
+  mysql-data:
+    driver: local
   influxdb-data:
-  postgres-data:
+    driver: local
+  chronograf-data:
+    driver: local
 
 networks:
   industrial-network:

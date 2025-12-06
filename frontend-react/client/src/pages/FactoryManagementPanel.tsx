@@ -218,29 +218,42 @@ const FactoryManagementPanel: React.FC = () => {
                     </CardHeader>
                     <CardContent>
                         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
-                            {sortedLines.map((line, idx) => (
-                                <div
-                                    key={line.linha}
-                                    className="flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 cursor-pointer transition border border-gray-100"
-                                    onClick={() => navigate(`/linha/${line.linha}`)}
-                                >
-                                    <div className="flex items-center gap-3">
-                                        <div className={`
-                                            w-6 h-6 flex items-center justify-center rounded-full text-xs font-bold
-                                            ${idx === 0 ? 'bg-yellow-100 text-yellow-700' : 'bg-gray-200 text-gray-600'}
-                                        `}>
-                                            {idx + 1}
+                            {sortedLines.map((line, idx) => {
+                                let rankStyle = {
+                                    emoji: '',
+                                    bg: 'bg-gray-50',
+                                    border: 'border-gray-100',
+                                    badge: 'bg-gray-200 text-gray-600'
+                                };
+
+                                if (idx === 0) rankStyle = { emoji: '🥇', bg: 'bg-yellow-50', border: 'border-yellow-200', badge: 'bg-yellow-100 text-yellow-700' };
+                                else if (idx === 1) rankStyle = { emoji: '🥈', bg: 'bg-slate-50', border: 'border-slate-200', badge: 'bg-slate-200 text-slate-700' };
+                                else if (idx === 2) rankStyle = { emoji: '🥉', bg: 'bg-orange-50', border: 'border-orange-200', badge: 'bg-orange-100 text-orange-800' };
+
+                                return (
+                                    <div
+                                        key={line.linha}
+                                        className={`flex items-center justify-between p-3 rounded-lg hover:bg-white hover:shadow-md cursor-pointer transition border ${rankStyle.bg} ${rankStyle.border}`}
+                                        onClick={() => navigate(`/linha/${line.linha}/detalhes`)}
+                                    >
+                                        <div className="flex items-center gap-3">
+                                            <div className={`
+                                                w-8 h-8 flex items-center justify-center rounded-full text-sm font-bold shadow-sm
+                                                ${rankStyle.badge}
+                                            `}>
+                                                {rankStyle.emoji || idx + 1}
+                                            </div>
+                                            <div>
+                                                <p className="font-bold text-gray-900 text-sm">{line.linha}</p>
+                                                <p className="text-[10px] text-gray-500">{line.status}</p>
+                                            </div>
                                         </div>
-                                        <div>
-                                            <p className="font-bold text-gray-900 text-sm">{line.linha}</p>
-                                            <p className="text-[10px] text-gray-500">{line.status}</p>
+                                        <div className="text-right">
+                                            <p className="font-bold text-indigo-600 text-sm">{line.oee_real}%</p>
                                         </div>
                                     </div>
-                                    <div className="text-right">
-                                        <p className="font-bold text-indigo-600 text-sm">{line.oee_real}%</p>
-                                    </div>
-                                </div>
-                            ))}
+                                );
+                            })}
                         </div>
                     </CardContent>
                 </Card>

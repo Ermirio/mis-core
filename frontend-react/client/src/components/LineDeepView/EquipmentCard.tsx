@@ -1,7 +1,9 @@
 import React from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Clock, Activity, CheckCircle, AlertTriangle, XCircle, Settings, PenTool, PauseCircle } from 'lucide-react';
 
 interface EquipmentCardProps {
+    id?: number; // Added id prop
     nome: string;
     funcao?: string;
     estado: number; // 0-9
@@ -14,6 +16,7 @@ interface EquipmentCardProps {
 }
 
 const EquipmentCard: React.FC<EquipmentCardProps> = ({
+    id,
     nome,
     funcao,
     estado,
@@ -24,6 +27,7 @@ const EquipmentCard: React.FC<EquipmentCardProps> = ({
     ruins,
     ultimaParada
 }) => {
+    const navigate = useNavigate();
 
     const getStatusInfo = (code: number) => {
         switch (code) {
@@ -41,7 +45,10 @@ const EquipmentCard: React.FC<EquipmentCardProps> = ({
     const StatusIcon = status.icon;
 
     return (
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+        <div
+            className={`bg-white rounded-lg shadow-sm border border-gray-200 p-4 transition-all hover:shadow-md ${id ? 'cursor-pointer hover:border-indigo-300' : ''}`}
+            onClick={() => id && navigate(`/equipamento/${id}`)}
+        >
             <div className="flex justify-between items-start mb-3">
                 <div>
                     <h3 className="font-bold text-gray-900">{nome}</h3>
