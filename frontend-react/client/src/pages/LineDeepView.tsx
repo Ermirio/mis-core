@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, RefreshCw } from 'lucide-react';
+import { ArrowLeft, RefreshCw, Calendar } from 'lucide-react';
 
 import Header from '../components/LineDeepView/Header';
 import Progress from '../components/LineDeepView/Progress';
@@ -59,6 +59,8 @@ const LineDeepView: React.FC = () => {
     const navigate = useNavigate();
     const [loading, setLoading] = useState(true);
     const [lastUpdate, setLastUpdate] = useState<Date>(new Date());
+    const [granularity, setGranularity] = useState<string>('shift');
+    const [analysisData, setAnalysisData] = useState<any>(null);
 
     // State for all data sections
     const [lineStatus, setLineStatus] = useState<any>(null);
@@ -214,11 +216,28 @@ const LineDeepView: React.FC = () => {
         }
     };
 
+    const fetchAnalysis = async () => {
+        if (!linhaId) return;
+        try {
+            const res = await fetch(`${DJANGO_API_URL}/linhas/${linhaId}/analysis/?granularity=${granularity}`);
+            if (res.ok) {
+                const data = await res.json();
+                setAnalysisData(data);
+            }
+        } catch (error) {
+            console.error("Error fetching analysis:", error);
+        }
+    };
+
     useEffect(() => {
         fetchData();
-        const interval = setInterval(fetchData, 5000); // 5s refresh
+        fetchAnalysis();
+        const interval = setInterval(() => {
+            fetchData();
+            fetchAnalysis();
+        }, 5000); // 5s refresh
         return () => clearInterval(interval);
-    }, [linhaId]);
+    }, [linhaId, granularity]);
 
     if (loading && !lineStatus && equipamentosDetalhados.length === 0) {
         return <div className="p-10 text-center">Carregando Detalhes da Linha...</div>;
@@ -247,18 +266,19 @@ const LineDeepView: React.FC = () => {
     // Vazão (t/h) - Use consolidated metrics if available, else calc
     const vazaoCalculada = metricasConsolidadas?.vazao_real_ton_hora ?? (tempoDecorridoHoras > 0 ? (producaoReal / tempoDecorridoHoras) : 0);
 
-    // Projeção Linear (Match Home.tsx: Meta * OLE%)
-    // Home.tsx: const projecaoEstimada = metaTotal > 0 ? metaTotal * (ole / 100) : 0;
-    const projecao = metaTotal > 0 ? metaTotal * (oleAtual / 100) : 0;
+
 
     // Tempo Decorrido %
     const tempoDecorridoPerc = tempoTotalTurno > 0 ? (tempoDecorrido / tempoTotalTurno) * 100 : 0;
 
-    // Ritmo Necessário
-    const ritmoNecessario = tempoTotalHoras > 0 ? (metaTotal / tempoTotalHoras) : 0;
+    // Ritmo Necessário (From Analysis API)
+    const ritmoNecessario = analysisData?.required_flow_rate ?? (tempoTotalHoras > 0 ? (metaTotal / tempoTotalHoras) : 0);
+
+    // Projeção (From Analysis API)
+    const projecao = analysisData?.projected_production ?? (metaTotal > 0 ? metaTotal * (oleAtual / 100) : 0);
 
     // Desvio
-    const desvioProjetado = projecao - metaTotal;
+    const desvioProjetado = projecao - (analysisData?.planned_production || metaTotal);
 
     // Prepare data for Header
     const headerProps = {
@@ -285,8 +305,22 @@ const LineDeepView: React.FC = () => {
                     Voltar para Visão Geral
                 </button>
                 <div className="text-sm text-gray-500 flex items-center gap-2">
+                    <div className="flex bg-white rounded-md shadow-sm border border-gray-200 p-1">
+                        {['shift', 'day', 'week', 'month'].map((g) => (
+                            <button
+                                key={g}
+                                onClick={() => setGranularity(g)}
+                                className={`px-3 py-1 text-xs font-medium rounded ${granularity === g
+                                    ? 'bg-blue-100 text-blue-700'
+                                    : 'text-gray-600 hover:bg-gray-50'
+                                    }`}
+                            >
+                                {g === 'shift' ? 'Turno' : g === 'day' ? 'Dia' : g === 'week' ? 'Semana' : 'Mês'}
+                            </button>
+                        ))}
+                    </div>
                     Última atualização: {lastUpdate.toLocaleTimeString()}
-                    <button onClick={fetchData} className="p-1 hover:bg-gray-200 rounded">
+                    <button onClick={() => { fetchData(); fetchAnalysis(); }} className="p-1 hover:bg-gray-200 rounded">
                         <RefreshCw className="w-4 h-4" />
                     </button>
                 </div>

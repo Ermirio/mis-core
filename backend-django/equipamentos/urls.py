@@ -3,6 +3,7 @@ from rest_framework.routers import DefaultRouter
 from . import views
 from . import tonnage_views
 from . import loss_analysis_views
+from . import views_analysis
 
 router = DefaultRouter()
 router.register(r'linhas', views.LinhaProducaoViewSet, basename='linha')
@@ -66,4 +67,7 @@ urlpatterns = [
     
     # Endpoint de KPIs de Produção da Fábrica (Novo)
     path('production/window/throughput/', views.FactoryProductionView.as_view({'get': 'throughput'}), name='factory-production-throughput'),
+
+    # Endpoint de Análise de Linha (Novo)
+    path('linhas/<str:pk>/analysis/', views_analysis.LineAnalysisView.as_view({'get': 'analysis'}), name='line-analysis'),
 ]

@@ -656,55 +656,55 @@ def metricas_fabrica_consolidadas(request):
                 'status': 'Online' if linha.ativa else 'Offline',
             }
             
-            # 2. TEMPO REAL: Buscar tonelagem e vazão do InfluxDB
+            # 2. BUSCAR MÉTRICAS AGREGADAS (InfluxDB)
+            # Substitui busca no MySQL e cálculo manual de Realtime
+            
+            from .influx_helpers import get_aggregated_metrics
+            from .turno_helpers import obter_turno_atual, calcular_inicio_turno
+            
+            turno_atual = obter_turno_atual()
+            timestamp_query = None
+            if turno_atual:
+                timestamp_query = calcular_inicio_turno(turno_atual)
+            
+            # Busca métricas da LINHA no InfluxDB
+            metrics = get_aggregated_metrics('linha', linha.codigo, 'TURNO', timestamp_query)
+            
+            # Valores default
             toneladas = 0.0
             vazao = 0.0
             contagem_saida = 0
+            oee = 0.0
+            disponibilidade = 0.0
+            performance = 0.0
+            qualidade = 0.0
+            descarte = 0
+            velocidade_real = 0.0
             
-            if equipamento_final and formato:
-                try:
-                    # Obter turno atual e início
-                    turno_atual = obter_turno_atual()
-                    inicio_turno = calcular_inicio_turno(turno_atual)
-                    
-                    # Buscar métricas em tempo real do InfluxDB
-                    metricas_rt = get_realtime_metrics(
-                        equipamento_codigo=equipamento_final.codigo,
-                        formato_gramas=formato,
-                        inicio_turno=inicio_turno
-                    )
-                    
-                    toneladas = metricas_rt['toneladas_turno']
-                    vazao = metricas_rt['vazao_ton_hora']
-                    contagem_saida = int(metricas_rt['contagem_atual'])
-                    
-                except Exception as e:
-                    # Log erro mas continua (fallback para 0.0)
-                    logging.error(f"Erro ao buscar métricas tempo real para {linha.nome}: {e}")
+            if metrics:
+                toneladas = float(metrics.get('toneladas', 0.0))
+                vazao = float(metrics.get('vazao', 0.0))
+                contagem_saida = int(metrics.get('producao', 0))
+                oee = float(metrics.get('oee', 0.0))
+                disponibilidade = float(metrics.get('disponibilidade', 0.0))
+                performance = float(metrics.get('performance', 0.0))
+                qualidade = float(metrics.get('qualidade', 0.0))
+                descarte = int(metrics.get('descarte', 0))
+                velocidade_real = float(metrics.get('velocidade_real', 0.0))
             
-            # 3. CONSOLIDADO: Buscar OEE do MySQL (último turno fechado)
-            metrica_consolidada = MetricaProducao.objects.filter(
-                linha=linha,
-                equipamento__isnull=True,
-                periodo='TURNO'
-            ).order_by('-data_hora').first()
-            
-            # 4. Montar resposta combinando tempo real + consolidado
             dados_linha.update({
-                # TEMPO REAL (InfluxDB)
                 'toneladas_produzidas': toneladas,
                 'vazao_real_ton_hora': vazao,
                 'formato_gramas': formato,
                 'contagem_saida': contagem_saida,
-                # CONSOLIDADO (MySQL - último turno fechado)
-                'oee': metrica_consolidada.oee if metrica_consolidada else 0.0,
-                'disponibilidade': metrica_consolidada.disponibilidade if metrica_consolidada else 0.0,
-                'performance': metrica_consolidada.performance if metrica_consolidada else 0.0,
-                'qualidade': metrica_consolidada.qualidade if metrica_consolidada else 0.0,
-                'descarte': metrica_consolidada.descarte if metrica_consolidada else 0,
-                'percentual_descarte': metrica_consolidada.percentual_descarte if metrica_consolidada else 0.0,
-                'velocidade_real': metrica_consolidada.velocidade_real if metrica_consolidada else 0.0,
-                'data_hora': metrica_consolidada.data_hora if metrica_consolidada else None
+                'oee': oee,
+                'disponibilidade': disponibilidade,
+                'performance': performance,
+                'qualidade': qualidade,
+                'descarte': descarte,
+                'percentual_descarte': (descarte / (contagem_saida + descarte) * 100) if (contagem_saida + descarte) > 0 else 0.0,
+                'velocidade_real': velocidade_real,
+                'data_hora': timestamp_query
             })
             
             # 5. SKU e Descrição: Buscar do InfluxDB
@@ -1859,6 +1859,202 @@ def importar_ordens_producao_excel(request):
 
 # ===== FACTORY PRODUCTION KPIS (NEW) =====
 
+
+        imported, errors = ExcelImporter.import_excel_to_model(
+            file,
+            LinhaProducao,
+            skip_errors=True
+        )
+        
+        return Response({
+            "status": "success",
+            "imported": imported,
+            "errors": errors
+        })
+    except Exception as e:
+        logging.error(f"Erro ao importar linhas: {e}")
+        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET'])
+def exportar_equipamentos_excel(request):
+    """Exporta todos os equipamentos para Excel."""
+    try:
+        from .excel_utils import ExcelExporter
+        queryset = Equipamento.objects.all()
+        return ExcelExporter.export_model_to_excel(
+            queryset,
+            Equipamento,
+            filename="equipamentos.xlsx"
+        )
+    except Exception as e:
+        logging.error(f"Erro ao exportar equipamentos: {e}")
+        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['POST'])
+def importar_equipamentos_excel(request):
+    """Importa equipamentos de um arquivo Excel."""
+    try:
+        from .excel_utils import ExcelImporter
+        if "file" not in request.FILES:
+            return Response(
+                {"error": "Nenhum arquivo fornecido"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        file = request.FILES["file"]
+        imported, errors = ExcelImporter.import_excel_to_model(
+            file,
+            Equipamento,
+            skip_errors=True
+        )
+        
+        return Response({
+            "status": "success",
+            "imported": imported,
+            "errors": errors
+        })
+    except Exception as e:
+        logging.error(f"Erro ao importar equipamentos: {e}")
+        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET'])
+def exportar_produtos_excel(request):
+    """Exporta todos os produtos para Excel."""
+    try:
+        from .excel_utils import ExcelExporter
+        queryset = Produto.objects.all()
+        return ExcelExporter.export_model_to_excel(
+            queryset,
+            Produto,
+            filename="produtos.xlsx"
+        )
+    except Exception as e:
+        logging.error(f"Erro ao exportar produtos: {e}")
+        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['POST'])
+def importar_produtos_excel(request):
+    """Importa produtos de um arquivo Excel."""
+    try:
+        from .excel_utils import ExcelImporter
+        if "file" not in request.FILES:
+            return Response(
+                {"error": "Nenhum arquivo fornecido"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        file = request.FILES["file"]
+        imported, errors = ExcelImporter.import_excel_to_model(
+            file,
+            Produto,
+            skip_errors=True
+        )
+        
+        return Response({
+            "status": "success",
+            "imported": imported,
+            "errors": errors
+        })
+    except Exception as e:
+        logging.error(f"Erro ao importar produtos: {e}")
+        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET'])
+def exportar_metricas_excel(request):
+    """Exporta todas as métricas de produção para Excel."""
+    try:
+        from .excel_utils import ExcelExporter
+        queryset = MetricaProducao.objects.all()
+        return ExcelExporter.export_model_to_excel(
+            queryset,
+            MetricaProducao,
+            filename="metricas_producao.xlsx"
+        )
+    except Exception as e:
+        logging.error(f"Erro ao exportar métricas: {e}")
+        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['POST'])
+def importar_metricas_excel(request):
+    """Importa métricas de produção de um arquivo Excel."""
+    try:
+        from .excel_utils import ExcelImporter
+        if "file" not in request.FILES:
+            return Response(
+                {"error": "Nenhum arquivo fornecido"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        file = request.FILES["file"]
+        imported, errors = ExcelImporter.import_excel_to_model(
+            file,
+            MetricaProducao,
+            skip_errors=True
+        )
+        
+        return Response({
+            "status": "success",
+            "imported": imported,
+            "errors": errors
+        })
+    except Exception as e:
+        logging.error(f"Erro ao importar métricas: {e}")
+        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET'])
+def exportar_ordens_producao_excel(request):
+    """Exporta todas as ordens de produção para Excel."""
+    try:
+        from .excel_utils import ExcelExporter
+        from .models import OrdemProducao
+        queryset = OrdemProducao.objects.all()
+        return ExcelExporter.export_model_to_excel(
+            queryset,
+            OrdemProducao,
+            filename="ordens_producao.xlsx"
+        )
+    except Exception as e:
+        logging.error(f"Erro ao exportar ordens de produção: {e}")
+        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['POST'])
+def importar_ordens_producao_excel(request):
+    """Importa ordens de produção de um arquivo Excel."""
+    try:
+        from .excel_utils import ExcelImporter
+        from .models import OrdemProducao
+        if "file" not in request.FILES:
+            return Response(
+                {"error": "Nenhum arquivo fornecido"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        file = request.FILES["file"]
+        imported, errors = ExcelImporter.import_excel_to_model(
+            file,
+            OrdemProducao,
+            skip_errors=True
+        )
+        
+        return Response({
+            "status": "success",
+            "imported": imported,
+            "errors": errors
+        })
+    except Exception as e:
+        logging.error(f"Erro ao importar ordens de produção: {e}")
+        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+# ===== FACTORY PRODUCTION KPIS (NEW) =====
+
 class FactoryProductionView(viewsets.ViewSet):
     """
     ViewSet para KPIs de Produção da Fábrica (Planejado vs Real vs Vazão Necessária)
@@ -1875,6 +2071,7 @@ class FactoryProductionView(viewsets.ViewSet):
           "actual_tons": number,           // in Tons
           "actual_tph": number,            // Tons/Hour
           "min_required_tph": number|null, // Tons/Hour or null if window closed
+          "required_flow": number|null,    // Alias for min_required_tph
           "window": { "from": ISO, "to": ISO, "elapsedHours": number, "hoursRemaining": number, "tz": "America/Sao_Paulo" },
           "notes": [string]
         }
@@ -1885,7 +2082,8 @@ class FactoryProductionView(viewsets.ViewSet):
         # 1. Time Window & Metrics
         from .utils import get_window, calculate_time_metrics
         from .turno_helpers import obter_turno_atual, calcular_inicio_turno
-        from .influx_helpers import get_realtime_metrics
+        from .influx_helpers import get_realtime_metrics, get_aggregated_metrics
+        from .models import LinhaProducao # Import LinhaProducao model
         
         now = timezone.localtime(timezone.now())
         start_time, end_time = get_window(granularity, now)
@@ -1893,117 +2091,47 @@ class FactoryProductionView(viewsets.ViewSet):
         if not start_time or not end_time:
             return Response({
                 'planned_tons': 0, 'actual_tons': 0, 'actual_tph': 0, 'min_required_tph': 0,
+                'required_flow': 0,
                 'window': None, 'notes': ['no_shift_config']
             })
 
         elapsed_hours, hours_remaining = calculate_time_metrics(start_time, end_time, now)
         
-        # 2. Planned Tons (CalendarioProducao)
-        # Unit: KG -> Divide by 1000 to get Tons
-        # Aggregation: Sum of all lines in the window
-        
-        planned_kg = 0
+        # 2. Planned Tons & Actual Tons (From InfluxDB Aggregated Metrics)
+        # Determine period and timestamp to query
+        periodo_influx = 'TURNO'
+        timestamp_query = None
         
         if granularity == 'shift':
+            periodo_influx = 'TURNO'
             turno_atual = obter_turno_atual()
             if turno_atual:
-                # Use data contabil logic if needed, but here we filter by turno and date range
-                # Assuming Calendario data matches the shift start date
-                agendamentos_qs = CalendarioProducao.objects.filter(
-                    data=start_time.date(),
-                    turno=turno_atual,
-                    programado=True
-                )
-                
-                # Heuristic: If meta < 10000, assume Tons. Else assume KG.
-                # This handles mixed units (L01=600 Tons, L02=960000 KG)
-                for ag in agendamentos_qs:
-                    val = float(ag.meta_producao_turno)
-                    if val < 10000:
-                        planned_tons += val
-                    else:
-                        planned_tons += val / 1000.0
-            else:
-                notes.append('no_active_shift')
-        else:
-            # Day/Week/Month: Sum all shifts within the date range
-            agendamentos_qs = CalendarioProducao.objects.filter(
-                data__gte=start_time.date(),
-                data__lte=end_time.date(),
-                programado=True
-            )
-            for ag in agendamentos_qs:
-                val = float(ag.meta_producao_turno)
-                if val < 10000:
-                    planned_tons += val
-                else:
-                    planned_tons += val / 1000.0
-        
-        # 3. Actual Tons (History + Realtime)
-        # Unit: Tons (RegistroProducaoTurno is already Tons, Realtime is Tons)
-        # Deduplication: History (closed shifts) + Realtime (current shift)
-        
-        actual_tons = 0.0
-        
-        # 3.1 History: Closed shifts strictly before the current shift (or just closed in window)
-        # We filter RegistroProducaoTurno by date range AND exclude current shift if it's in the list
-        # But simpler: RegistroProducaoTurno is only for CLOSED shifts (usually).
-        # However, to be safe against double counting with realtime:
-        # We sum History for all shifts EXCEPT the current active one (if any).
-        
-        turno_atual = obter_turno_atual()
-        
-        history_query = RegistroProducaoTurno.objects.filter(
-            data__gte=start_time.date(),
-            data__lte=end_time.date()
-        )
-        
-        if turno_atual and granularity == 'shift':
-             # For shift view, we only want history if it's NOT the current shift 
-             # (which shouldn't happen for active shift, but safety first)
-             history_query = history_query.exclude(turno=turno_atual)
-        elif turno_atual:
-             # For day/week, exclude current shift from history to use realtime for it
-             # Need to be careful: RegistroProducaoTurno might exist for current shift if it was manually closed?
-             # Assuming Realtime is always better for current shift.
-             history_query = history_query.exclude(turno=turno_atual, data=now.date())
-
-        history_sum = history_query.aggregate(total=Sum('producao_toneladas'))
-        actual_tons += float(history_sum['total'] or 0)
-        
-        # 3.2 Realtime: Current Shift ONLY
-        # Only add if current shift is within the requested window
-        # Shift view: Always add. Day view: Add if today.
-        
-        add_realtime = False
-        if granularity == 'shift':
-            add_realtime = True
-        elif granularity == 'day' and start_time.date() == now.date():
-            add_realtime = True
-        elif granularity in ['week', 'month'] and start_time.date() <= now.date() <= end_time.date():
-            add_realtime = True
+                timestamp_query = calcular_inicio_turno(turno_atual)
+        elif granularity == 'day':
+            periodo_influx = 'DIA'
+            # For day, we want the current day's aggregation. 
+            # Agregador saves DIA at 00:00 of the day.
+            timestamp_query = now.replace(hour=0, minute=0, second=0, microsecond=0)
             
-        if add_realtime and turno_atual:
-             # Sum realtime for all active lines
-             # We need to iterate lines to get realtime
-             linhas = LinhaProducao.objects.filter(ativa=True)
-             for linha in linhas:
-                 # Find main equipment (usually last one or specific type)
-                 # Reusing logic from metricas_fabrica_consolidadas
-                 equipamento = linha.equipamentos.filter(tipo__in=['PALETIZADOR', 'ENCHEDORA', 'ROTULADORA']).last()
-                 if not equipamento:
-                     equipamento = linha.equipamentos.last()
-                 
-                 if equipamento:
-                     # Find 'formato' tag
-                     tag_formato = equipamento.tags_coleta.filter(nome_metrica='formato').first()
-                     formato = float(tag_formato.formato) if tag_formato and tag_formato.formato else 1.0
-                     
-                     metrics = get_realtime_metrics(equipamento.codigo, formato, calcular_inicio_turno(turno_atual))
-                     actual_tons += metrics.get('toneladas_turno', 0)
+        # Query InfluxDB for actual tons (factory level)
+        # Assuming Factory Code is 'F01'
+        factory_code = 'F01' 
+        factory_metrics = get_aggregated_metrics('fabrica', factory_code, periodo_influx, timestamp_query)
+        actual_tons = float(factory_metrics.get('toneladas', 0.0)) if factory_metrics else 0.0
 
+        # Calculate total_planned by summing line-level 'meta'
+        total_planned_from_lines = 0.0
+        linhas = LinhaProducao.objects.all()
+        for linha in linhas:
+            line_metrics = get_aggregated_metrics('linha', linha.codigo, periodo_influx, timestamp_query)
+            if line_metrics:
+                # Use meta_toneladas (Tons) if available, otherwise 0 (avoid mixing Units)
+                total_planned_from_lines += float(line_metrics.get('meta_toneladas', 0.0))
+        
+        planned_tons = total_planned_from_lines # Use the sum of line-level planned as the factory planned_tons
+            
         # 4. TPH Calculations
-        actual_tph = actual_tons / elapsed_hours
+        actual_tph = actual_tons / elapsed_hours if elapsed_hours > 0 else 0.0
         
         saldo = planned_tons - actual_tons
         min_required_tph = 0.0
@@ -2028,6 +2156,9 @@ class FactoryProductionView(viewsets.ViewSet):
             'actual_tons': round(actual_tons, 2),
             'actual_tph': round(actual_tph, 2),
             'min_required_tph': round(min_required_tph, 2) if min_required_tph is not None else None,
+            'required_flow': round(min_required_tph, 2) if min_required_tph is not None else None, # New field,
+            'planejado_total': round(planned_tons, 2),
+            'vazao_necessaria': round(min_required_tph, 2) if min_required_tph is not None else None,
             'status_flag': status_flag,
             'window': {
                 'from': start_time.isoformat(),

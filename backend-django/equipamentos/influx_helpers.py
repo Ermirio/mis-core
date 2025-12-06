@@ -505,3 +505,55 @@ def get_production_by_format(equipamento_codigo: str, formato_gramas: int,
         'primeira_contagem': 0.0,
         'ultima_contagem': 0.0
     }
+
+
+def get_aggregated_metrics(nivel: str, codigo: str, periodo: str, 
+                           time_start: Optional[datetime] = None, 
+                           client: Optional[InfluxDBClient] = None) -> Dict[str, Any]:
+    """
+    Busca métricas agregadas do InfluxDB (metricas_agregadas)
+    
+    Args:
+        nivel: 'equipamento', 'linha', 'area', 'fabrica'
+        codigo: Código da entidade (ex: 'L01', 'F01')
+        periodo: 'HORA', 'TURNO', 'DIA'
+        time_start: Timestamp exato (opcional). Se None, pega o último.
+        client: Cliente InfluxDB (opcional)
+        
+    Returns:
+        Dict com fields e tags do ponto encontrado ou vazio.
+    """
+    if client is None:
+        client = get_influx_client()
+    
+    time_filter = ""
+    limit_clause = ""
+    
+    if time_start:
+        # Busca exato ou range pequeno? Influx compara exato com =
+        time_filter = f"AND time = '{time_start.isoformat()}'"
+    else:
+        # Se não passar tempo, pega o último registro
+        limit_clause = "ORDER BY time DESC LIMIT 1"
+        
+    query = f"""
+        SELECT *
+        FROM metricas_agregadas
+        WHERE "nivel" = '{nivel}'
+        AND "codigo" = '{codigo}'
+        AND "periodo" = '{periodo}'
+        {time_filter}
+        {limit_clause}
+    """
+    
+    try:
+        result = client.query(query)
+        points = list(result.get_points())
+        
+        if points:
+            return points[0]
+    except Exception as e:
+        import logging
+        logging.error(f"Erro ao buscar métricas agregadas: {e}")
+        
+    return {}
