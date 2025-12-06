@@ -1909,28 +1909,35 @@ class FactoryProductionView(viewsets.ViewSet):
             if turno_atual:
                 # Use data contabil logic if needed, but here we filter by turno and date range
                 # Assuming Calendario data matches the shift start date
-                agendamentos = CalendarioProducao.objects.filter(
+                agendamentos_qs = CalendarioProducao.objects.filter(
                     data=start_time.date(),
                     turno=turno_atual,
                     programado=True
-                ).aggregate(total=Sum('meta_producao_turno'))
-                planned_kg = agendamentos['total'] or 0
+                )
+                
+                # Heuristic: If meta < 10000, assume Tons. Else assume KG.
+                # This handles mixed units (L01=600 Tons, L02=960000 KG)
+                for ag in agendamentos_qs:
+                    val = float(ag.meta_producao_turno)
+                    if val < 10000:
+                        planned_tons += val
+                    else:
+                        planned_tons += val / 1000.0
             else:
                 notes.append('no_active_shift')
         else:
             # Day/Week/Month: Sum all shifts within the date range
-            # Note: This simplifies to Date range. 
-            # Ideally we should filter by exact timestamps if shifts cross days, 
-            # but Calendario is by Date. 
-            # For "Day", it's all shifts of that date.
-            agendamentos = CalendarioProducao.objects.filter(
+            agendamentos_qs = CalendarioProducao.objects.filter(
                 data__gte=start_time.date(),
                 data__lte=end_time.date(),
                 programado=True
-            ).aggregate(total=Sum('meta_producao_turno'))
-            planned_kg = agendamentos['total'] or 0
-            
-        planned_tons = float(planned_kg) / 1000.0
+            )
+            for ag in agendamentos_qs:
+                val = float(ag.meta_producao_turno)
+                if val < 10000:
+                    planned_tons += val
+                else:
+                    planned_tons += val / 1000.0
         
         # 3. Actual Tons (History + Realtime)
         # Unit: Tons (RegistroProducaoTurno is already Tons, Realtime is Tons)

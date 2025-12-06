@@ -38,6 +38,7 @@ class EquipamentoSerializer(serializers.ModelSerializer):
     linha_nome = serializers.CharField(source='linha.nome', read_only=True)
     linha_codigo = serializers.CharField(source='linha.codigo', read_only=True)
     sensores = SensorSerializer(many=True, read_only=True)
+    formato_padrao = serializers.SerializerMethodField()
     
     class Meta:
         model = Equipamento
@@ -46,9 +47,14 @@ class EquipamentoSerializer(serializers.ModelSerializer):
             'velocidade_nominal', 'velocidade_maxima', 'meta_oee',
             'temperatura_min', 'temperatura_max', 'pressao_min', 'pressao_max',
             'observacoes', 'linha', 'linha_nome', 'linha_codigo', 'sensores',
-            'ordem_na_linha',
+            'ordem_na_linha', 'formato_padrao',
             'criado_em', 'atualizado_em'
         ]
+
+    def get_formato_padrao(self, obj):
+        """Retorna o formato (peso) da tag de produção principal"""
+        tag = obj.tags_coleta.filter(nome_metrica__in=['contagem_saida', 'producao', 'contador']).first()
+        return tag.formato if tag else None
 
 
 class EquipamentoColetorSerializer(serializers.ModelSerializer):

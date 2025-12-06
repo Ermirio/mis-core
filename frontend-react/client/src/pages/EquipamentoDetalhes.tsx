@@ -70,6 +70,7 @@ interface Equipamento {
   linha_nome: string;
   velocidade_nominal: number;
   meta_oee: number;
+  formato_padrao?: number; // Peso em gramas
 }
 
 interface Metrica {
@@ -372,33 +373,60 @@ const EquipamentoDetalhes: React.FC = () => {
 
   // Métrica Atual Display
   const metricaAtualDisplay = useMemo(() => {
+    // Formato (peso) em gramas
+    const formato = equipamento?.formato_padrao || 0;
+
     // Se Turno Atual e não consolidado, tenta mostrar Realtime
     if (filterType === 'turno_atual' && !isConsolidated && dadosTempoReal) {
+      const prod = dadosTempoReal.medicoes.contagem_saida;
       return {
-        producao: dadosTempoReal.medicoes.contagem_saida,
+        producao: prod,
+        toneladas: (prod * formato) / 1000000, // gramas -> toneladas (div 1.000.000)
         velocidade: dadosTempoReal.medicoes.velocidade_atual,
         descarte_perc: dadosTempoReal.medicoes.percentual_descarte,
         oee: dadosTempoReal.medicoes.oee_realtime || 0
       };
     }
-    // Senão, mostra o primeiro item do histórico (mais recente ou o consolidado)
-    if (historico.length > 0) {
-      // Se consolidado, deve ter apenas 1 item
-      const item = isConsolidated ? historico[0] : historico[historico.length - 1]; // Ou o mais recente? A API retorna ordenado?
-      // Assumindo que API retorna cronológico (antigo -> novo). Se queremos o "atual" ou "total", pegamos o último ou o único.
-      // Se for consolidado, historico[0] é o total.
-      // Se for detalhado, queremos o último ponto (mais recente).
-      const target = isConsolidated ? historico[0] : historico[historico.length - 1];
 
-      return {
-        producao: target.contagem_saida,
-        velocidade: target.velocidade_real,
-        descarte_perc: target.percentual_descarte,
-        oee: target.oee
-      };
+    // Senão, agrega do histórico
+    if (historico.length > 0) {
+      if (isConsolidated) {
+        // Se consolidado, o backend já retornou totais (historico[0])
+        const target = historico[0];
+        return {
+          producao: target.contagem_saida,
+          toneladas: (target.contagem_saida * formato) / 1000000,
+          velocidade: target.velocidade_real,
+          descarte_perc: target.percentual_descarte,
+          oee: target.oee
+        };
+      } else {
+        // Se detalhado
+        const totalProducao = historico.reduce((acc, curr) => acc + curr.contagem_saida, 0);
+        const totalDescarte = historico.reduce((acc, curr) => acc + curr.descarte, 0);
+        const avgVelocidade = historico.reduce((acc, curr) => acc + curr.velocidade_real, 0) / historico.length;
+
+        // OEE: O usuário pediu "apenas o oee que o equipamento esta em tempo real olhando para tras".
+        // Se o histórico é cumulativo (ex: OEE do turno), o último valor é o correto.
+        // Se o histórico é instantâneo, a média ponderada seria melhor, mas o usuário disse "não deve ser médio".
+        // Vamos assumir que para Turno/Dia, queremos o valor FINAL do período.
+        const lastItem = historico[historico.length - 1];
+        const finalOEE = lastItem.oee;
+
+        const total = totalProducao + totalDescarte;
+        const percDescarte = total > 0 ? (totalDescarte / total) * 100 : 0;
+
+        return {
+          producao: totalProducao,
+          toneladas: (totalProducao * formato) / 1000000,
+          velocidade: avgVelocidade,
+          descarte_perc: percDescarte,
+          oee: finalOEE
+        };
+      }
     }
     return null;
-  }, [filterType, isConsolidated, dadosTempoReal, historico]);
+  }, [filterType, isConsolidated, dadosTempoReal, historico, equipamento]);
 
   // Gráfico
   const chartData = useMemo(() => {
@@ -507,7 +535,7 @@ const EquipamentoDetalhes: React.FC = () => {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
               <div>
                 <p className="text-2xl font-bold">{(metricaAtualDisplay?.velocidade ?? 0).toFixed(1)}</p>
                 <p className="text-xs text-gray-500">Velocidade (un/min)</p>
@@ -515,6 +543,10 @@ const EquipamentoDetalhes: React.FC = () => {
               <div>
                 <p className="text-2xl font-bold">{metricaAtualDisplay?.producao ?? 0}</p>
                 <p className="text-xs text-gray-500">Produção (un)</p>
+              </div>
+              <div>
+                <p className="text-2xl font-bold text-blue-600">{(metricaAtualDisplay?.toneladas ?? 0).toFixed(3)}</p>
+                <p className="text-xs text-gray-500">Produção (t)</p>
               </div>
               <div>
                 <p className="text-2xl font-bold text-red-600">{(metricaAtualDisplay?.descarte_perc ?? 0).toFixed(1)}%</p>

@@ -982,34 +982,79 @@ def get_linha_historico(linha_nome):
         if interval == 'total':
             group_by = '1000d' # Hack to group all
 
-        # Query: Sum of production across all equipment, Mean of OEE across all equipment
-        # InfluxQL subquery
-        query = f"""
-            SELECT 
-                sum(producao) as producao_total,
-                mean(oee) as oee_medio
+        # 1. Fetch Last Equipment for Production Reference
+        last_equipment_code = None
+        line_code = linha_nome # Default to passed name if lookup fails
+
+        try:
+            # Fetch Line ID - Try Code First
+            resp_linha = requests.get(f"{DJANGO_API_URL}/linhas/?codigo={linha_nome}", timeout=2)
+            data_linha = resp_linha.json()
+            results_linha = data_linha.get('results', data_linha)
+            
+            # Fallback: Try Search (Name/Code)
+            if not results_linha:
+                resp_linha = requests.get(f"{DJANGO_API_URL}/linhas/?search={linha_nome}", timeout=2)
+                data_linha = resp_linha.json()
+                results_linha = data_linha.get('results', data_linha)
+
+            if results_linha:
+                linha_id = results_linha[0]['id']
+                line_code = results_linha[0]['codigo'] # Use correct code (e.g. L01)
+                
+                # Fetch Equipments
+                resp_eq = requests.get(f"{DJANGO_API_URL}/equipamentos/?linha={linha_id}", timeout=2)
+                if resp_eq.status_code == 200:
+                    data_eq = resp_eq.json()
+                    equipments = data_eq.get('results', data_eq)
+                    
+                    # Sort by order and pick last
+                    if equipments:
+                        equipments.sort(key=lambda x: x.get('ordem_na_linha', 0))
+                        last_equipment_code = equipments[-1]['codigo']
+                        logger.info(f"Line {linha_nome}: Using {last_equipment_code} for production total.")
+        except Exception as e:
+            logger.error(f"Error determining last equipment for line {linha_nome}: {e}")
+
+        historico_map = {}
+
+        # 2. Query Production (Last Equipment Only)
+        if last_equipment_code:
+            query_prod = f"""
+                SELECT spread(contagem_saida) as producao_total
+                FROM production
+                WHERE "equipment" = '{last_equipment_code}'
+                AND time >= '{s_str}' AND time <= '{e_str}'
+                GROUP BY time({group_by}) fill(0)
+            """
+            rs_prod = influx_client.query(query_prod)
+            for p in rs_prod.get_points():
+                ts = p['time']
+                if ts not in historico_map: historico_map[ts] = {'data_hora': ts, 'producao_total': 0, 'oee_medio': 0}
+                historico_map[ts]['producao_total'] = int(p['producao_total'] or 0)
+        
+        # 3. Query OEE (Average of All Equipments)
+        # Use line_code here instead of linha_nome
+        query_oee = f"""
+            SELECT mean(oee) as oee_medio
             FROM (
-                SELECT 
-                    spread(contagem_saida) as producao,
-                    mean(oee_realtime) as oee
+                SELECT mean(oee_realtime) as oee
                 FROM production 
-                WHERE "line" = '{linha_nome}' 
+                WHERE "line" = '{line_code}' 
                 AND time >= '{s_str}' AND time <= '{e_str}' 
                 GROUP BY time({group_by}), "equipment"
             ) 
             GROUP BY time({group_by}) fill(0)
         """
-        
-        rs = influx_client.query(query)
-        points = list(rs.get_points())
-        
-        historico = []
-        for p in points:
-            historico.append({
-                'data_hora': p['time'],
-                'producao_total': int(p['producao_total'] or 0),
-                'oee_medio': float(p['oee_medio'] or 0)
-            })
+        rs_oee = influx_client.query(query_oee)
+        for p in rs_oee.get_points():
+            ts = p['time']
+            if ts not in historico_map: historico_map[ts] = {'data_hora': ts, 'producao_total': 0, 'oee_medio': 0}
+            historico_map[ts]['oee_medio'] = float(p['oee_medio'] or 0)
+
+        # Convert map to list and sort
+        historico = list(historico_map.values())
+        historico.sort(key=lambda x: x['data_hora'])
 
         return jsonify({
             'linha': linha_nome,
@@ -1030,7 +1075,7 @@ def get_equipamento_status(eq_code):
         if not influx_client:
             return jsonify({'error': 'DB not initialized'}), 500
 
-        query = f"SELECT last(estado_maquina) as estado_maquina, last(velocidade_atual) as velocidade_atual, last(ordem_producao) as ordem_producao, last(sku_codigo) as sku_codigo, last(descricao) as descricao, last(cuc) as cuc FROM production WHERE \"equipment\" = '{eq_code}'"
+        query = f"SELECT last(estado_maquina) as estado_maquina, last(velocidade_atual) as velocidade_atual, last(ordem_producao) as ordem_producao, last(sku_codigo) as sku_codigo, last(descricao) as descricao, last(cuc) as cuc, last(contagem_saida) as contagem_saida, last(descarte) as descarte, last(oee_realtime) as oee_realtime FROM production WHERE \"equipment\" = '{eq_code}'"
         rs = influx_client.query(query)
         points = list(rs.get_points())
         
@@ -1043,11 +1088,20 @@ def get_equipamento_status(eq_code):
                     'ordem_producao': 'N/A',
                     'sku_codigo': 'N/A',
                     'descricao': 'Aguardando dados...',
-                    'cuc': 0
+                    'cuc': 0,
+                    'contagem_saida': 0,
+                    'descarte': 0,
+                    'percentual_descarte': 0,
+                    'oee_realtime': 0
                 }
             })
 
         point = points[0]
+        contagem = float(point.get('contagem_saida', 0) or 0)
+        descarte = float(point.get('descarte', 0) or 0)
+        total = contagem + descarte
+        perc_descarte = (descarte / total * 100) if total > 0 else 0
+
         return jsonify({
             'nome': eq_code,
             'medicoes': {
@@ -1056,7 +1110,11 @@ def get_equipamento_status(eq_code):
                 'ordem_producao': point.get('ordem_producao', 'N/A'),
                 'sku_codigo': point.get('sku_codigo', 'N/A'),
                 'descricao': point.get('descricao', 'N/A'),
-                'cuc': point.get('cuc', 'N/A')
+                'cuc': point.get('cuc', 'N/A'),
+                'contagem_saida': contagem,
+                'descarte': descarte,
+                'percentual_descarte': round(perc_descarte, 2),
+                'oee_realtime': float(point.get('oee_realtime', 0) or 0)
             }
         })
 

@@ -38,9 +38,25 @@ def get_factory_kpis(period=None):
             'Linha 20_B': 'L20_B'
         }
 
-        # 1. Fetch Flow/Production from Django
+        # 1. Fetch Flow/Production/Planned/Required from Django
         django_metrics = {}
+        factory_totals = {
+            'producao_planejada_t': 0.0,
+            'vazao_necessaria_tph': 0.0
+        }
+        
         try:
+            # New: Fetch Factory Totals (Throughput)
+            granularity_map = {'turno': 'shift', 'dia': 'day', 'semana': 'week', 'mes': 'month'}
+            granularity = granularity_map.get(period, 'shift')
+            
+            resp_prod = requests.get(f"{DJANGO_API_URL}/production/window/throughput?granularity={granularity}", timeout=3)
+            if resp_prod.status_code == 200:
+                data_prod = resp_prod.json()
+                factory_totals['producao_planejada_t'] = float(data_prod.get('planned_tons', 0))
+                factory_totals['vazao_necessaria_tph'] = float(data_prod.get('min_required_tph') or 0)
+
+            # Existing: Fetch Line Metrics
             resp = requests.get(f"{DJANGO_API_URL}/metricas_fabrica_consolidadas/", timeout=3)
             if resp.status_code == 200:
                 for line in resp.json():
@@ -171,8 +187,8 @@ def get_factory_kpis(period=None):
             'producao_real_t': round(total_producao, 1),
             'oee_fabril_real': round(avg_oee, 1),
             'oee_fabril_planejado': 85,
-            'producao_planejada_t': 0,
-            'vazao_necessaria_tph': 0,
+            'producao_planejada_t': round(factory_totals['producao_planejada_t'], 1),
+            'vazao_necessaria_tph': round(factory_totals['vazao_necessaria_tph'], 1),
             'oee_global': round(avg_oee, 1),
             'disponibilidade_global': 0,
             'performance_global': 0,
