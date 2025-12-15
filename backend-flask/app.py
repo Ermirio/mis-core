@@ -36,9 +36,16 @@ def create_app():
         app.extensions['influx_client'] = influx_client
         app.extensions['production_engine'] = production_engine
         
-        logger.info(f"✓ Engine Iniciado (Conectado ao Django: {DJANGO_API_URL})")
+        app.extensions['production_engine'] = production_engine
+        
+        logger.info(f"[OK] Engine Iniciado (Conectado ao Django: {DJANGO_API_URL})")
+        
+        # Start Scheduler
+        from scheduler import start_scheduler
+        start_scheduler(app)
+        
     except Exception as e:
-        logger.error(f"✗ Erro Crítico na Inicialização: {e}")
+        logger.error(f"[ERROR] Erro Crítico na Inicialização: {e}")
         app.extensions['influx_client'] = None
         app.extensions['production_engine'] = None
 

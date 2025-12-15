@@ -547,12 +547,14 @@ class TagColeta(models.Model):
 # ===== SENSORES =====
 
 class TipoSensor(models.TextChoices):
-    ENTRADA = 'ENTRADA', 'Sensor de Entrada'
-    SAIDA = 'SAIDA', 'Sensor de Saída'
-    TEMPERATURA = 'TEMPERATURA', 'Sensor de Temperatura'
-    PRESSAO = 'PRESSAO', 'Sensor de Pressão'
-    VELOCIDADE = 'VELOCIDADE', 'Sensor de Velocidade'
-    NIVEL = 'NIVEL', 'Sensor de Nível'
+    INPUT_BOOL = 'INPUT_BOOL', 'Input Digital (Booleano)'
+    INPUT_FLOAT = 'INPUT_FLOAT', 'Input Analógico (Decimal)'
+    INPUT_INT = 'INPUT_INT', 'Input Inteiro'
+    TIMER = 'TIMER', 'Temporizador (Tempo)'
+    COUNTER = 'COUNTER', 'Contador'
+    SETPOINT = 'SETPOINT', 'Setpoint / Ajuste'
+    LIMIT = 'LIMIT', 'Limite / Parâmetro'
+    OUTRO = 'OUTRO', 'Outro'
 
 class Sensor(models.Model):
     """Sensor associado a um equipamento ou linha"""

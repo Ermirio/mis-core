@@ -12,7 +12,7 @@ api_bp = Blueprint('api', __name__)
 logger = logging.getLogger(__name__)
 
 from constants import ESTADOS_MAQUINA
-from services.diagnostics import capture_golden_state, get_latest_golden_state
+from services.diagnostics import capture_golden_state, get_latest_golden_state, get_golden_state_history
 from services.diagnostics_engine import run_diagnostics
 from services.realtime_store import get_equipamento_realtime
 
@@ -72,6 +72,54 @@ def changed_state(eq, state):
     except Exception as e:
         logger.error(f"Error getting all realtime: {e}")
         return jsonify({'error': str(e)}), 500
+
+@api_bp.route('/api/health/system', methods=['GET'])
+def system_health():
+    """
+    Check connectivity: Flask -> InfluxDB, Flask -> Django, and Coletor Status
+    """
+    status = {
+        'influxdb': False,
+        'django': False,
+        'coletor': False,
+        'details': {}
+    }
+    
+    # 1. InfluxDB (Ping)
+    try:
+        influx = current_app.extensions.get('influx_client')
+        if influx:
+            influx.ping()
+            status['influxdb'] = True
+    except Exception as e:
+        status['details']['influxdb_error'] = str(e)
+
+    # 2. Django (Ping)
+    try:
+        from decouple import config
+        import requests
+        django_url = config('DJANGO_API_URL', default='http://127.0.0.1:8000/api')
+        # Tenta endpoint leve (ex: turnos)
+        r = requests.get(f"{django_url}/turnos/?ativo=true", timeout=2)
+        if r.status_code == 200:
+            status['django'] = True
+    except Exception as e:
+        status['details']['django_error'] = str(e)
+
+    # 3. Coletor (Check Heartbeats)
+    engine = current_app.extensions.get('production_engine')
+    if engine and hasattr(engine, 'heartbeats') and engine.heartbeats:
+        # Se algum equipamento reportou nos ultimos 30s
+        now = time.time()
+        recent = [t for t in engine.heartbeats.values() if (now - t) < 30]
+        if recent:
+            status['coletor'] = True
+        else:
+             status['details']['coletor_error'] = "Sem dados nos últimos 30s"
+    else:
+        status['details']['coletor_error'] = "Nenhum dado recebido desde startup"
+
+    return jsonify(status)
 
 @api_bp.route('/api/linha/<linha_nome>/status', methods=['GET'])
 def get_linha_status(linha_nome):
@@ -478,13 +526,54 @@ def get_ole_realtime(linha_nome):
         if not influx_client or not production_engine:
             return jsonify({'error': 'Engine/DB not initialized'}), 500
 
-        # 1. Busca Produção Real (Toneladas) - Máximo entre os equipamentos
-        query = f"SELECT last(toneladas_turno) FROM production WHERE \"line\" = '{linha_nome}' GROUP BY \"equipment\""
-        rs = influx_client.query(query)
-        points = list(rs.get_points())
-        toneladas_real = 0.0
-        if points:
-            toneladas_real = max([float(p['last']) for p in points if p['last'] is not None], default=0.0)
+        # 1. Busca Produção Real (Toneladas) USANDO O ÚLTIMO EQUIPAMENTO DA LINHA
+        # Busca config da linha para saber ordem
+        producao_real_ton = 0.0
+        taxa_instantanea = 0.0 # Ton/h
+        
+        try:
+             # Busca ID da Linha primeiro para pegar equipamentos ordenados
+            import requests
+            from decouple import config
+            DJANGO_API_URL = config('DJANGO_API_URL', default='http://127.0.0.1:8000/api')
+            
+            resp_linha = requests.get(f"{DJANGO_API_URL}/linhas/?codigo={linha_nome}", timeout=2)
+            if resp_linha.ok:
+                data_linha = resp_linha.json()
+                res_l = data_linha.get('results', data_linha)
+                if res_l:
+                    l_id = res_l[0]['id']
+                    # Busca equipamentos ordenados
+                    resp_eq = requests.get(f"{DJANGO_API_URL}/equipamentos/?linha={l_id}", timeout=2)
+                    if resp_eq.ok:
+                        data_eq = resp_eq.json()
+                        eqs = data_eq.get('results', data_eq)
+                        # Ordena por 'ordem_na_linha' descrescente para achar o último
+                        eqs.sort(key=lambda x: x.get('ordem_na_linha', 0), reverse=True)
+                        if eqs:
+                            ultimo_eq = eqs[0]['codigo']
+                            
+                            # Busca dados do ultimo equipamento
+                            q_last = f"SELECT last(toneladas_turno), last(velocidade_atual), last(formato_gramas) FROM production WHERE \"equipment\" = '{ultimo_eq}'"
+                            rs_last = influx_client.query(q_last)
+                            pts_last = list(rs_last.get_points())
+                            if pts_last:
+                                producao_real_ton = float(pts_last[0].get('last', 0) or 0)
+                                vel = float(pts_last[0].get('last_1', 0) or 0)
+                                fmt = float(pts_last[0].get('last_2', 0) or 0)
+                                # Calcula TPH Instantaneo
+                                if fmt > 0:
+                                    taxa_instantanea = (vel * 60 * fmt) / 1_000_000
+        except Exception as e:
+            logger.error(f"Erro buscando ultimo eq: {e}")
+
+        # Fallback se falhar (mantem logica antiga de MAX)
+        if producao_real_ton == 0:
+            query = f"SELECT last(toneladas_turno) FROM production WHERE \"line\" = '{linha_nome}' GROUP BY \"equipment\""
+            rs = influx_client.query(query)
+            points = list(rs.get_points())
+            if points:
+                producao_real_ton = max([float(p['last']) for p in points if p['last'] is not None], default=0.0)
 
         # 2. Busca Meta do Turno (Django) e Calcula Tempo
         meta_toneladas = 0.0
@@ -494,40 +583,41 @@ def get_ole_realtime(linha_nome):
         # Dados do Turno Atual
         turno_info = production_engine.shift_manager.get_turno_info()
         
-        # Busca ID da Linha
-        resp_linha = requests.get(f"{DJANGO_API_URL}/linhas/?codigo={linha_nome}", timeout=2)
-        if resp_linha.status_code == 200:
-            data_linha = resp_linha.json()
-            results_linha = data_linha.get('results', data_linha)
-            if results_linha:
-                linha_id = results_linha[0]['id']
-                
-                # Busca Calendário (com correção de data do turno)
-                if turno_info and 'inicio_timestamp' in turno_info:
-                     dt_inicio = datetime.fromtimestamp(turno_info['inicio_timestamp'])
-                     query_date = dt_inicio.strftime('%Y-%m-%d')
-                else:
-                     query_date = datetime.now().strftime('%Y-%m-%d')
-                     
-                resp_cal = requests.get(f"{DJANGO_API_URL}/calendario/?linha_id={linha_id}&data={query_date}", timeout=2)
-                
-                if resp_cal.status_code == 200:
-                    data_cal = resp_cal.json()
-                    results_cal = data_cal.get('results', data_cal)
-                    if results_cal:
-                        for entry in results_cal:
-                            if entry.get('programado') and entry.get('meta_producao_turno'):
-                                val = float(entry.get('meta_producao_turno'))
-                                if val > 1000: val /= 1000.0
-                                
-                                # Tenta casar com o turno atual
-                                if turno_info and entry.get('turno_nome') == turno_info.get('nome'):
-                                    meta_toneladas = val
-                                    break
-                                
-                                # Fallback
-                                if meta_toneladas == 0:
-                                    meta_toneladas = val
+        # Busca ID da Linha (Redundante mas mantendo estrutura para pegar calendario)
+        # Otimizacao: se ja pegamos l_id acima, reutilizar. Mas o scopo do try acima é local.
+        # Repetindo logica de meta com robustez
+        try:
+             resp_linha = requests.get(f"{DJANGO_API_URL}/linhas/?codigo={linha_nome}", timeout=2)
+             if resp_linha.status_code == 200:
+                data_linha = resp_linha.json()
+                results_linha = data_linha.get('results', data_linha)
+                if results_linha:
+                    linha_id = results_linha[0]['id']
+                    
+                    # Busca Calendário (com correção de data do turno)
+                    if turno_info and 'inicio_timestamp' in turno_info:
+                         dt_inicio = datetime.fromtimestamp(turno_info['inicio_timestamp'])
+                         query_date = dt_inicio.strftime('%Y-%m-%d')
+                    else:
+                         query_date = datetime.now().strftime('%Y-%m-%d')
+                         
+                    resp_cal = requests.get(f"{DJANGO_API_URL}/calendario/?linha_id={linha_id}&data={query_date}", timeout=2)
+                    
+                    if resp_cal.status_code == 200:
+                        data_cal = resp_cal.json()
+                        results_cal = data_cal.get('results', data_cal)
+                        if results_cal:
+                            for entry in results_cal:
+                                if entry.get('programado') and entry.get('meta_producao_turno'):
+                                    val = float(entry.get('meta_producao_turno'))
+                                    if val > 1000: val /= 1000.0
+                                    
+                                    if turno_info and entry.get('turno_nome') == turno_info.get('nome'):
+                                        meta_toneladas = val
+                                        break
+                                    if meta_toneladas == 0:
+                                        meta_toneladas = val
+        except: pass
 
         # 3. Calcula Tempo Decorrido e Total
         if turno_info:
@@ -545,31 +635,55 @@ def get_ole_realtime(linha_nome):
             tempo_total_turno = (fim - inicio).total_seconds()
             tempo_decorrido = (now - inicio).total_seconds()
             
-            # Cap no tempo decorrido (não pode ser maior que o total se o turno acabou)
+            # Cap no tempo decorrido
             if tempo_decorrido > tempo_total_turno:
                 tempo_decorrido = tempo_total_turno
         
-        # 4. Cálculo OLE (OMAC)
+        # 4. Cálculo OLE (OMAC) e DYNAMIC METRICS
         producao_esperada = 0.0
         ole = 0.0
         projecao = 0.0
-        
+        ritmo_necessario = 0.0
+
         if meta_toneladas > 0 and tempo_total_turno > 0:
+            logger.info(f"DEBUG ESPERADO: Meta={meta_toneladas}, Decorrido={tempo_decorrido}, Total={tempo_total_turno}")
             producao_esperada = meta_toneladas * (tempo_decorrido / tempo_total_turno)
             
             if producao_esperada > 0:
-                ole = (toneladas_real / producao_esperada) * 100.0
+                ole = (producao_real_ton / producao_esperada) * 100.0
             
-            # Projeção Linear
-            if tempo_decorrido > 0:
-                taxa_atual = toneladas_real / tempo_decorrido
-                projecao = taxa_atual * tempo_total_turno
+            # --- NOVAS FÓRMULAS DINÂMICAS ---
+            tempo_restante_horas = (tempo_total_turno - tempo_decorrido) / 3600.0
+            
+            logger.info(f"DEBUG PROJECAO: Real={producao_real_ton}, Taxa={taxa_instantanea}, Restante={tempo_restante_horas}, TotalTurno={tempo_total_turno}, Decorrido={tempo_decorrido}")
+
+            # Projeção Dinâmica: Real + (Rate * Remaining)
+            if tempo_restante_horas > 0:
+                projecao = producao_real_ton + (taxa_instantanea * tempo_restante_horas)
+                logger.info(f"DEBUG PROJECAO CALC: {producao_real_ton} + ({taxa_instantanea} * {tempo_restante_horas}) = {projecao}")
+            else:
+                projecao = producao_real_ton # Turno acabou
+                logger.info(f"DEBUG PROJECAO END: {projecao}")
+
+            # GARANTIA: Projeção nunca pode ser menor que Real
+            if projecao < producao_real_ton:
+                logger.warning(f"CORRECAO PROJECAO: {projecao} < {producao_real_ton}. Ajustando para Real.")
+                projecao = producao_real_ton
+                
+            # Ritmo Necessário Dinâmico: (Meta - Real) / Remaining
+            saldo_necessario = meta_toneladas - producao_real_ton
+            if tempo_restante_horas > 0:
+                ritmo_necessario = max(0, saldo_necessario / tempo_restante_horas)
+            else:
+                ritmo_necessario = 0 # Turno acabou (ou impossível)
 
         return jsonify({
             'ole': round(ole, 1),
-            'producao_real': round(toneladas_real, 3),
+            'producao_real': round(producao_real_ton, 3),
             'producao_esperada': round(producao_esperada, 3),
             'projecao': round(projecao, 1),
+            'ritmo_necessario': round(ritmo_necessario, 1),
+            'taxa_instantanea': round(taxa_instantanea, 1), # NEW
             'meta_turno': round(meta_toneladas, 1),
             'tempo_decorrido_perc': round((tempo_decorrido / tempo_total_turno * 100) if tempo_total_turno > 0 else 0, 1)
         })
@@ -795,7 +909,7 @@ def get_equipamento_historico_detalhado(codigo):
                 mean(disponibilidade) as disp_media,
                 mean(performance) as perf_media,
                 mean(qualidade) as qual_media,
-                mean(*)
+                last(*)
             FROM production 
             WHERE "equipment" = '{codigo}' 
             AND time >= '{s_str}' AND time <= '{e_str}' 
@@ -824,11 +938,11 @@ def get_equipamento_historico_detalhado(codigo):
                 'qualidade': float(p['qual_media'])
             }
             
-            # Add dynamic fields (mean_*)
+            # Add dynamic fields (last_*)
             for k, v in p.items():
-                if k.startswith('mean_'):
+                if k.startswith('last_'):
                     # Clean key name
-                    clean_key = k.replace('mean_', '')
+                    clean_key = k.replace('last_', '')
                     # Skip fields we already handled explicitly
                     if clean_key in ['velocidade_atual', 'oee_realtime', 'disponibilidade', 'performance', 'qualidade', 'contagem_saida', 'contagem_entrada', 'descarte']:
                         continue
@@ -855,7 +969,7 @@ def capture_golden_state_endpoint(equipamento_codigo):
     Captura o estado atual como Golden State.
     """
     try:
-        profile = capture_golden_state(equipamento_codigo)
+        profile = capture_golden_state(equipamento_codigo, capture_type='MANUAL')
         if profile:
             return jsonify({
                 'status': 'success',
@@ -880,11 +994,13 @@ def get_diagnostics_alerts(equipamento_codigo):
         realtime_data = get_equipamento_realtime(equipamento_codigo)
         alerts = run_diagnostics(equipamento_codigo, realtime_data)
         golden_state = get_latest_golden_state(equipamento_codigo)
+        history = get_golden_state_history(equipamento_codigo)
         
         return jsonify({
             'status': 'success',
             'alerts': alerts,
-            'golden_state': golden_state
+            'golden_state': golden_state,
+            'golden_state_history': history
         })
     except Exception as e:
         logger.error(f"Error getting diagnostics: {e}")
@@ -897,7 +1013,25 @@ def get_linha_overview_status(linha_nome):
     """
     try:
         influx_client = current_app.extensions.get('influx_client')
+        production_engine = current_app.extensions.get('production_engine')
         if not influx_client: return jsonify({'error': 'No DB'}), 500
+
+        # 0. Checa Heartbeat (Stale Data Check)
+        is_offline = True
+        if production_engine and hasattr(production_engine, 'heartbeats'):
+            # Se algum equipamento reportou nos ultimos 30s
+            now = time.time()
+            recent = [t for t in production_engine.heartbeats.values() if (now - t) < 30]
+            if recent:
+                is_offline = False
+
+        if is_offline:
+             return jsonify({
+                'status': 'Sem Comunicação', # Status especial
+                'online_count': 0,
+                'total_count': 0,
+                'details': 'Nenhum dado recebido do coletor nos últimos 30s'
+            })
 
         # Verifica se algum equipamento está rodando
         query = f"SELECT last(estado_maquina) FROM production WHERE \"line\" = '{linha_nome}' GROUP BY \"equipment\""
@@ -924,7 +1058,7 @@ def get_linha_overview_status(linha_nome):
         logger.error(f"Error getting overview status: {e}")
         return jsonify({'error': str(e)}), 500
 
-@api_bp.route('/linha/<linha_nome>/historico', methods=['GET'])
+@api_bp.route('/api/linha/<linha_nome>/historico', methods=['GET'])
 def get_linha_historico(linha_nome):
     """
     Retorna histórico agregado da linha (Produção Total, OEE Médio, etc.)

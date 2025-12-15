@@ -38,6 +38,11 @@ FLASK_API_URL = config('FLASK_API_URL', default='http://127.0.0.1:5000/api')
 INTERVALO_COLETA = config('INTERVALO_COLETA', default=2, cast=int)
 TIMEOUT_REQUEST = config('TIMEOUT_REQUEST', default=10, cast=int)
 
+# Silencia logs verbosos do asyncua (evita tracebacks em timeouts esperados)
+logging.getLogger("asyncua").setLevel(logging.ERROR)
+logging.getLogger("asyncua.client.client").setLevel(logging.ERROR)
+logging.getLogger("asyncua.client.ua_client.UaClient").setLevel(logging.ERROR)
+
 # ===== MAPEAMENTO DE ESTADOS =====
 MAPEAMENTO_ESTADOS = {
     1: 'RUN', 2: 'WAIT_PREV', 3: 'BLOCK_NEXT', 4: 'FAULT',
@@ -113,7 +118,7 @@ class ColetorOPC:
             for url in servidores:
                 if url not in self.clientes_opc:
                     try:
-                        c = Client(url=url)
+                        c = Client(url=url, timeout=5) # Timeout 5s
                         await c.connect()
                         self.clientes_opc[url] = c
                         logger.info(f"✅ Conectado a {url}")
@@ -124,6 +129,17 @@ class ColetorOPC:
             logger.error(f"Erro conexão: {e}")
             return False
     
+    def remover_cliente_com_falha(self, cliente_falho: Client):
+        """Remove um cliente da lista de conexões ativas para forçar reconexão."""
+        for url, cliente in list(self.clientes_opc.items()):
+            if cliente == cliente_falho:
+                logger.warning(f"⚠️ Removendo cliente desconectado: {url}")
+                # Agenda desconexão sem bloquear
+                try: asyncio.create_task(cliente.disconnect())
+                except: pass
+                del self.clientes_opc[url]
+                break
+
     async def ler_tag_opc(self, cliente: Client, node_id: str, tipo_dado: str, fator_conversao: float = 1.0) -> Optional[any]:
         try:
             node = cliente.get_node(node_id)
@@ -133,6 +149,11 @@ class ColetorOPC:
                 valor = float(valor) * fator_conversao
                 if tipo_dado == 'INT': valor = int(valor)
             return valor
+        except (OSError, ConnectionError, asyncio.TimeoutError, TimeoutError, AttributeError) as e:
+            # Erros explícitos de rede
+            logger.warning(f"⚠️ Erro de CONEXÃO ao ler tag {node_id}: {e}")
+            self.remover_cliente_com_falha(cliente)
+            return None
         except Exception as e:
             # logger.warning(f"Erro leitura tag {node_id}: {e}")
             return None

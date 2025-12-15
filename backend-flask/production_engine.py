@@ -34,7 +34,7 @@ class ConfigManager:
                     }
                 self.equipamentos = novas_configs
                 self.last_update = time.time()
-                logger.info(f"⚙️ Configurações atualizadas: {len(self.equipamentos)} equipamentos")
+                logger.info(f"[CONFIG] Configuracoes atualizadas: {len(self.equipamentos)} equipamentos")
         except Exception as e:
             logger.error(f"Erro ao buscar configs do Django: {e}")
 
@@ -60,7 +60,7 @@ class ShiftManager:
                         parsed.append({'nome': t['nome'], 'inicio': inicio, 'fim': fim})
                     except: pass
                 self.turnos = parsed
-                logger.info(f"🔄 Turnos carregados: {len(self.turnos)}")
+                logger.info(f"[TURNOS] Turnos carregados: {len(self.turnos)}")
                 return True
             return False
         except: return False
@@ -127,6 +127,7 @@ class ProductionEngine:
         self.shift_manager = ShiftManager(django_api_url)
         self.config_manager = ConfigManager(django_api_url)
         self._cache = {}
+        self.heartbeats = {} # {equipment_code: timestamp}
         self.MAX_TIME_DELTA = 300  # 5 minutos - proteção contra server offline
 
     def recarregar_configuracoes(self):
@@ -215,6 +216,9 @@ class ProductionEngine:
         config = self.config_manager.get_config(equipamento)
         vel_nominal = config['vel_nominal']
 
+        # Atualiza Heartbeat
+        self.heartbeats[equipamento] = now_timestamp
+
         # 2. Inicializa memória
         self._load_state_from_db(equipamento, op_atual, turno_atual)
         state = self._get_state(equipamento)
@@ -225,16 +229,24 @@ class ProductionEngine:
             state['acc_waste_op'] = 0
             state['op_code'] = op_atual
         
-        # Mudança de turno: Zera acumuladores temporais
-        if str(turno_atual).strip() != str(state['shift_code']).strip():
-            state['acc_shift'] = 0
-            state['acc_time_stop_shift'] = 0.0  # NOVO: Zera tempo parado
-            state['shift_code'] = turno_atual
-            # Atualiza timestamp de início do turno
-            if turno_info:
-                state['shift_start_time'] = turno_info['inicio_timestamp']
+        # Mudança de turno: Zera acumuladores se o nome mudou OU se a data do início do turno mudou
+        shift_changed = False
+        current_shift_start = turno_info['inicio_timestamp'] if turno_info else None
         
-        # Inicializa shift_start_time se necessário
+        if str(turno_atual).strip() != str(state['shift_code']).strip():
+            shift_changed = True
+        elif current_shift_start and state['shift_start_time']:
+            # Se o timestamp de início do turno mudou (ex: mesmo turno, outro dia)
+            if abs(current_shift_start - state['shift_start_time']) > 60: # Margem de 1 min
+                shift_changed = True
+
+        if shift_changed:
+            state['acc_shift'] = 0
+            state['acc_time_stop_shift'] = 0.0
+            state['shift_code'] = turno_atual
+            state['shift_start_time'] = current_shift_start
+        
+        # Inicializa shift_start_time se necessário (primeira execução ou recuperado do banco sem timestamp)
         if turno_info and state['shift_start_time'] is None:
             state['shift_start_time'] = turno_info['inicio_timestamp']
 

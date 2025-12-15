@@ -11,6 +11,7 @@ interface HeaderProps {
     totalEquipamentos: number;
     vazao: number;
     ole: number;
+    status?: string; // NEW
 }
 
 const Header: React.FC<HeaderProps> = ({
@@ -22,8 +23,11 @@ const Header: React.FC<HeaderProps> = ({
     equipamentosOnline,
     totalEquipamentos,
     vazao,
-    ole
+    ole,
+    status = 'Em Produção'
 }) => {
+    const isOffline = status === 'Sem Comunicação' || status === 'Offline';
+
     return (
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mb-6">
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
@@ -32,8 +36,9 @@ const Header: React.FC<HeaderProps> = ({
                 <div className="flex-1">
                     <div className="flex items-center gap-3 mb-2">
                         <h1 className="text-2xl font-bold text-gray-900">{linha}</h1>
-                        <span className="px-2 py-1 bg-blue-100 text-blue-800 text-xs font-semibold rounded-full">
-                            Em Produção
+                        <span className={`px-2 py-1 text-xs font-semibold rounded-full ${isOffline ? 'bg-red-100 text-red-800' : 'bg-green-100 text-green-800'
+                            }`}>
+                            {status}
                         </span>
                     </div>
 

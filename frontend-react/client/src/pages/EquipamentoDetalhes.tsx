@@ -182,10 +182,28 @@ const EquipamentoDetalhes: React.FC = () => {
     if (!equipamento) return;
     const fetchRealtime = async () => {
       try {
-        const response = await fetch(`${FLASK_API_URL}/realtime/status/${equipamento.codigo}`);
+        const response = await fetch(`${FLASK_API_URL}/equipamento/dados/${equipamento.codigo}`);
         if (response.ok) {
           const data = await response.json();
-          setDadosTempoReal(data);
+
+          // Adapter: Backend (/equipamento/dados) -> Frontend (DadosTempoReal)
+          const adaptedData: DadosTempoReal = {
+            status: data.estado_atual,
+            timestamp: data.timestamp,
+            medicoes: {
+              velocidade_atual: data.velocidade_atual,
+              contagem_entrada: 0,
+              contagem_saida: data.pecas_produzidas,
+              descarte: data.refugos,
+              percentual_descarte: data.pecas_produzidas > 0 ? (data.refugos / (data.pecas_produzidas + data.refugos)) * 100 : 0,
+              temperatura: data.sensores?.find((s: any) => s.nome.toLowerCase().includes('temp'))?.valor || 0,
+              pressao: data.sensores?.find((s: any) => s.nome.toLowerCase().includes('press'))?.valor || 0,
+              estado: data.estado_atual,
+              oee_realtime: data.oee_atual
+            }
+          };
+
+          setDadosTempoReal(adaptedData);
           const diff = (new Date().getTime() - new Date(data.timestamp).getTime()) / 1000;
           setOnline(Math.abs(diff) <= 120);
         }
@@ -310,13 +328,19 @@ const EquipamentoDetalhes: React.FC = () => {
   }, [filterType, selectedDate, selectedTurnoId, isConsolidated, turnos]);
 
   // Busca Histórico
+  // Busca Histórico (Auto-Refresh)
   useEffect(() => {
-    const fetchHistorico = async () => {
+    let intervalId: NodeJS.Timeout;
+
+    const fetchHistorico = async (isPolling = false) => {
       if (!equipamento) return;
       try {
+        // Se estiver no turno atual, sempre atualiza o 'end' para agora para pegar dados recentes
+        const currentEnd = filterType === 'turno_atual' ? new Date() : timeRange.end;
+
         const params = new URLSearchParams({
           start: timeRange.start.toISOString(),
-          end: timeRange.end.toISOString(),
+          end: currentEnd.toISOString(),
           interval: timeRange.interval
         });
 
@@ -340,12 +364,28 @@ const EquipamentoDetalhes: React.FC = () => {
           oee: h.oee,
           tempo_producao: 0
         }));
+
         setHistorico(mapped);
-        setHistPage(1);
+
+        // Reset pagination only on fresh load/filter change, not on background poll
+        if (!isPolling) setHistPage(1);
+
       } catch (err) { console.error(err); }
     };
-    fetchHistorico();
-  }, [equipamento, timeRange]);
+
+    fetchHistorico(); // Initial load
+
+    // Setup polling only for 'turno_atual'
+    if (filterType === 'turno_atual') {
+      intervalId = setInterval(() => {
+        fetchHistorico(true);
+      }, 5000);
+    }
+
+    return () => {
+      if (intervalId) clearInterval(intervalId);
+    };
+  }, [equipamento, timeRange, filterType]);
 
   // Busca Eventos
   useEffect(() => {

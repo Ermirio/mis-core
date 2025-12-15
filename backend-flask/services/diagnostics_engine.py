@@ -132,3 +132,42 @@ def run_diagnostics(equipamento_codigo, realtime_data):
             logger.error(f"Error evaluating rule {type(rule).__name__}: {e}")
             
     return alerts
+
+def check_continuous_optimization(equipamento_codigo):
+    """
+    Implements 'Hill Climbing' optimization for Golden State.
+    Checks if current performance (last 5 min) is better than previous window.
+    If yes, captures the current sensor settings as the new Golden State.
+    """
+    try:
+        # Window A: Last 5 minutes
+        query_a = f"SELECT mean(oee_realtime) FROM production WHERE \"equipment\" = '{equipamento_codigo}' AND time > now() - 5m"
+        
+        # Window B: 5 minutes before that (10m to 5m ago)
+        query_b = f"SELECT mean(oee_realtime) FROM production WHERE \"equipment\" = '{equipamento_codigo}' AND time > now() - 10m AND time < now() - 5m"
+        
+        rs_a = client.query(query_a)
+        rs_b = client.query(query_b)
+        
+        val_a = 0.0
+        val_b = 0.0
+        
+        points_a = list(rs_a.get_points())
+        if points_a: val_a = float(points_a[0]['mean'] or 0)
+        
+        points_b = list(rs_b.get_points())
+        if points_b: val_b = float(points_b[0]['mean'] or 0)
+        
+        if val_a > 0.1: # Minimum meaningful activity
+             # If Current is better than Previous (with 2% hysteresis to verify stability)
+            if val_a > (val_b * 1.02):
+                from .diagnostics import capture_golden_state
+                logger.info(f"🚀 OEE Improved: {val_a:.1f}% (was {val_b:.1f}%). Capturing Golden State...")
+                capture_golden_state(equipamento_codigo, capture_type='AUTO')
+                return True
+                
+        return False
+        
+    except Exception as e:
+        logger.error(f"Error in continuous optimization: {e}")
+        return False

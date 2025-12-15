@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, RefreshCw } from 'lucide-react';
+import { ArrowLeft, RefreshCw, AlertTriangle } from 'lucide-react';
 
 import Header from '../components/LineDeepView/Header';
 import Progress from '../components/LineDeepView/Progress';
@@ -157,7 +157,7 @@ const LineDeepView: React.FC = () => {
             // 3. Parallel requests for Flask Realtime Data (Line Level) - Using resolved identifier
             const [resStatus, resOle, resKpis, resConsolidadas] = await Promise.all([
                 fetch(`${FLASK_API_URL}/linha/${encodeURIComponent(linhaIdentifier)}/overview-status`),
-                fetch(`${FLASK_API_URL}/linha/${encodeURIComponent(linhaIdentifier)}/realtime`),
+                fetch(`${FLASK_API_URL}/linha/${encodeURIComponent(linhaIdentifier)}/ole-realtime`), // CHANGED to robust endpoint
                 fetch(`${FLASK_API_URL}/linha/${encodeURIComponent(linhaIdentifier)}/kpis`),
                 fetch(`${DJANGO_API_URL}/metricas_fabrica_consolidadas/`)
             ]);
@@ -241,26 +241,28 @@ const LineDeepView: React.FC = () => {
     const tempoTotalHoras = tempoTotalTurno / 3600;
 
     const producaoReal = oleData?.producao_real || 0;
-    const metaTotal = oleData?.producao_planejada_total || 0;
+    const metaTotal = oleData?.meta_turno || 0; // CORRECTED mapping
     const oleAtual = oleData?.ole || 0;
 
-    // Vazão (t/h) - Use consolidated metrics if available, else calc
-    const vazaoCalculada = metricasConsolidadas?.vazao_real_ton_hora ?? (tempoDecorridoHoras > 0 ? (producaoReal / tempoDecorridoHoras) : 0);
+    // Vazão (t/h) - Use Realtime (Flask) > Consolidated (Django) > Calc
+    const vazaoCalculada = oleData?.taxa_instantanea ?? (metricasConsolidadas?.vazao_real_ton_hora ?? (tempoDecorridoHoras > 0 ? (producaoReal / tempoDecorridoHoras) : 0));
 
-    // Projeção Linear (Match Home.tsx: Meta * OLE%)
-    // Home.tsx: const projecaoEstimada = metaTotal > 0 ? metaTotal * (ole / 100) : 0;
-    const projecao = metaTotal > 0 ? metaTotal * (oleAtual / 100) : 0;
+    // Projeção: Use backend value (Dynamic) or Fallback
+    const projecao = oleData?.projecao ?? (metaTotal > 0 ? metaTotal * (oleAtual / 100) : 0);
 
     // Tempo Decorrido %
     const tempoDecorridoPerc = tempoTotalTurno > 0 ? (tempoDecorrido / tempoTotalTurno) * 100 : 0;
 
-    // Ritmo Necessário
-    const ritmoNecessario = tempoTotalHoras > 0 ? (metaTotal / tempoTotalHoras) : 0;
+    // Ritmo Necessário: Use backend value (Dynamic) or Fallback
+    const ritmoNecessario = oleData?.ritmo_necessario ?? (tempoTotalHoras > 0 ? (metaTotal / tempoTotalHoras) : 0);
 
     // Desvio
     const desvioProjetado = projecao - metaTotal;
 
     // Prepare data for Header
+    const currentStatus = lineStatus?.status || 'Carregando...';
+    const isSystemOffline = currentStatus === 'Sem Comunicação' || currentStatus === 'Offline';
+
     const headerProps = {
         linha: linhaId || 'Linha Desconhecida',
         op: dadosProducao?.ordem_producao || 'N/A',
@@ -270,11 +272,26 @@ const LineDeepView: React.FC = () => {
         equipamentosOnline: oleData?.equipamentos_online || 0,
         totalEquipamentos: oleData?.equipamentos_total || equipamentosConfig.length,
         vazao: vazaoCalculada,
-        ole: oleAtual
+        ole: oleAtual,
+        status: currentStatus
     };
 
     return (
         <div className="min-h-screen bg-gray-50 p-6">
+            {/* ALERT BANNER if Offline */}
+            {isSystemOffline && (
+                <div className="bg-red-50 border-l-4 border-red-500 p-4 mb-6 rounded shadow-sm flex items-start gap-4">
+                    <AlertTriangle className="w-6 h-6 text-red-500 flex-shrink-0" />
+                    <div>
+                        <h3 className="font-bold text-red-700">Sistema Offline ou Sem Comunicação</h3>
+                        <p className="text-sm text-red-600 mt-1">
+                            Não estamos recebendo dados do coletor há mais de 30 segundos.
+                            Verifique a conexão de rede ou se o serviço do coletor está rodando.
+                        </p>
+                    </div>
+                </div>
+            )}
+
             {/* Top Bar */}
             <div className="flex items-center justify-between mb-6">
                 <button
@@ -301,7 +318,7 @@ const LineDeepView: React.FC = () => {
 
                     <Progress
                         producaoReal={producaoReal}
-                        producaoEsperada={oleData?.producao_planejada_ate_agora || 0}
+                        producaoEsperada={oleData?.producao_esperada || 0}
                         projecao={projecao}
                         metaTurno={metaTotal}
                         tempoDecorridoPerc={tempoDecorridoPerc}
