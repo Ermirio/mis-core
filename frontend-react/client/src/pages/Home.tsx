@@ -204,6 +204,39 @@ export default function Home() {
         // Use linha_codigo if available, otherwise name
         const idParaBusca = linha.linha_codigo || linha.linha_nome;
         const oleData = await fetchLinhaOLE(idParaBusca);
+
+        if (oleData) {
+          // Replicate LineDeepView Projection Logic
+          const tempoDecorrido = oleData.tempo_decorrido || 0;
+          const tempoTotalTurno = oleData.tempo_total_turno || 28800;
+          const tempoDecorridoHoras = tempoDecorrido / 3600;
+          const tempoTotalHoras = tempoTotalTurno / 3600;
+          const producaoReal = oleData.producao_real || 0;
+          const metaTotal = oleData.producao_planejada_total || 0;
+          const oleAtual = oleData.ole || 0;
+
+          let projecao = oleData.projecao || 0;
+
+          if (!projecao && tempoTotalHoras > 0 && tempoDecorridoHoras > 0) {
+            const remainingHours = tempoTotalHoras - tempoDecorridoHoras;
+            const vazaoCalculada = producaoReal / tempoDecorridoHoras;
+            if (remainingHours > 0) {
+              projecao = producaoReal + (vazaoCalculada * remainingHours);
+            } else {
+              projecao = producaoReal;
+            }
+          }
+
+          if (!projecao && metaTotal > 0) {
+            projecao = metaTotal * (oleAtual / 100);
+          }
+
+          // Map fields for UI
+          oleData.projecao = projecao;
+          oleData.producao_esperada = oleData.producao_planejada_ate_agora;
+          oleData.meta_turno = metaTotal;
+        }
+
         linha.ole_data = oleData;
         linha.equipamentos.sort((a, b) => (a.ordem_na_linha || 0) - (b.ordem_na_linha || 0));
         return linha;

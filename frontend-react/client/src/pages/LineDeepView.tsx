@@ -292,6 +292,7 @@ const LineDeepView: React.FC = () => {
         sku: oleData?.sku || dadosProducao?.sku_codigo || 'N/A',
         produto: oleData?.descricao || dadosProducao?.descricao || 'Produto Genérico',
         cuc: oleData?.cuc || dadosProducao?.cuc || 'N/A',
+        formato: oleData?.formato || dadosProducao?.formato_gramas || 0,
         equipamentosOnline: oleData?.equipamentos_online || 0,
         totalEquipamentos: oleData?.equipamentos_total || equipamentosConfig.length,
         vazao: vazaoCalculada,

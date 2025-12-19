@@ -1,5 +1,5 @@
 import React from 'react';
-import { Activity, Box, Package, Tag, Zap } from 'lucide-react';
+import { Activity, Box, Package, Tag, Zap, Scale } from 'lucide-react';
 
 interface HeaderProps {
     linha: string;
@@ -11,7 +11,8 @@ interface HeaderProps {
     totalEquipamentos: number;
     vazao: number;
     ole: number;
-    status?: string; // NEW
+    status?: string;
+    formato?: number; // NEW
 }
 
 const Header: React.FC<HeaderProps> = ({
@@ -24,7 +25,8 @@ const Header: React.FC<HeaderProps> = ({
     totalEquipamentos,
     vazao,
     ole,
-    status = 'Em Produção'
+    status = 'Em Produção',
+    formato = 0
 }) => {
     const isOffline = status === 'Sem Comunicação' || status === 'Offline';
 
@@ -72,6 +74,14 @@ const Header: React.FC<HeaderProps> = ({
                             <div>
                                 <p className="text-xs text-gray-500">Vazão</p>
                                 <p className="font-semibold text-gray-900">{vazao.toFixed(1)} t/h</p>
+                            </div>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                            <Scale className="w-4 h-4 text-gray-400" />
+                            <div>
+                                <p className="text-xs text-gray-500">Formato</p>
+                                <p className="font-semibold text-gray-900">{formato ? `${formato}g` : 'N/A'}</p>
                             </div>
                         </div>
                     </div>
