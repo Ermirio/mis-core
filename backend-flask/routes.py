@@ -642,6 +642,12 @@ def get_ole_realtime(linha_nome):
                                     val = float(entry.get('meta_producao_turno'))
                                     if val > 1000: val /= 1000.0
                                     
+                                    # DEBUG SHIFT MATCHING
+                                    f_shift = turno_info.get('nome') if turno_info else 'None'
+                                    d_shift = entry.get('turno_nome')
+                                    debug_shift_info = f"Flask: '{f_shift}' vs Django: '{d_shift}' | Date: {query_date}"
+                                    logger.info(f"DEBUG CALENDAR: {debug_shift_info}")
+                                    
                                     if turno_info and entry.get('turno_nome') == turno_info.get('nome'):
                                         meta_toneladas = val
                                         break
@@ -769,7 +775,8 @@ def get_ole_realtime(linha_nome):
             'op': line_context['ordem_producao'],
             'descricao': line_context['descricao'],
             'cuc': line_context['cuc'],
-            'formato': line_context['formato_gramas']
+            'formato': line_context['formato_gramas'],
+            'debug_meta': str(debug_shift_info) if 'debug_shift_info' in locals() else 'No Info'
         })
 
     except Exception as e:

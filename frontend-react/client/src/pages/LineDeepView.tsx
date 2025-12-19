@@ -249,20 +249,35 @@ const LineDeepView: React.FC = () => {
     const tempoTotalHoras = tempoTotalTurno / 3600;
 
     const producaoReal = oleData?.producao_real || 0;
-    const metaTotal = oleData?.meta_turno || 0; // CORRECTED mapping
+    const metaTotal = oleData?.meta_turno || oleData?.producao_planejada_total || 0; // Fallback for Stale Backend
     const oleAtual = oleData?.ole || 0;
+    const taxaInstantanea = oleData?.taxa_instantanea || 0;
 
     // Vazão (t/h) - Use Realtime (Flask) > Consolidated (Django) > Calc
-    const vazaoCalculada = oleData?.taxa_instantanea ?? (metricasConsolidadas?.vazao_real_ton_hora ?? (tempoDecorridoHoras > 0 ? (producaoReal / tempoDecorridoHoras) : 0));
+    const vazaoCalculada = taxaInstantanea || (metricasConsolidadas?.vazao_real_ton_hora ?? (tempoDecorridoHoras > 0 ? (producaoReal / tempoDecorridoHoras) : 0));
 
-    // Projeção: Use backend value (Dynamic) or Fallback
-    const projecao = oleData?.projecao ?? (metaTotal > 0 ? metaTotal * (oleAtual / 100) : 0);
+    // Projeção: Use backend value (Dynamic) or Fallback to Client Calc
+    let projecao = oleData?.projecao || 0;
+    if (!projecao && tempoTotalHoras > 0 && tempoDecorridoHoras > 0) {
+        // Client-Side Projection Calculation (for Stale Backend)
+        // Proj = Real + (Rate * RemainingTime)
+        const remainingHours = tempoTotalHoras - tempoDecorridoHoras;
+        if (remainingHours > 0) {
+            projecao = producaoReal + (vazaoCalculada * remainingHours);
+        } else {
+            projecao = producaoReal;
+        }
+    }
+    // Final Fallback (Simples Rule of Three if no rate)
+    if (!projecao && metaTotal > 0) {
+        projecao = metaTotal * (oleAtual / 100);
+    }
 
     // Tempo Decorrido %
     const tempoDecorridoPerc = tempoTotalTurno > 0 ? (tempoDecorrido / tempoTotalTurno) * 100 : 0;
 
     // Ritmo Necessário: Use backend value (Dynamic) or Fallback
-    const ritmoNecessario = oleData?.ritmo_necessario ?? (tempoTotalHoras > 0 ? (metaTotal / tempoTotalHoras) : 0);
+    const ritmoNecessario = oleData?.ritmo_necessario ?? (tempoTotalHoras > 0 && (metaTotal - producaoReal) > 0 ? ((metaTotal - producaoReal) / (tempoTotalHoras - tempoDecorridoHoras)) : 0);
 
     // Desvio
     const desvioProjetado = projecao - metaTotal;
@@ -326,7 +341,7 @@ const LineDeepView: React.FC = () => {
 
                     <Progress
                         producaoReal={producaoReal}
-                        producaoEsperada={oleData?.producao_esperada || 0}
+                        producaoEsperada={oleData?.producao_esperada || oleData?.producao_planejada_ate_agora || 0}
                         projecao={projecao}
                         metaTurno={metaTotal}
                         tempoDecorridoPerc={tempoDecorridoPerc}
