@@ -10,6 +10,8 @@ import MultiEquipmentTimeline from '../components/MultiEquipmentTimeline';
 import Diagnostics from '../components/LineDeepView/Diagnostics';
 import Upstream from '../components/LineDeepView/Upstream';
 import Downstream from '../components/LineDeepView/Downstream';
+import LossTreeCard from '../components/LossAnalysis/LossTreeCard';
+import { LossWasteAnalysis } from '../components/LossAnalysis/LossWasteAnalysis';
 
 const FLASK_API_URL = import.meta.env.VITE_FLASK_API_URL || 'http://localhost:5000/api';
 const DJANGO_API_URL = import.meta.env.VITE_DJANGO_API_URL || 'http://localhost:8000/api';
@@ -138,7 +140,13 @@ const LineDeepView: React.FC = () => {
             let currentEquipamentosConfig: EquipamentoConfig[] = [];
 
             if (results && results.length > 0) {
-                const lConfig = results[0];
+                // Fix: Fuzzy search returns multiple lines. Ensure exact match if possible.
+                const lConfig = results.find((r: any) =>
+                    r.codigo === linhaId ||
+                    r.nome === linhaId ||
+                    r.nome.toLowerCase() === linhaId?.toLowerCase()
+                ) || results[0];
+
                 setLinhaConfig(lConfig);
                 linhaIdNumeric = lConfig.id;
 
@@ -157,7 +165,7 @@ const LineDeepView: React.FC = () => {
             // 3. Parallel requests for Flask Realtime Data (Line Level) - Using resolved identifier
             const [resStatus, resOle, resKpis, resConsolidadas] = await Promise.all([
                 fetch(`${FLASK_API_URL}/linha/${encodeURIComponent(linhaIdentifier)}/overview-status`),
-                fetch(`${FLASK_API_URL}/linha/${encodeURIComponent(linhaIdentifier)}/ole-realtime`), // CHANGED to robust endpoint
+                fetch(`${FLASK_API_URL}/linha/${encodeURIComponent(linhaIdentifier)}/realtime`), // CORRECTED to match routes.py
                 fetch(`${FLASK_API_URL}/linha/${encodeURIComponent(linhaIdentifier)}/kpis`),
                 fetch(`${DJANGO_API_URL}/metricas_fabrica_consolidadas/`)
             ]);
@@ -265,10 +273,10 @@ const LineDeepView: React.FC = () => {
 
     const headerProps = {
         linha: linhaId || 'Linha Desconhecida',
-        op: dadosProducao?.ordem_producao || 'N/A',
-        sku: dadosProducao?.sku_codigo || 'N/A',
-        produto: dadosProducao?.descricao || 'Produto Genérico',
-        cuc: dadosProducao?.cuc || 'N/A',
+        op: oleData?.op || dadosProducao?.ordem_producao || 'N/A',
+        sku: oleData?.sku || dadosProducao?.sku_codigo || 'N/A',
+        produto: oleData?.descricao || dadosProducao?.descricao || 'Produto Genérico',
+        cuc: oleData?.cuc || dadosProducao?.cuc || 'N/A',
         equipamentosOnline: oleData?.equipamentos_online || 0,
         totalEquipamentos: oleData?.equipamentos_total || equipamentosConfig.length,
         vazao: vazaoCalculada,
@@ -331,7 +339,7 @@ const LineDeepView: React.FC = () => {
                                 key={idx}
                                 nome={eq.nome}
                                 funcao={eq.tipo}
-                                estado={eq.medicoes?.estado === 'Produzindo' ? 1 : eq.medicoes?.estado === 'Parado' ? 2 : 0} // Map string to number if needed by component, or update component
+                                estado={eq.medicoes?.estado ?? 0} // Pass raw state (string or number)
                                 oee={eq.medicoes?.oee || 0}
                                 velocidadeAtual={eq.medicoes?.velocidade_atual || 0}
                                 velocidadeNominal={eq.velocidade_nominal || 100}
@@ -344,11 +352,22 @@ const LineDeepView: React.FC = () => {
 
                     {/* Timeline Section (Moved to Bottom) */}
                     {linhaConfig && (
-                        <MultiEquipmentTimeline
-                            linhaId={linhaConfig.id}
-                            linhaNome={linhaConfig.nome}
-                            equipamentos={equipamentosConfig}
-                        />
+                        <>
+                            <MultiEquipmentTimeline
+                                linhaId={linhaConfig.id}
+                                linhaNome={linhaConfig.nome}
+                                equipamentos={equipamentosConfig}
+                            />
+
+                            <LossTreeCard
+                                linhaId={linhaConfig.id}
+                                djangoUrl={DJANGO_API_URL}
+                            />
+                            <LossWasteAnalysis
+                                lineId={String(linhaConfig.id)}
+                            />
+
+                        </>
                     )}
                 </div>
 

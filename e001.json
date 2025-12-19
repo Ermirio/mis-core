@@ -1,0 +1,31 @@
+{
+  "equipamento": "E001",
+  "estado_atual": "Produzindo",
+  "oee_atual": 96.0012617318394,
+  "pecas_produzidas": 889132,
+  "refugos": 0,
+  "sensores": [
+    {
+      "nome": "Descarte",
+      "unidade": "",
+      "valor": 0
+    },
+    {
+      "nome": "Percentual descarte",
+      "unidade": "",
+      "valor": 0.0
+    },
+    {
+      "nome": "Temperaturafaca",
+      "unidade": "",
+      "valor": 115.0
+    },
+    {
+      "nome": "Temperaturaropex",
+      "unidade": "",
+      "valor": 115.0
+    }
+  ],
+  "timestamp": "2025-12-19T09:33:49.501047",
+  "velocidade_atual": 67
+}

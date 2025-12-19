@@ -80,106 +80,96 @@ const LineOverview: React.FC<LineOverviewProps> = ({
     >
 
       {/* SEÇÃO SUPERIOR: KPI's Principais */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+      <div className="space-y-4">
 
-        {/* Coluna 1: Identificação e Status */}
-        <div className="flex items-center gap-4">
-          <div className="p-3 bg-blue-100 dark:bg-blue-900/30 rounded-lg">
-            <Activity className="w-8 h-8 text-blue-600 dark:text-blue-400" />
-          </div>
-          <div>
-            <h2 className="text-2xl font-bold text-neutral-900 dark:text-neutral-100">
-              {nome}
-            </h2>
+        {/* Linha 1: Identificação e OLE */}
+        <div className="flex justify-between items-start">
 
-            {/* OP, CUC e Meta */}
-            {ordemProducao && ordemProducao !== 'N/A' && (
-              <div className="flex items-center gap-3 mt-2 mb-1 p-2 bg-blue-50 dark:bg-blue-900/20 rounded border border-blue-200 dark:border-blue-800">
-                <div className="flex items-center gap-2">
-                  <span className="text-xs font-bold px-2 py-1 bg-blue-600 text-white rounded">
-                    OP
-                  </span>
-                  <span className="text-sm font-bold text-blue-900 dark:text-blue-100">
-                    {ordemProducao.replace(/^0+/, '')}
-                  </span>
-                </div>
-
-                {cuc && cuc !== 'N/A' && (
-                  <div className="flex items-center gap-1 border-l border-blue-300 dark:border-blue-700 pl-2">
-                    <span className="text-xs text-neutral-500 font-semibold">CUC:</span>
-                    <span className="text-sm font-bold text-neutral-700 dark:text-neutral-300">{cuc}</span>
-                  </div>
-                )}
+          {/* Esquerda: Identificação */}
+          <div className="flex flex-col gap-1 min-w-0">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-blue-100 dark:bg-blue-900/30 rounded-lg flex-shrink-0">
+                <Activity className="w-5 h-5 text-blue-600 dark:text-blue-400" />
               </div>
-            )}
-
-            {/* SKU e Descrição */}
-            <div className="flex flex-col mt-1 mb-2">
-              <div className="flex items-center gap-2">
-                <span className="text-sm font-bold px-2 py-0.5 bg-neutral-200 dark:bg-neutral-700 rounded text-neutral-800 dark:text-neutral-200">
-                  SKU: {sku && sku !== 'N/A' ? sku : '-'}
-                </span>
-                <span className="text-base text-neutral-700 dark:text-neutral-300 font-medium truncate max-w-[400px]" title={descricao}>
-                  <span className="font-bold mr-1">Produto:</span>
-                  {descricao || '-'}
-                </span>
-              </div>
+              <h2 className="text-xl font-bold text-neutral-900 dark:text-neutral-100 truncate">
+                {nome}
+              </h2>
             </div>
 
-            <div className="flex items-center gap-2 mt-1">
-              <div className={`w-2.5 h-2.5 rounded-full ${percentualOnline > 0 ? 'bg-green-500' : 'bg-red-500'}`} />
-              <p className="text-sm text-neutral-600 dark:text-neutral-400">
-                {equipamentosOnline} de {totalEquipamentos} online
-              </p>
+            {/* Subtitle Info Group */}
+            <div className="flex flex-wrap items-center gap-2 text-xs mt-1">
+              {ordemProducao && ordemProducao !== 'N/A' && (
+                <span className="px-1.5 py-0.5 bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 rounded border border-blue-100 dark:border-blue-800 font-medium whitespace-nowrap">
+                  OP: {ordemProducao.replace(/^0+/, '')}
+                </span>
+              )}
+
+              {sku && sku !== 'N/A' && (
+                <span className="text-neutral-500 whitespace-nowrap">
+                  | SKU: {sku}
+                </span>
+              )}
+            </div>
+            <div className="text-xs text-neutral-500 truncate" title={descricao}>
+              {descricao || 'Produto Genérico'}
+            </div>
+          </div>
+
+          {/* Direita: OLE */}
+          <div className="text-right flex-shrink-0 ml-4">
+            <div className="flex items-center gap-1.5 justify-end mb-1 text-neutral-500">
+              <Zap className="w-3.5 h-3.5" />
+              <span className="text-[10px] font-bold uppercase tracking-wider">OLE</span>
+            </div>
+            <div className={`text-3xl font-bold ${getOLEColor(ole)}`}>
+              {ole.toFixed(1)}%
+            </div>
+
+            <div className="flex items-center justify-end gap-1.5 mt-1">
+              <div className={`w-1.5 h-1.5 rounded-full ${percentualOnline > 0 ? 'bg-green-500' : 'bg-red-500'}`} />
+              <span className="text-[10px] text-neutral-500 font-medium">
+                {equipamentosOnline}/{totalEquipamentos} EQ
+              </span>
             </div>
           </div>
         </div>
 
-        {/* Coluna 2: Métricas de Produção */}
-        <div className="flex-1 grid grid-cols-3 gap-4 border-l border-r border-neutral-200 dark:border-neutral-700 px-6 mx-2">
-          <div className="flex flex-col items-center justify-center text-center">
-            <div className="flex items-center gap-1.5 mb-1 text-neutral-500 dark:text-neutral-400">
-              <Box className="w-4 h-4" />
-              <span className="text-xs font-medium uppercase tracking-wide">Formato</span>
+        {/* Linha 3: Grid de Métricas Compacto */}
+        <div className="grid grid-cols-3 gap-2 p-3 bg-neutral-100/50 dark:bg-neutral-800/30 rounded-lg border border-neutral-200 dark:border-neutral-700">
+          {/* Formato */}
+          <div className="text-center">
+            <div className="flex items-center justify-center gap-1 text-[10px] text-neutral-500 uppercase mb-0.5">
+              <Box className="w-3 h-3" />
+              <span>Formato</span>
             </div>
-            <span className="text-lg font-semibold text-neutral-800 dark:text-neutral-200">
+            <div className="font-semibold text-neutral-800 dark:text-neutral-200 text-sm">
               {formatoAtual ? `${formatoAtual}g` : '--'}
-            </span>
+            </div>
           </div>
 
-          <div className="flex flex-col items-center justify-center text-center">
-            <div className="flex items-center gap-1.5 mb-1 text-neutral-500 dark:text-neutral-400">
-              <Scale className="w-4 h-4" />
-              <span className="text-xs font-medium uppercase tracking-wide">Produzido (t)</span>
+          {/* Produzido */}
+          <div className="text-center border-l border-neutral-200 dark:border-neutral-700">
+            <div className="flex items-center justify-center gap-1 text-[10px] text-neutral-500 uppercase mb-0.5">
+              <Scale className="w-3 h-3" />
+              <span>Real</span>
             </div>
-            <span className="text-lg font-semibold text-neutral-800 dark:text-neutral-200">
+            <div className="font-semibold text-neutral-800 dark:text-neutral-200 text-sm">
               {producaoReal.toFixed(3)} t
-            </span>
-          </div>
-
-          <div className="flex flex-col items-center justify-center text-center">
-            <div className="flex items-center gap-1.5 mb-1 text-neutral-500 dark:text-neutral-400">
-              <Gauge className="w-4 h-4" />
-              <span className="text-xs font-medium uppercase tracking-wide">Vazão (t/h)</span>
             </div>
-            <span className="text-lg font-semibold text-neutral-800 dark:text-neutral-200">
-              {vazaoTurno.toFixed(1)}
-            </span>
+          </div>
+
+          {/* Vazão */}
+          <div className="text-center border-l border-neutral-200 dark:border-neutral-700">
+            <div className="flex items-center justify-center gap-1 text-[10px] text-neutral-500 uppercase mb-0.5">
+              <Gauge className="w-3 h-3" />
+              <span>Vazão</span>
+            </div>
+            <div className="font-semibold text-neutral-800 dark:text-neutral-200 text-sm">
+              {vazaoTurno.toFixed(1)} t/h
+            </div>
           </div>
         </div>
 
-        {/* Coluna 3: OLE Principal */}
-        <div className="text-right min-w-[120px]">
-          <div className="flex items-center gap-2 justify-end mb-1">
-            <Zap className="w-5 h-5 text-neutral-500" />
-            <span className="text-sm font-medium text-neutral-600 dark:text-neutral-400">
-              OLE (OMAC)
-            </span>
-          </div>
-          <div className={`text-5xl font-bold ${getOLEColor(ole)}`}>
-            {ole.toFixed(1)}%
-          </div>
-        </div>
       </div>
 
       {/* SEÇÃO INFERIOR: Monitoramento de Produção (OLE & Projeção) */}

@@ -325,9 +325,9 @@ const FactoryManagementPanel: React.FC = () => {
                             </div>
                         </div>
                     </CardContent>
-                </Card>
-            </div>
-        </div>
+                </Card >
+            </div >
+        </div >
     );
 };
 

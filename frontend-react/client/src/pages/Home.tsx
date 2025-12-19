@@ -58,8 +58,18 @@ interface LinhaAgrupada {
     producao_real: number;
     producao_planejada_ate_agora: number;
     producao_planejada_total: number;
+    producao_esperada?: number; // Added
     equipamentos_online: number;
     equipamentos_total: number;
+    sku?: string; // Added
+    op?: string; // Added
+    descricao?: string; // Added
+    cuc?: string; // Added
+    formato?: number; // Added
+    meta_turno?: number; // Added
+    taxa_instantanea?: number; // Added (vazaoTurno)
+    projecao?: number; // Added
+    ritmo_necessario?: number; // Added
   };
 }
 
@@ -201,6 +211,16 @@ export default function Home() {
 
       const linhasFinais = await Promise.all(promisesLinhas);
 
+      console.log("DEBUG Linhas Finais:", linhasFinais.map(l => ({
+        nome: l.linha_nome,
+        codigo: l.linha_codigo,
+        oleData: l.ole_data,
+        equipamentos: l.equipamentos.map(e => ({
+          code: e.codigo,
+          metrics: e.medicoes
+        }))
+      })));
+
       setLinhas(linhasFinais);
       setLastUpdate(new Date());
       setError(null);
@@ -244,7 +264,7 @@ export default function Home() {
         ) : error && !linhas.length ? (
           <div className="flex justify-center h-64 items-center text-center"><AlertCircle className="w-12 h-12 text-red-500 mb-4" /><p>{error}</p></div>
         ) : (
-          <div className="space-y-10">
+          <div className="grid grid-cols-1 2xl:grid-cols-2 gap-6 items-start">
             {linhas.map((linha) => {
               const metricas = getMetricasLinha(linha.linha_id);
 
@@ -255,34 +275,29 @@ export default function Home() {
               const dadosProducao = eqLider?.medicoes;
 
               return (
-                <div key={linha.linha_id} className="space-y-4">
-                  <div className="flex items-center justify-between gap-4">
-                    <div className="flex-1">
+                <div key={linha.linha_id} className="flex flex-col gap-4 p-4 rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white/50 dark:bg-neutral-900/50 shadow-sm">
 
-                      <LineOverview
-                        nome={linha.linha_nome}
-
-                        // OLE Oficial (OMAC/ISA)
-                        ole={linha.ole_data?.ole || 0}
-                        producaoReal={linha.ole_data?.producao_real}
-                        producaoEsperada={linha.ole_data?.producao_planejada_ate_agora}
-                        metaTotal={linha.ole_data?.producao_planejada_total}
-
-                        totalEquipamentos={linha.equipamentos.length}
-                        equipamentosOnline={linha.equipamentos.filter(eq => eq.status !== 'Offline').length}
-
-                        sku={dadosProducao?.sku_codigo || metricas.sku_codigo}
-                        descricao={dadosProducao?.descricao || metricas.sku_descricao}
-                        ordemProducao={dadosProducao?.ordem_producao || metricas.ordem_producao}
-                        cuc={dadosProducao?.cuc}
-                        formatoAtual={dadosProducao?.formato_gramas || metricas.formato_gramas}
-                        vazaoTurno={metricas.vazao_real_ton_hora}
-                      />
-                    </div>
-
+                  {/* Line Header */}
+                  <div className="-mx-2 -mt-2">
+                    <LineOverview
+                      nome={linha.linha_nome}
+                      ole={linha.ole_data?.ole || 0}
+                      producaoReal={linha.ole_data?.producao_real}
+                      producaoEsperada={linha.ole_data?.producao_esperada}
+                      metaTotal={linha.ole_data?.meta_turno} // Changed from producao_planejada_total to matches API (meta_turno) or fallback
+                      totalEquipamentos={linha.equipamentos.length}
+                      equipamentosOnline={linha.equipamentos.filter(eq => eq.status !== 'Offline').length}
+                      sku={linha.ole_data?.sku || dadosProducao?.sku_codigo || metricas.sku_codigo}
+                      descricao={linha.ole_data?.descricao || dadosProducao?.descricao || metricas.sku_descricao}
+                      ordemProducao={linha.ole_data?.op || dadosProducao?.ordem_producao || metricas.ordem_producao}
+                      cuc={linha.ole_data?.cuc || dadosProducao?.cuc}
+                      formatoAtual={linha.ole_data?.formato || dadosProducao?.formato_gramas || metricas.formato_gramas}
+                      vazaoTurno={linha.ole_data?.taxa_instantanea || metricas.vazao_real_ton_hora}
+                    />
                   </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                  {/* Equipment Grid */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 mt-2">
                     {linha.equipamentos.map((eq) => (
                       <EquipamentoCard
                         key={eq.id}
@@ -305,7 +320,15 @@ export default function Home() {
                       />
                     ))}
                   </div>
-                  <MultiEquipmentTimeline linhaId={linha.linha_id} linhaNome={linha.linha_nome} equipamentos={linha.equipamentos} />
+
+                  {/* Timeline */}
+                  <div className="mt-2 overflow-hidden rounded-lg border border-neutral-200 dark:border-neutral-700">
+                    <MultiEquipmentTimeline
+                      linhaId={linha.linha_id}
+                      linhaNome={linha.linha_nome}
+                      equipamentos={linha.equipamentos}
+                    />
+                  </div>
                 </div>
               );
             })}

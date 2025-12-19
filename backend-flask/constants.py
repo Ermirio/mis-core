@@ -8,5 +8,8 @@ ESTADOS_MAQUINA = {
     6: "Teste/Projeto", 
     7: "Aguardando Manutenção",
     8: "Manutenção", 
-    9: "Falta de Material"
+    9: "Falta de Material",
+    11: "Partindo",
+    12: "Aguardando Condições",
+    13: "Parando"
 }

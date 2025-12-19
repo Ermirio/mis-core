@@ -1,5 +1,5 @@
 import React from 'react';
-import { CheckCircle, Clock, AlertTriangle, XCircle, HelpCircle, Settings, FileText, PenTool, AlertOctagon } from 'lucide-react';
+import { CheckCircle, Clock, AlertTriangle, XCircle, HelpCircle, Settings, FileText, PenTool, AlertOctagon, PlayCircle, Activity, PauseCircle } from 'lucide-react';
 
 // Definição das cores base (Hex) conforme MultiEquipmentTimeline
 const STATE_COLORS: Record<string, string> = {
@@ -12,6 +12,9 @@ const STATE_COLORS: Record<string, string> = {
     'AGUARD_MNT': '#eab308', // yellow-500
     'MANUTENCAO': '#991b1b', // red-800
     'FALTA_MAT': '#d97706',  // amber-600
+    'PARTINDO': '#84cc16',   // lime-500
+    'AGUARD_COND': '#0ea5e9', // sky-500
+    'PARANDO': '#f43f5e',    // rose-500
     'DEFAULT': '#9ca3af'     // gray-400
 };
 
@@ -26,6 +29,9 @@ const STATE_LABELS: Record<string, string> = {
     'AGUARD_MNT': 'Aguardando Manutenção',
     'MANUTENCAO': 'Manutenção',
     'FALTA_MAT': 'Falta de Material',
+    'PARTINDO': 'Partindo',
+    'AGUARD_COND': 'Aguardando Condições',
+    'PARANDO': 'Parando',
     'DEFAULT': 'Desconhecido'
 };
 
@@ -40,6 +46,9 @@ const STATE_ICONS: Record<string, React.ReactNode> = {
     'AGUARD_MNT': <AlertOctagon className="w-5 h-5" />,
     'MANUTENCAO': <PenTool className="w-5 h-5" />,
     'FALTA_MAT': <AlertTriangle className="w-5 h-5" />,
+    'PARTINDO': <PlayCircle className="w-5 h-5" />,
+    'AGUARD_COND': <Activity className="w-5 h-5" />,
+    'PARANDO': <PauseCircle className="w-5 h-5" />,
     'DEFAULT': <HelpCircle className="w-5 h-5" />
 };
 
@@ -59,12 +68,17 @@ export const normalizeState = (estado: string | number): string => {
     if (['RUN', 'PRODUZINDO', '1', 'ONLINE'].includes(estadoStr)) return 'PRODUZINDO';
     if (['WAIT_PREV', '2', 'AGUARDANDO', 'AGUARDANDO ANTERIOR'].includes(estadoStr)) return 'WAIT_PREV';
     if (['BLOCK_NEXT', '3', 'BLOQUEADO', 'BLOQUEADO PRÓXIMO', 'BLOQUEADO PROXIMO'].includes(estadoStr)) return 'BLOCK_NEXT';
-    if (['FAULT', 'PARADO', 'PARADA', '4', 'FALHA', 'PARADO/FALHA'].includes(estadoStr)) return 'PARADO';
+    if (['FAULT', 'PARADO', 'PARADA', '4', 'FALHA', 'PARADO/FALHA', '0', 'OUTRO'].includes(estadoStr)) return 'PARADO';
     if (['SETUP', '5'].includes(estadoStr)) return 'SETUP';
     if (['TESTE_PROJ', '6', 'TESTE', 'TESTE/PROJETO'].includes(estadoStr)) return 'TESTE_PROJ';
     if (['AGUARD_MNT', '7', 'AGUARDANDO MANUTENÇÃO', 'AGUARDANDO MANUTENCAO'].includes(estadoStr)) return 'AGUARD_MNT';
     if (['MANUTENCAO', '8', 'MANUTENÇÃO'].includes(estadoStr)) return 'MANUTENCAO';
     if (['FALTA_MAT', '9', 'FALTA MATERIAL', 'FALTA DE MATERIAL'].includes(estadoStr)) return 'FALTA_MAT';
+
+    // Novos Estados
+    if (['PARTINDO', '11'].includes(estadoStr)) return 'PARTINDO';
+    if (['AGUARD_COND', '12', 'AGUARDANDO CONDIÇÕES', 'AGUARDANDO CONDICOES'].includes(estadoStr)) return 'AGUARD_COND';
+    if (['PARANDO', '13'].includes(estadoStr)) return 'PARANDO';
 
     return 'DEFAULT';
 };

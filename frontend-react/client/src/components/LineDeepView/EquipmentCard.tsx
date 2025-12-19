@@ -1,10 +1,10 @@
-import React from 'react';
-import { Clock, Activity, CheckCircle, AlertTriangle, XCircle, Settings, PenTool, PauseCircle } from 'lucide-react';
+import { mapEstado } from '@/utils/equipmentStateUtils';
+import { Clock } from 'lucide-react';
 
 interface EquipmentCardProps {
     nome: string;
     funcao?: string;
-    estado: number; // 0-9
+    estado: number | string; // Allow flexible input like Home
     oee: number;
     velocidadeAtual: number;
     velocidadeNominal: number;
@@ -25,20 +25,7 @@ const EquipmentCard: React.FC<EquipmentCardProps> = ({
     ultimaParada
 }) => {
 
-    const getStatusInfo = (code: number) => {
-        switch (code) {
-            case 1: return { label: 'Produzindo', color: 'text-green-600', bg: 'bg-green-100', icon: CheckCircle };
-            case 2: return { label: 'Aguardando', color: 'text-yellow-600', bg: 'bg-yellow-100', icon: PauseCircle };
-            case 3: return { label: 'Bloqueado', color: 'text-orange-600', bg: 'bg-orange-100', icon: XCircle };
-            case 4: return { label: 'Falha', color: 'text-red-600', bg: 'bg-red-100', icon: AlertTriangle };
-            case 5: return { label: 'Setup', color: 'text-blue-600', bg: 'bg-blue-100', icon: Settings };
-            case 8: return { label: 'Manutenção', color: 'text-gray-600', bg: 'bg-gray-100', icon: PenTool };
-            default: return { label: 'Parado', color: 'text-gray-500', bg: 'bg-gray-100', icon: PauseCircle };
-        }
-    };
-
-    const status = getStatusInfo(estado);
-    const StatusIcon = status.icon;
+    const estadoInfo = mapEstado(estado);
 
     return (
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
@@ -47,9 +34,12 @@ const EquipmentCard: React.FC<EquipmentCardProps> = ({
                     <h3 className="font-bold text-gray-900">{nome}</h3>
                     {funcao && <p className="text-xs text-gray-500">{funcao}</p>}
                 </div>
-                <div className={`flex items-center gap-1 px-2 py-1 rounded-full text-xs font-bold ${status.bg} ${status.color}`}>
-                    <StatusIcon className="w-3 h-3" />
-                    {status.label.toUpperCase()}
+                <div
+                    className="flex items-center gap-1 px-2 py-1 rounded-full text-xs font-bold"
+                    style={{ backgroundColor: estadoInfo.corFundo, color: estadoInfo.corHex }}
+                >
+                    <span className="w-3 h-3 flex items-center justify-center">{estadoInfo.icon}</span>
+                    {estadoInfo.nome.toUpperCase()}
                 </div>
             </div>
 
