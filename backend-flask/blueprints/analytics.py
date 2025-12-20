@@ -188,7 +188,7 @@ def analyze_correlation():
         return jsonify({'error': 'Insufficient overlap data'}), 400
         
     # Correlation Matrix
-    corr_matrix = df_resampled.corr(method='pearson')
+    corr_matrix = df_resampled.corr(method='pearson').fillna(0)
     
     # Prepare Scatter Data (matrix of scatter plots? No, usually frontend requests pairs, or we return the full dataset for frontend to scatter?)
     # Return full dataset (JSON optimized) so Plotly can do Scatter Matrix gl
@@ -208,3 +208,70 @@ def analyze_correlation():
             'data': df_resampled.to_dict(orient='list') # { 'col1': [v1, v2...], 'col2': ... }
         }
     })
+
+@analytics_bp.route('/analyze/timeseries', methods=['POST'])
+def analyze_timeseries():
+    """
+    Returns aligned time-series data for Trend and SPC charts.
+    Calculates Control Limits (UCL/LCL).
+    Payload: Same as stats.
+    """
+    data = request.json
+    variables = data.get('variables', [])
+    start_time = data.get('start_time')
+    end_time = data.get('end_time')
+    # Resample is optional here. For SPC we might want raw data points if count is low, 
+    # but for visualization usually we want some alignment or limit.
+    # Let's verify data density. If huge, we resample to '1min' or '5min'.
+    # For now, let's use a dynamic resample if range > 24h.
+    
+    influx_client = current_app.extensions.get('influx_client')
+    if not influx_client:
+        return jsonify({'error': 'DB not connected'}), 500
+
+    # Query without resampling first? Or query_influx_to_df handles it?
+    # query_influx_to_df fetches raw points.
+    df = query_influx_to_df(influx_client, variables, start_time, end_time)
+    
+    if df.empty:
+        return jsonify({'error': 'No data'}), 404
+
+    # If rows > 5000, resample to avoid frontend lag
+    if len(df) > 5000:
+        # Determine interval suitable for the range
+        # Simple rule: limit to 2000 points?
+        rule = '1min' 
+        df = df.resample(rule).mean().dropna()
+
+    results = {}
+    
+    for col in df.columns:
+        series = df[col].dropna()
+        if series.empty:
+            continue
+            
+        mean = float(series.mean())
+        std = float(series.std())
+        
+        # Search for limit info in request variables to find matching config
+        # var config might provide alias
+        var_config = next((v for v in variables if v.get('alias', v.get('tag_influx')) == col), None)
+        
+        ucl = mean + (3 * std)
+        lcl = mean - (3 * std)
+        
+        results[col] = {
+            'timestamps': series.index.astype(str).tolist(),
+            'values': series.values.tolist(),
+            'stats': {
+                'mean': mean,
+                'std': std,
+                'ucl': ucl,
+                'lcl': lcl,
+                'lsl': var_config.get('lsl') if var_config else None,
+                'usl': var_config.get('usl') if var_config else None,
+                'nominal': var_config.get('nominal') if var_config else None
+            }
+        }
+        
+    return jsonify(results)

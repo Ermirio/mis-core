@@ -55,6 +55,10 @@ const LineAnalytics: React.FC = () => {
     // Data
     const [statsData, setStatsData] = useState<any[]>([]);
     const [correlationData, setCorrelationData] = useState<any>(null);
+    const [timeseriesData, setTimeseriesData] = useState<any>(null); // New state
+    const [scatterX, setScatterX] = useState<string>('');
+    const [scatterY, setScatterY] = useState<string>('');
+    const [activeTab, setActiveTab] = useState<string>('stats');
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
@@ -65,7 +69,7 @@ const LineAnalytics: React.FC = () => {
             .catch(err => console.error("Erro ao buscar linhas:", err));
     }, []);
 
-    const handleRunAnalysis = async (mode: 'stats' | 'correlation') => {
+    const handleRunAnalysis = async (mode: 'stats' | 'correlation' | 'timeseries') => {
         if (selectedTags.length === 0) {
             setError("Selecione pelo menos uma variável.");
             return;
@@ -91,15 +95,24 @@ const LineAnalytics: React.FC = () => {
                 end_time: end.toISOString()
             };
 
-            const endpoint = mode === 'stats' ? '/analyze/stats' : '/analyze/correlation';
+            let endpoint = '';
+            if (mode === 'stats') endpoint = '/analyze/stats';
+            else if (mode === 'correlation') endpoint = '/analyze/correlation';
+            else endpoint = '/analyze/timeseries';
 
             const res = await axios.post(`${FLASK_API}${endpoint}`, payload);
 
             if (mode === 'stats') {
                 setStatsData(res.data);
-            } else {
+                setActiveTab('stats');
+            } else if (mode === 'correlation') {
                 console.log("Correlation Data:", res.data);
                 setCorrelationData(res.data);
+                setActiveTab('correlation');
+            } else {
+                console.log("Timeseries Data:", res.data);
+                setTimeseriesData(res.data);
+                setActiveTab('trend');
             }
 
         } catch (err: any) {
@@ -143,6 +156,34 @@ const LineAnalytics: React.FC = () => {
         } else {
             setSelectedTags([...selectedTags, tag]);
         }
+    };
+
+    const downloadCSV = () => {
+        // Basic CSV Export of Timeseries Data
+        if (!timeseriesData) return;
+
+        // Find all timestamps across variables (union)
+        // Actually, timeseriesData keys are Variable Aliases.
+        // Each value has timestamps/values.
+        // For simplicity, let's export the FIRST variable's timestamps if aligned?
+        // Or just export JSON for now? User asked for CSV.
+
+        let csvContent = "data:text/csv;charset=utf-8,";
+        csvContent += "Time,Variable,Value\n";
+
+        Object.entries(timeseriesData).forEach(([alias, data]: [string, any]) => {
+            data.timestamps.forEach((t: string, i: number) => {
+                csvContent += `${t},${alias},${data.values[i]}\n`;
+            });
+        });
+
+        const encodedUri = encodeURI(csvContent);
+        const link = document.createElement("a");
+        link.setAttribute("href", encodedUri);
+        link.setAttribute("download", "analise_dados.csv");
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
     };
 
     return (
@@ -208,24 +249,28 @@ const LineAnalytics: React.FC = () => {
 
                 {/* Main Content */}
                 <div className="flex-1 overflow-auto">
-                    <Tabs defaultValue="stats" className="w-full">
+                    <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
                         <div className="flex justify-between items-center mb-4">
                             <TabsList>
-                                <TabsTrigger value="stats">Estatística Descritiva</TabsTrigger>
+                                <TabsTrigger value="stats">Estatística</TabsTrigger>
+                                <TabsTrigger value="trend">Tendência</TabsTrigger>
+                                <TabsTrigger value="spc">SPC (Carta de Controle)</TabsTrigger>
+                                <TabsTrigger value="scatter">Dispersão (XY)</TabsTrigger>
                                 <TabsTrigger value="correlation">Correlação</TabsTrigger>
                             </TabsList>
-                            <Button onClick={() => handleRunAnalysis('stats')} disabled={loading}>
-                                {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                                Analisar Estatísticas
-                            </Button>
-                            <Button variant="outline" onClick={() => handleRunAnalysis('correlation')} disabled={loading} className="ml-2">
-                                {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                                Analisar Correlação
-                            </Button>
+                            <div className="flex gap-2">
+                                <Button onClick={() => handleRunAnalysis('stats')} variant="secondary" size="sm">Stats</Button>
+                                <Button onClick={() => handleRunAnalysis('timeseries')} variant="default" size="sm">Gerar Gráficos</Button>
+                                <Button onClick={() => handleRunAnalysis('correlation')} variant="outline" size="sm">Correlação</Button>
+                                {timeseriesData && (
+                                    <Button onClick={downloadCSV} variant="ghost" size="sm">Exportar CSV</Button>
+                                )}
+                            </div>
                         </div>
 
                         {error && <div className="p-4 bg-red-100 text-red-700 rounded mb-4">{error}</div>}
 
+                        {/* TABS CONTENT */}
                         <TabsContent value="stats" className="space-y-4">
                             {statsData.map((res, idx) => (
                                 <Card key={idx}>
@@ -307,10 +352,124 @@ const LineAnalytics: React.FC = () => {
                                 </div>
                             )}
                         </TabsContent>
+
+                        {/* TREND TAB */}
+                        <TabsContent value="trend">
+                            {timeseriesData ? (
+                                <Card>
+                                    <CardHeader>
+                                        <CardTitle>Tendência Temporal</CardTitle>
+                                    </CardHeader>
+                                    <CardContent>
+                                        <Plot
+                                            data={Object.entries(timeseriesData).map(([alias, d]: [string, any]) => ({
+                                                x: d.timestamps,
+                                                y: d.values,
+                                                type: 'scatter',
+                                                mode: 'lines',
+                                                name: alias
+                                            }))}
+                                            layout={{ title: 'Gráfico de Tendência', autosize: true, height: 500 }}
+                                            useResizeHandler={true}
+                                            className="w-full"
+                                        />
+                                    </CardContent>
+                                </Card>
+                            ) : <div className="text-center p-8 text-gray-500">Clique em "Gerar Gráficos" para visualizar.</div>}
+                        </TabsContent>
+
+                        {/* SPC TAB */}
+                        <TabsContent value="spc">
+                            {timeseriesData ? (
+                                <div className="space-y-4">
+                                    {Object.entries(timeseriesData).map(([alias, d]: [string, any]) => (
+                                        <Card key={alias}>
+                                            <CardHeader><CardTitle>SPC - {alias}</CardTitle></CardHeader>
+                                            <CardContent>
+                                                <Plot
+                                                    data={[
+                                                        { x: d.timestamps, y: d.values, type: 'scatter', mode: 'lines+markers', name: 'Valor Real' },
+                                                        { x: d.timestamps, y: Array(d.timestamps.length).fill(d.stats.mean), type: 'scatter', mode: 'lines', name: 'Média', line: { color: 'green', dash: 'dash' } },
+                                                        { x: d.timestamps, y: Array(d.timestamps.length).fill(d.stats.ucl), type: 'scatter', mode: 'lines', name: 'UCL (+3σ)', line: { color: 'red' } },
+                                                        { x: d.timestamps, y: Array(d.timestamps.length).fill(d.stats.lcl), type: 'scatter', mode: 'lines', name: 'LCL (-3σ)', line: { color: 'red' } },
+                                                        // Plot LSL/USL if exist
+                                                        ...(d.stats.usl ? [{ x: d.timestamps, y: Array(d.timestamps.length).fill(d.stats.usl), type: 'scatter' as const, mode: 'lines' as const, name: 'USL (Eng)', line: { color: 'orange', width: 3 } }] : []),
+                                                        ...(d.stats.lsl ? [{ x: d.timestamps, y: Array(d.timestamps.length).fill(d.stats.lsl), type: 'scatter' as const, mode: 'lines' as const, name: 'LSL (Eng)', line: { color: 'orange', width: 3 } }] : [])
+                                                    ]}
+                                                    layout={{ title: `Carta de Controle: ${alias}`, autosize: true, height: 400 }}
+                                                    useResizeHandler={true}
+                                                    className="w-full"
+                                                />
+                                            </CardContent>
+                                        </Card>
+                                    ))}
+                                </div>
+                            ) : <div className="text-center p-8 text-gray-500">Clique em "Gerar Gráficos" para visualizar.</div>}
+                        </TabsContent>
+
+                        {/* SCATTER TAB */}
+                        <TabsContent value="scatter">
+                            {timeseriesData ? (
+                                <Card>
+                                    <CardHeader>
+                                        <CardTitle>Dispersão X vs Y</CardTitle>
+                                        <div className="flex gap-4">
+                                            <div className="w-1/2">
+                                                <Label>Eixo X</Label>
+                                                <Select value={scatterX} onValueChange={setScatterX}>
+                                                    <SelectTrigger><SelectValue placeholder="Selecione Variável X" /></SelectTrigger>
+                                                    <SelectContent>
+                                                        {Object.keys(timeseriesData).map(k => (
+                                                            <SelectItem key={k} value={k}>{k}</SelectItem>
+                                                        ))}
+                                                    </SelectContent>
+                                                </Select>
+                                            </div>
+                                            <div className="w-1/2">
+                                                <Label>Eixo Y</Label>
+                                                <Select value={scatterY} onValueChange={setScatterY}>
+                                                    <SelectTrigger><SelectValue placeholder="Selecione Variável Y" /></SelectTrigger>
+                                                    <SelectContent>
+                                                        {Object.keys(timeseriesData).map(k => (
+                                                            <SelectItem key={k} value={k}>{k}</SelectItem>
+                                                        ))}
+                                                    </SelectContent>
+                                                </Select>
+                                            </div>
+                                        </div>
+                                    </CardHeader>
+                                    <CardContent>
+                                        {scatterX && scatterY ? (
+                                            <Plot
+                                                data={[
+                                                    {
+                                                        x: timeseriesData[scatterX].values,
+                                                        y: timeseriesData[scatterY].values,
+                                                        mode: 'markers',
+                                                        type: 'scatter',
+                                                        marker: { color: 'blue', size: 8, opacity: 0.6 }
+                                                    }
+                                                ]}
+                                                layout={{
+                                                    title: `${scatterX} vs ${scatterY}`,
+                                                    xaxis: { title: scatterX },
+                                                    yaxis: { title: scatterY },
+                                                    autosize: true,
+                                                    height: 500
+                                                }}
+                                                useResizeHandler={true}
+                                                className="w-full"
+                                            />
+                                        ) : <div className="p-8 text-center text-gray-500">Selecione as variáveis para os Eixos X e Y.</div>}
+                                    </CardContent>
+                                </Card>
+                            ) : <div className="text-center p-8 text-gray-500">Clique em "Gerar Gráficos" para visualizar.</div>}
+                        </TabsContent>
+
                     </Tabs>
                 </div>
             </div>
-        </div>
+        </div >
     );
 };
 
