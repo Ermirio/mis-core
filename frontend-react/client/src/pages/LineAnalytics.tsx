@@ -11,7 +11,12 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import MainLayout from '@/components/layout/MainLayout';
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { CalendarIcon, Loader2, RefreshCw } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import {
+    CalendarIcon, Loader2, RefreshCw,
+    BarChart2, TrendingUp, Activity, ScatterChart as ScatterIcon, Grid,
+    Settings, Filter, Download, ChevronsRight, Info, Plus, Trash2, Edit
+} from "lucide-react";
 import { format, subHours } from "date-fns";
 import { ptBR } from "date-fns/locale";
 
@@ -43,6 +48,12 @@ interface Linha {
     equipamentos: Equipamento[];
 }
 
+interface TrendChart {
+    id: number;
+    name: string; // Added name
+    selectedAliases: string[];
+}
+
 const LineAnalytics: React.FC = () => {
     const [linhas, setLinhas] = useState<Linha[]>([]);
     const [selectedLinhaId, setSelectedLinhaId] = useState<string>('');
@@ -56,6 +67,7 @@ const LineAnalytics: React.FC = () => {
     const [statsData, setStatsData] = useState<any[]>([]);
     const [correlationData, setCorrelationData] = useState<any>(null);
     const [timeseriesData, setTimeseriesData] = useState<any>(null); // New state
+    const [trendCharts, setTrendCharts] = useState<TrendChart[]>([]); // Multi-chart state
     const [scatterX, setScatterX] = useState<string>('');
     const [scatterY, setScatterY] = useState<string>('');
     const [activeTab, setActiveTab] = useState<string>('stats');
@@ -112,6 +124,12 @@ const LineAnalytics: React.FC = () => {
             } else {
                 console.log("Timeseries Data:", res.data);
                 setTimeseriesData(res.data);
+                // Initialize one chart with all variables
+                setTrendCharts([{
+                    id: Date.now(),
+                    name: 'Painel Geral',
+                    selectedAliases: Object.keys(res.data)
+                }]);
                 setActiveTab('trend');
             }
 
@@ -186,18 +204,55 @@ const LineAnalytics: React.FC = () => {
         document.body.removeChild(link);
     };
 
+    // Multi-Chart Handlers
+    const addChart = () => {
+        setTrendCharts([...trendCharts, {
+            id: Date.now(),
+            name: `Painel ${trendCharts.length + 1}`,
+            selectedAliases: []
+        }]);
+    };
+
+    const removeChart = (id: number) => {
+        setTrendCharts(trendCharts.filter(c => c.id !== id));
+    };
+
+    const updateChartName = (id: number, newName: string) => {
+        setTrendCharts(trendCharts.map(c => c.id === id ? { ...c, name: newName } : c));
+    };
+
+    const toggleChartVariable = (chartId: number, alias: string) => {
+        setTrendCharts(trendCharts.map(c => {
+            if (c.id === chartId) {
+                const isSelected = c.selectedAliases.includes(alias);
+                return {
+                    ...c,
+                    selectedAliases: isSelected
+                        ? c.selectedAliases.filter(a => a !== alias)
+                        : [...c.selectedAliases, alias]
+                };
+            }
+            return c;
+        }));
+    };
+
     return (
-        <div className="container mx-auto p-4 h-full">
-            <div className="flex h-[calc(100vh-100px)] gap-4">
+        <div className="w-full h-full p-2 bg-slate-50/50 dark:bg-slate-950/50">
+            <div className="flex h-[calc(100vh-80px)] gap-2">
                 {/* Sidebar Filter */}
-                <Card className="w-80 flex flex-col">
-                    <CardHeader>
-                        <CardTitle>Configuração</CardTitle>
-                        <CardDescription>Selecione variáveis</CardDescription>
+                <Card className="w-80 flex flex-col shadow-lg border-l-4 border-l-blue-600 dark:border-l-blue-500 rounded-lg">
+                    <CardHeader className="pb-2">
+                        <CardTitle className="flex items-center gap-2 text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-600 to-cyan-500">
+                            <Settings className="h-6 w-6 text-blue-600" />
+                            Configuração
+                        </CardTitle>
+                        <CardDescription>Parâmetros de Análise</CardDescription>
                     </CardHeader>
-                    <CardContent className="flex-1 flex flex-col gap-4 overflow-hidden">
-                        <div>
-                            <Label>Linha</Label>
+                    <CardContent className="flex-1 flex flex-col gap-4 overflow-hidden pt-2">
+                        <div className="space-y-1">
+                            <Label className="flex items-center gap-2 text-gray-700 dark:text-gray-200">
+                                <Filter className="h-4 w-4" /> Linha
+                            </Label>
                             <Select value={selectedLinhaId} onValueChange={setSelectedLinhaId}>
                                 <SelectTrigger>
                                     <SelectValue placeholder="Selecione..." />
@@ -225,16 +280,21 @@ const LineAnalytics: React.FC = () => {
                         </div>
 
                         <div className="flex-1 overflow-hidden flex flex-col">
-                            <Label className="mb-2">Variáveis</Label>
-                            <ScrollArea className="flex-1 border rounded p-2">
+                            <Label className="mb-2 flex items-center gap-2 text-gray-700 dark:text-gray-200">
+                                <Activity className="h-4 w-4" /> Variáveis
+                            </Label>
+                            <ScrollArea className="flex-1 border rounded-md p-2 bg-slate-50 dark:bg-slate-900/50">
                                 {getAvailableTags().map(tag => (
-                                    <div key={tag.id} className="flex items-center space-x-2 mb-2">
+                                    <div
+                                        key={tag.id}
+                                        className="flex items-center space-x-2 mb-2 p-2 rounded hover:bg-white dark:hover:bg-slate-800 transition-colors cursor-pointer border border-transparent hover:border-slate-200 dark:hover:border-slate-700"
+                                    >
                                         <Checkbox
                                             id={`tag-${tag.id}`}
                                             checked={!!selectedTags.find(t => t.id === tag.id)}
                                             onCheckedChange={() => toggleTag(tag)}
                                         />
-                                        <label htmlFor={`tag-${tag.id}`} className="text-sm cursor-pointer">
+                                        <label htmlFor={`tag-${tag.id}`} className="text-sm cursor-pointer flex-1 font-medium text-slate-700 dark:text-slate-300">
                                             {tag.equipamento_nome} - {tag.nome}
                                         </label>
                                     </div>
@@ -249,14 +309,24 @@ const LineAnalytics: React.FC = () => {
 
                 {/* Main Content */}
                 <div className="flex-1 overflow-auto">
-                    <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-                        <div className="flex justify-between items-center mb-4">
-                            <TabsList>
-                                <TabsTrigger value="stats">Estatística</TabsTrigger>
-                                <TabsTrigger value="trend">Tendência</TabsTrigger>
-                                <TabsTrigger value="spc">SPC (Carta de Controle)</TabsTrigger>
-                                <TabsTrigger value="scatter">Dispersão (XY)</TabsTrigger>
-                                <TabsTrigger value="correlation">Correlação</TabsTrigger>
+                    <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full h-full flex flex-col">
+                        <div className="flex justify-between items-center mb-4 bg-white dark:bg-slate-900 p-2 rounded-lg shadow-sm border">
+                            <TabsList className="grid grid-cols-5 gap-2 w-[600px]">
+                                <TabsTrigger value="stats" className="flex items-center gap-2 data-[state=active]:bg-blue-100 dark:data-[state=active]:bg-blue-900/40 data-[state=active]:text-blue-700 dark:data-[state=active]:text-blue-300 transition-all">
+                                    <BarChart2 className="h-4 w-4" /> Stats
+                                </TabsTrigger>
+                                <TabsTrigger value="trend" className="flex items-center gap-2 data-[state=active]:bg-emerald-100 dark:data-[state=active]:bg-emerald-900/40 data-[state=active]:text-emerald-700 dark:data-[state=active]:text-emerald-300 transition-all">
+                                    <TrendingUp className="h-4 w-4" /> Tendência
+                                </TabsTrigger>
+                                <TabsTrigger value="spc" className="flex items-center gap-2 data-[state=active]:bg-amber-100 dark:data-[state=active]:bg-amber-900/40 data-[state=active]:text-amber-700 dark:data-[state=active]:text-amber-300 transition-all">
+                                    <Activity className="h-4 w-4" /> SPC
+                                </TabsTrigger>
+                                <TabsTrigger value="scatter" className="flex items-center gap-2 data-[state=active]:bg-purple-100 dark:data-[state=active]:bg-purple-900/40 data-[state=active]:text-purple-700 dark:data-[state=active]:text-purple-300 transition-all">
+                                    <ScatterIcon className="h-4 w-4" /> Dispersão
+                                </TabsTrigger>
+                                <TabsTrigger value="correlation" className="flex items-center gap-2 data-[state=active]:bg-pink-100 dark:data-[state=active]:bg-pink-900/40 data-[state=active]:text-pink-700 dark:data-[state=active]:text-pink-300 transition-all">
+                                    <Grid className="h-4 w-4" /> Correlação
+                                </TabsTrigger>
                             </TabsList>
                             <div className="flex gap-2">
                                 <Button onClick={() => handleRunAnalysis('stats')} variant="secondary" size="sm">Stats</Button>
@@ -356,25 +426,88 @@ const LineAnalytics: React.FC = () => {
                         {/* TREND TAB */}
                         <TabsContent value="trend">
                             {timeseriesData ? (
-                                <Card>
-                                    <CardHeader>
-                                        <CardTitle>Tendência Temporal</CardTitle>
-                                    </CardHeader>
-                                    <CardContent>
-                                        <Plot
-                                            data={Object.entries(timeseriesData).map(([alias, d]: [string, any]) => ({
-                                                x: d.timestamps,
-                                                y: d.values,
-                                                type: 'scatter',
-                                                mode: 'lines',
-                                                name: alias
-                                            }))}
-                                            layout={{ title: 'Gráfico de Tendência', autosize: true, height: 500 }}
-                                            useResizeHandler={true}
-                                            className="w-full"
-                                        />
-                                    </CardContent>
-                                </Card>
+                                <div className="space-y-4">
+                                    <div className="flex justify-end">
+                                        <Button onClick={addChart} variant="outline" size="sm" className="gap-2">
+                                            <Plus className="h-4 w-4" /> Adicionar Gráfico
+                                        </Button>
+                                    </div>
+
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        {trendCharts.map((chart, index) => (
+                                            <Card key={chart.id} className="col-span-1 md:col-span-2 lg:col-span-1 shadow-md hover:shadow-lg transition-all border-l-4 border-l-emerald-500">
+                                                <CardHeader className="flex flex-row items-center justify-between pb-2">
+                                                    <CardTitle className="text-sm font-medium">{chart.name}</CardTitle>
+                                                    <div className="flex items-center gap-2">
+                                                        <Popover>
+                                                            <PopoverTrigger asChild>
+                                                                <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                                                                    <Settings className="h-4 w-4" />
+                                                                </Button>
+                                                            </PopoverTrigger>
+                                                            <PopoverContent className="w-64 p-2" align="end">
+                                                                <div className="flex flex-col gap-2 mb-2">
+                                                                    <Label htmlFor={`name-${chart.id}`} className="text-xs font-semibold text-gray-500">Nome do Painel</Label>
+                                                                    <Input
+                                                                        id={`name-${chart.id}`}
+                                                                        value={chart.name}
+                                                                        onChange={(e: React.ChangeEvent<HTMLInputElement>) => updateChartName(chart.id, e.target.value)}
+                                                                        className="h-7 text-sm"
+                                                                    />
+                                                                </div>
+                                                                <div className="mb-2 font-medium text-xs text-gray-500 mt-2">Variáveis neste gráfico</div>
+                                                                <ScrollArea className="h-40 border rounded bg-slate-50 dark:bg-slate-900/50">
+                                                                    {Object.keys(timeseriesData).map(alias => (
+                                                                        <div key={alias} className="flex items-center space-x-2 py-1 px-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded cursor-pointer" onClick={() => toggleChartVariable(chart.id, alias)}>
+                                                                            <Checkbox
+                                                                                checked={chart.selectedAliases.includes(alias)}
+                                                                                onCheckedChange={() => toggleChartVariable(chart.id, alias)}
+                                                                            />
+                                                                            <span className="text-xs truncate" title={alias}>{alias}</span>
+                                                                        </div>
+                                                                    ))}
+                                                                </ScrollArea>
+                                                            </PopoverContent>
+                                                        </Popover>
+                                                        {trendCharts.length > 1 && (
+                                                            <Button onClick={() => removeChart(chart.id)} variant="ghost" size="sm" className="h-8 w-8 p-0 text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/20">
+                                                                <Trash2 className="h-4 w-4" />
+                                                            </Button>
+                                                        )}
+                                                    </div>
+                                                </CardHeader>
+                                                <CardContent>
+                                                    {chart.selectedAliases.length > 0 ? (
+                                                        <Plot
+                                                            data={chart.selectedAliases.map(alias => ({
+                                                                x: timeseriesData[alias]?.timestamps || [],
+                                                                y: timeseriesData[alias]?.values || [],
+                                                                type: 'scatter',
+                                                                mode: 'lines',
+                                                                name: alias
+                                                            }))}
+                                                            layout={{
+                                                                title: undefined,
+                                                                autosize: true,
+                                                                height: 350,
+                                                                margin: { l: 40, r: 20, t: 20, b: 40 },
+                                                                showlegend: true,
+                                                                legend: { orientation: 'h', y: -0.2 }
+                                                            }}
+                                                            useResizeHandler={true}
+                                                            className="w-full"
+                                                        />
+                                                    ) : (
+                                                        <div className="h-[350px] flex flex-col items-center justify-center border-2 border-dashed rounded text-gray-400 gap-2">
+                                                            <BarChart2 className="h-8 w-8 opacity-50" />
+                                                            <span className="text-sm">Selecione variáveis nas configurações</span>
+                                                        </div>
+                                                    )}
+                                                </CardContent>
+                                            </Card>
+                                        ))}
+                                    </div>
+                                </div>
                             ) : <div className="text-center p-8 text-gray-500">Clique em "Gerar Gráficos" para visualizar.</div>}
                         </TabsContent>
 
