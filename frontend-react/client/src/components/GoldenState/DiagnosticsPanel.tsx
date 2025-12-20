@@ -1,0 +1,315 @@
+import React, { useEffect, useState, useMemo } from 'react';
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Activity, AlertTriangle, CheckCircle, Info, ChevronLeft, ChevronRight } from 'lucide-react';
+
+interface DiagnosticAlert {
+    rule: string;
+    severity: 'info' | 'warning' | 'critical';
+    message: string;
+    details: any;
+    timestamp: string;
+}
+
+interface GoldenStateProfile {
+    velocidade_atual: number;
+    oee_atual?: number;
+    sku?: string;
+    capture_type?: string;
+    time: string;
+    [key: string]: any;
+}
+
+interface DiagnosticsPanelProps {
+    equipamentoCodigo: string;
+}
+
+const DiagnosticsPanel: React.FC<DiagnosticsPanelProps> = ({ equipamentoCodigo }) => {
+    const [alerts, setAlerts] = useState<DiagnosticAlert[]>([]);
+    const [goldenState, setGoldenState] = useState<GoldenStateProfile | null>(null);
+    const [loading, setLoading] = useState(true);
+    const [capturing, setCapturing] = useState(false);
+    const [histPage, setHistPage] = useState(1);
+    const HIST_ITEMS_PER_PAGE = 5;
+
+    const [history, setHistory] = useState<GoldenStateProfile[]>([]);
+
+    const fetchDiagnostics = async () => {
+        try {
+            const response = await fetch(`${import.meta.env.VITE_FLASK_API_URL}/diagnostics/alerts/${equipamentoCodigo}`);
+            const data = await response.json();
+            if (data.status === 'success') {
+                setAlerts(data.alerts);
+                setGoldenState(data.golden_state);
+                setHistory(data.golden_state_history || []);
+            }
+        } catch (error) {
+            console.error("Error fetching diagnostics:", error);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const captureGoldenState = async () => {
+        setCapturing(true);
+        try {
+            const response = await fetch(`${import.meta.env.VITE_FLASK_API_URL}/diagnostics/capture/${equipamentoCodigo}`, {
+                method: 'POST'
+            });
+            const data = await response.json();
+            if (data.status === 'success') {
+                fetchDiagnostics(); // Refresh
+            } else {
+                alert("Failed to capture: " + data.message);
+            }
+        } catch (error) {
+            console.error("Error capturing golden state:", error);
+        } finally {
+            setCapturing(false);
+        }
+    };
+
+    useEffect(() => {
+        fetchDiagnostics();
+        const interval = setInterval(fetchDiagnostics, 10000); // Refresh every 10s
+        return () => clearInterval(interval);
+    }, [equipamentoCodigo]);
+
+    const getSeverityIcon = (severity: string) => {
+        switch (severity) {
+            case 'critical': return <AlertTriangle className="h-4 w-4 text-red-500" />;
+            case 'warning': return <AlertTriangle className="h-4 w-4 text-yellow-500" />;
+            default: return <Info className="h-4 w-4 text-blue-500" />;
+        }
+    };
+
+    // Helper to extract sensors
+    const getSensors = () => {
+        if (!goldenState) return [];
+        const ignore = ['time', 'equipamento', 'sku', 'capture_type', 'velocidade_atual', 'oee_atual', 'measurement'];
+        const sensors: any[] = [];
+
+        // Group min/max/val
+        const keys = Object.keys(goldenState).filter(k => !ignore.includes(k) && !k.endsWith('_min') && !k.endsWith('_max'));
+
+        keys.forEach(k => {
+            sensors.push({
+                name: k,
+                val: goldenState[k],
+                min: goldenState[`${k}_min`],
+                max: goldenState[`${k}_max`]
+            });
+        });
+
+        return sensors;
+    };
+
+    // History Table Logic
+    const histSensorKeys = useMemo(() => {
+        const keys = new Set<string>();
+        const ignore = ['time', 'equipamento', 'sku', 'capture_type', 'velocidade_atual', 'oee_atual', 'measurement', 'id', 'tags'];
+        history.forEach(item => {
+            Object.keys(item).forEach(k => {
+                if (!ignore.includes(k) && !k.endsWith('_min') && !k.endsWith('_max') && !k.startsWith('last_')) {
+                    keys.add(k);
+                }
+            });
+        });
+        return Array.from(keys).sort();
+    }, [history]);
+
+    const histTotalPages = Math.ceil(history.length / HIST_ITEMS_PER_PAGE);
+    const histCurrentItems = history.slice((histPage - 1) * HIST_ITEMS_PER_PAGE, histPage * HIST_ITEMS_PER_PAGE);
+
+    const sensors = getSensors();
+
+    return (
+        <div className="space-y-4">
+            <div className="flex justify-between items-center">
+                <h3 className="text-lg font-semibold flex items-center gap-2">
+                    <Activity className="h-5 w-5" />
+                    Diagnóstico Inteligente
+                </h3>
+                <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={captureGoldenState}
+                    disabled={capturing}
+                >
+                    {capturing ? 'Capturando...' : 'Capturar Golden State'}
+                </Button>
+            </div>
+
+            {/* Golden State Status */}
+            <Card className="border-l-4 border-l-blue-500">
+                <CardHeader className="pb-2">
+                    <div className="flex justify-between items-start">
+                        <CardTitle className="text-sm font-medium text-muted-foreground flex flex-col">
+                            <span>Golden State (Baseline) - Última Captura</span>
+                            {goldenState && (
+                                <span className="text-xs font-normal mt-1">
+                                    {new Date(goldenState.time).toLocaleString()}
+                                </span>
+                            )}
+                        </CardTitle>
+                        {goldenState && (
+                            <div className="flex gap-2">
+                                <Badge variant="outline">{goldenState.capture_type || 'MANUAL'}</Badge>
+                                <Badge variant="secondary">{goldenState.sku || 'N/A'}</Badge>
+                            </div>
+                        )}
+                    </div>
+                </CardHeader>
+                <CardContent>
+                    {goldenState ? (
+                        <div className="space-y-4">
+                            {/* Main Metrics */}
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 pb-4 border-b">
+                                <div>
+                                    <span className="text-xs text-muted-foreground uppercase">OEE</span>
+                                    <div className="text-2xl font-bold text-green-600">
+                                        {(goldenState.oee_atual || 0).toFixed(1)}%
+                                    </div>
+                                </div>
+                                <div>
+                                    <span className="text-xs text-muted-foreground uppercase">Velocidade</span>
+                                    <div className="text-xl font-bold">
+                                        {(goldenState.velocidade_atual || 0).toFixed(0)} <span className="text-sm font-normal text-muted-foreground">un/min</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Dynamic Sensors */}
+                            {sensors.length > 0 && (
+                                <div>
+                                    <p className="text-xs font-semibold text-gray-500 mb-2 uppercase">Parâmetros de Sensores</p>
+                                    <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                                        {sensors.map(s => (
+                                            <div key={s.name} className="p-2 bg-gray-50 rounded border text-sm">
+                                                <div className="font-medium capitalize mb-1">{s.name.replace(/_/g, ' ')}</div>
+                                                <div className="flex justify-between items-baseline">
+                                                    <span className="font-bold">{s.val?.toFixed(1)}</span>
+                                                    <span className="text-xs text-gray-400">
+                                                        [{s.min ?? '-'} / {s.max ?? '-'}]
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    ) : (
+                        <div className="text-sm text-muted-foreground italic py-4 text-center">
+                            Nenhum perfil Golden State capturado. Capture agora para estabelecer a linha de base.
+                        </div>
+                    )}
+                </CardContent>
+            </Card>
+
+            {/* History Log */}
+            {history.length > 0 && (
+                <Card>
+                    <CardHeader className="pb-2">
+                        <CardTitle className="text-sm font-medium">Histórico de Capturas</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                        <div className="rounded-md border overflow-x-auto">
+                            <table className="w-full text-sm text-left whitespace-nowrap">
+                                <thead className="bg-muted/50 text-muted-foreground font-medium">
+                                    <tr>
+                                        <th className="p-2">Data/Hora</th>
+                                        <th className="p-2">Tipo</th>
+                                        <th className="p-2">SKU</th>
+                                        <th className="p-2">OEE</th>
+                                        <th className="p-2">Veloc.</th>
+                                        {/* Dynamic Headers */}
+                                        {histSensorKeys.map(k => (
+                                            <th key={k} className="p-2 capitalize border-l border-border/50">{k.replace(/_/g, ' ')}</th>
+                                        ))}
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {histCurrentItems.map((h, i) => (
+                                        <tr key={i} className="border-t hover:bg-muted/50 transition-colors">
+                                            <td className="p-2">{new Date(h.time).toLocaleString()}</td>
+                                            <td className="p-2"><Badge variant="outline" className="text-xs">{h.capture_type || 'MANUAL'}</Badge></td>
+                                            <td className="p-2">{h.sku || '-'}</td>
+                                            <td className="p-2">{(h.oee_atual || 0).toFixed(1)}%</td>
+                                            <td className="p-2">{(h.velocidade_atual || 0).toFixed(0)}</td>
+                                            {/* Dynamic Values */}
+                                            {histSensorKeys.map(k => {
+                                                const val = h[k];
+                                                // Check for min/max to color code if needed in future
+                                                return (
+                                                    <td key={k} className="p-2 border-l border-border/50">
+                                                        {val !== undefined ? (typeof val === 'number' ? val.toFixed(1) : val) : '-'}
+                                                    </td>
+                                                );
+                                            })}
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+
+                        {/* Pagination Controls */}
+                        {histTotalPages > 1 && (
+                            <div className="flex justify-between items-center mt-4">
+                                <span className="text-xs text-muted-foreground">
+                                    Página {histPage} de {histTotalPages}
+                                </span>
+                                <div className="flex gap-2">
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={() => setHistPage(p => Math.max(1, p - 1))}
+                                        disabled={histPage === 1}
+                                    >
+                                        <ChevronLeft className="h-4 w-4" />
+                                    </Button>
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={() => setHistPage(p => Math.min(histTotalPages, p + 1))}
+                                        disabled={histPage === histTotalPages}
+                                    >
+                                        <ChevronRight className="h-4 w-4" />
+                                    </Button>
+                                </div>
+                            </div>
+                        )}
+                    </CardContent>
+                </Card>
+            )}
+
+            {/* Active Alerts */}
+            <div className="space-y-2">
+                {alerts.length === 0 ? (
+                    <Alert className="bg-green-500/10 border-green-500/20">
+                        <CheckCircle className="h-4 w-4 text-green-500" />
+                        <AlertTitle>Tudo Normal</AlertTitle>
+                        <AlertDescription>Nenhuma anomalia detectada em relação ao Golden State.</AlertDescription>
+                    </Alert>
+                ) : (
+                    alerts.map((alert, idx) => (
+                        <Alert key={idx} variant={alert.severity === 'critical' ? 'destructive' : 'default'} className={alert.severity === 'warning' ? 'border-yellow-500/50 bg-yellow-500/10' : ''}>
+                            {getSeverityIcon(alert.severity)}
+                            <AlertTitle className="capitalize">{alert.rule}</AlertTitle>
+                            <AlertDescription>
+                                {alert.message}
+                                <div className="text-xs text-muted-foreground mt-1">
+                                    {new Date(alert.timestamp).toLocaleTimeString()}
+                                </div>
+                            </AlertDescription>
+                        </Alert>
+                    ))
+                )}
+            </div>
+        </div>
+    );
+};
+
+export default DiagnosticsPanel;

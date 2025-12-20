@@ -4,8 +4,6 @@ from . import views
 from . import tonnage_views
 from . import loss_analysis_views
 
-
-
 router = DefaultRouter()
 router.register(r'linhas', views.LinhaProducaoViewSet, basename='linha')
 router.register(r'equipamentos', views.EquipamentoViewSet, basename='equipamento')
@@ -55,8 +53,11 @@ urlpatterns = [
     path('linhas/<int:linha_id>/perdas-analise/', loss_analysis_views.perdas_analise, name='perdas-analise'),
     path('linhas/<int:linha_id>/planejado-vs-real/', loss_analysis_views.planejado_vs_real, name='planejado-vs-real'),
     path('linhas/<int:linha_id>/strategic-loss/', loss_analysis_views.strategic_loss_aggregation, name='strategic-loss'),
+    path('linhas/<int:linha_id>/waste-analysis/', loss_analysis_views.strategic_waste_analysis, name='strategic-waste-analysis'),
     path('linhas/<int:linha_id>/monthly-production-stats/', loss_analysis_views.monthly_production_stats, name='monthly-production-stats'),
     path('linhas/<int:linha_id>/monthly-op-history/', loss_analysis_views.monthly_op_history, name='monthly-op-history'),
+    path('fabrica/perdas-analise/', loss_analysis_views.factory_loss_analysis, name='factory-loss-analysis'),
+    path('fabrica/waste-analysis/', loss_analysis_views.factory_waste_analysis, name='factory-waste-analysis'),
     
     # Endpoints de Análise Avançada
     path('linhas/<int:linha_id>/analise/producao/', views.linha_analise_producao, name='linha-analise-producao'),
@@ -65,4 +66,7 @@ urlpatterns = [
     
     # Endpoint de Histórico Detalhado
     path('linhas/<int:linha_id>/historico-detalhado/', views.historico_linha_detalhado, name='historico-detalhado'),
+    
+    # Endpoint de KPIs de Produção da Fábrica (Novo)
+    path('production/window/throughput/', views.FactoryProductionView.as_view({'get': 'throughput'}), name='factory-production-throughput'),
 ]

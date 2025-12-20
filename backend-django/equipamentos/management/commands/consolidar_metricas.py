@@ -90,13 +90,19 @@ class Command(BaseCommand):
             
             registros_criados = 0
             
-            for series in result:
+            for (key, points) in result.items():
+                # key é uma tupla (measurement, tags_dict)
+                tags = key[1]
+                
                 # Extrair tags
-                tags = series[0][1]  # (measurement, tags)
                 equipment_code = tags.get('equipment')
                 line_code = tags.get('line')
                 order_id = tags.get('order_id', '')
                 sku = tags.get('sku', '')
+                
+                # Ignorar se não tiver equipamento ou linha
+                if not equipment_code or not line_code:
+                    continue
                 
                 # Buscar objetos Django
                 try:
@@ -107,48 +113,52 @@ class Command(BaseCommand):
                     continue
                 
                 # Processar pontos de dados
-                for point in series[1]:
-                    data_hora = datetime.fromisoformat(point['time'].replace('Z', '+00:00'))
+                for point in points:
+                    data_hora_str = point.get('time', '')
+                    if data_hora_str:
+                        data_hora = datetime.fromisoformat(data_hora_str.replace('Z', '+00:00'))
+                    else:
+                        continue
                     
-                    # Calcular métricas
-                    total_saida = int(point.get('total_saida') or 0)
-                    total_entrada = int(point.get('total_entrada') or 0)
-                    total_descarte = int(point.get('total_descarte') or 0)
-                    vel_media = float(point.get('vel_media') or 0)
-                    formato = float(point.get('formato') or 0)
-                    planejado = float(point.get('planejado') or 0)
+                # Calcular métricas
+                total_saida = int(point.get('total_saida') or 0)
+                total_entrada = int(point.get('total_entrada') or 0)
+                total_descarte = int(point.get('total_descarte') or 0)
+                vel_media = float(point.get('vel_media') or 0)
+                formato = float(point.get('formato') or 0)
+                planejado = float(point.get('planejado') or 0)
                     
-                    # Calcular toneladas
-                    toneladas = (total_saida * formato) / 1000000.0 if formato > 0 else 0
+                # Calcular toneladas
+                toneladas = (total_saida * formato) / 1000000.0 if formato > 0 else 0
+                
+                # Calcular qualidade
+                qualidade = 100.0
+                if total_entrada > 0:
+                    qualidade = ((total_entrada - total_descarte) / total_entrada) * 100
+                
+                # Criar ou atualizar métrica
+                metrica, created = MetricaProducao.objects.update_or_create(
+                    linha=linha,
+                    equipamento=equipamento,
+                    data_hora=data_hora,
+                    periodo='HORA',
+                    defaults={
+                        'ordem_producao': order_id,
+                        'contagem_entrada': total_entrada,
+                        'contagem_saida': total_saida,
+                        'descarte': total_descarte,
+                        'velocidade_real': vel_media,
+                        'velocidade_planejada': planejado,
+                        'toneladas_produzidas': toneladas,
+                        'formato_gramas': formato,
+                        'qualidade': qualidade,
+                        'tempo_producao': 60,  # 1 hora em minutos
+                    }
+                )
                     
-                    # Calcular qualidade
-                    qualidade = 100.0
-                    if total_entrada > 0:
-                        qualidade = ((total_entrada - total_descarte) / total_entrada) * 100
-                    
-                    # Criar ou atualizar métrica
-                    metrica, created = MetricaProducao.objects.update_or_create(
-                        linha=linha,
-                        equipamento=equipamento,
-                        data_hora=data_hora,
-                        periodo='HORA',
-                        defaults={
-                            'ordem_producao': order_id,
-                            'contagem_entrada': total_entrada,
-                            'contagem_saida': total_saida,
-                            'descarte': total_descarte,
-                            'velocidade_real': vel_media,
-                            'velocidade_planejada': planejado,
-                            'toneladas_produzidas': toneladas,
-                            'formato_gramas': formato,
-                            'qualidade': qualidade,
-                            'tempo_producao': 60,  # 1 hora em minutos
-                        }
-                    )
-                    
-                    if created:
-                        registros_criados += 1
-                        self.stdout.write(f"  ✓ {equipment_code} - {data_hora}: {toneladas:.2f} ton")
+                if created:
+                    registros_criados += 1
+                    self.stdout.write(f"  ✓ {equipment_code} - {data_hora}: {toneladas:.2f} ton")
             
             self.stdout.write(self.style.SUCCESS(f"✓ {registros_criados} registros criados"))
             

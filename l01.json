@@ -1,0 +1,12 @@
+{
+  "equipamentos_online": 2,
+  "equipamentos_total": 2,
+  "linha": "L01",
+  "ole": 120.0,
+  "producao_planejada_ate_agora": 19.66,
+  "producao_planejada_total": 50.0,
+  "producao_real": 37.74,
+  "tempo_decorrido": 11323,
+  "tempo_total_turno": 28799,
+  "timestamp": "2025-12-19T09:28:45.628753"
+}

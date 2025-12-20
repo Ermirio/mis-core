@@ -1,0 +1,19 @@
+{
+  "cuc": "4545124",
+  "descricao": "BRILHANTE",
+  "diferenca_op": 4665252,
+  "equipamento": "E003",
+  "formato_gramas": 800,
+  "oee": 95.84534638003196,
+  "ordem_producao": "34895741",
+  "pecas_boas": 4665497,
+  "pecas_ruins": 2843,
+  "planejado_op": 0,
+  "produzido_op": 4665497,
+  "produzido_turno": 13046,
+  "sku": "36457358",
+  "timestamp": "2025-12-19T09:35:40.106142",
+  "toneladas_op": 3732.3976,
+  "toneladas_turno": 10.4368,
+  "turno_atual": "N/A"
+}

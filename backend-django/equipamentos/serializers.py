@@ -46,6 +46,7 @@ class EquipamentoSerializer(serializers.ModelSerializer):
             'velocidade_nominal', 'velocidade_maxima', 'meta_oee',
             'temperatura_min', 'temperatura_max', 'pressao_min', 'pressao_max',
             'observacoes', 'linha', 'linha_nome', 'linha_codigo', 'sensores',
+            'ordem_na_linha',
             'criado_em', 'atualizado_em'
         ]
 

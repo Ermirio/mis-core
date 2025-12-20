@@ -325,10 +325,24 @@ const LinhaDetalhes: React.FC = () => {
 
             for (const eq of linha.equipamentos) {
                 try {
-                    const response = await fetch(`${FLASK_API_URL}/realtime/status/${eq.codigo}`);
+                    const response = await fetch(`${FLASK_API_URL}/equipamento/dados/${eq.codigo}`);
                     if (response.ok) {
                         const data = await response.json();
-                        novosDados.set(eq.codigo, data);
+
+                        // Adapter
+                        const adaptedData: DadosTempoReal = {
+                            equipamento: eq.codigo,
+                            status: data.estado_atual,
+                            medicoes: {
+                                velocidade_atual: data.velocidade_atual,
+                                contagem_entrada: 0,
+                                contagem_saida: data.pecas_produzidas,
+                                estado: 0, // Enum number? Backend sends string in estado_atual.
+                                temperatura: data.sensores?.find((s: any) => s.nome.toLowerCase().includes('temp'))?.valor || 0,
+                                pressao: data.sensores?.find((s: any) => s.nome.toLowerCase().includes('press'))?.valor || 0
+                            }
+                        };
+                        novosDados.set(eq.codigo, adaptedData);
                     }
                 } catch (err) {
                     console.error(`Erro ao buscar dados de ${eq.codigo}:`, err);

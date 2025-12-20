@@ -1,8 +1,14 @@
 import React, { useEffect, useState } from "react";
 import { NavLink, Link } from "react-router-dom";
+import { ChevronLeft, ChevronRight, Menu } from "lucide-react";
 import "./Sidebar.css";
 
-const Sidebar: React.FC = () => {
+interface SidebarProps {
+  collapsed: boolean;
+  onToggle: () => void;
+}
+
+const Sidebar: React.FC<SidebarProps> = ({ collapsed, onToggle }) => {
   const DJANGO_API_URL =
     import.meta.env.VITE_DJANGO_API_URL || "http://127.0.0.1:8000/api";
 
@@ -26,12 +32,23 @@ const Sidebar: React.FC = () => {
   }, [DJANGO_API_URL]);
 
   return (
-    <div className="sidebar">
+    <div className={`sidebar ${collapsed ? "collapsed" : ""}`}>
       <div className="sidebar-header">
-        <Link to="/" className="sidebar-title-link">
-          <h2 className="sidebar-title">MIS - CORE</h2>
-        </Link>
-        <p className="sidebar-subtitle">Monitoramento Industrial</p>
+        {/* Toggle Button */}
+        <button
+          onClick={onToggle}
+          className="sidebar-toggle"
+          title={collapsed ? "Expandir" : "Recolher"}
+        >
+          {collapsed ? <ChevronRight size={20} /> : <ChevronLeft size={20} />}
+        </button>
+
+        {!collapsed && (
+          <Link to="/" className="sidebar-title-link">
+            <h2 className="sidebar-title">MIS - CORE</h2>
+            <p className="sidebar-subtitle">Monitoramento Industrial</p>
+          </Link>
+        )}
       </div>
 
       <nav className="sidebar-nav">
@@ -39,22 +56,35 @@ const Sidebar: React.FC = () => {
           to="/"
           className={({ isActive }) => isActive ? "sidebar-link active" : "sidebar-link"}
           end
+          title="Home"
         >
-          🏠 Home
+          <span>🏠</span>
+          {!collapsed && <span>Home</span>}
         </NavLink>
 
         <NavLink
-          to="/dashboard-fabrica"
+          to="/factory-panel"
           className={({ isActive }) => isActive ? "sidebar-link active" : "sidebar-link"}
+          title="Gestão Fabril"
         >
-          🏢 Gestão Fábrica
+          <span>🏢</span>
+          {!collapsed && <span>Gestão Fabril</span>}
+        </NavLink>
+
+        <NavLink
+          to="/analytics"
+          className={({ isActive }) => isActive ? "sidebar-link active" : "sidebar-link"}
+          title="Analytics"
+        >
+          <span>📊</span>
+          {!collapsed && <span>Analytics</span>}
         </NavLink>
 
         <div className="sidebar-divider"></div>
-        <p className="sidebar-section-title">LINHAS DE PRODUÇÃO</p>
+        {!collapsed && <p className="sidebar-section-title">LINHAS DE PRODUÇÃO</p>}
 
         {loading ? (
-          <p className="sidebar-loading">Carregando...</p>
+          !collapsed && <p className="sidebar-loading">Carregando...</p>
         ) : (
           linhas.map((linha) => (
             <NavLink
@@ -63,12 +93,25 @@ const Sidebar: React.FC = () => {
               className={({ isActive }) =>
                 isActive ? "sidebar-link active" : "sidebar-link"
               }
+              title={linha.nome}
             >
-              🏭 {linha.nome}
+              <span>🏭</span>
+              {!collapsed && <span>{linha.nome}</span>}
             </NavLink>
           ))
         )}
       </nav>
+
+      <div className="sidebar-footer">
+        <NavLink
+          to="/diagnosticos"
+          className={({ isActive }) => isActive ? "sidebar-link active" : "sidebar-link"}
+          title="Diagnósticos"
+        >
+          <span>🔧</span>
+          {!collapsed && <span>Diagnósticos</span>}
+        </NavLink>
+      </div>
     </div>
   );
 };

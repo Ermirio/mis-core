@@ -1,13 +1,16 @@
-from django.db import models
+from django.db import models, transaction
 from django.core.validators import MinValueValidator, MaxValueValidator
 from django.utils import timezone
+import logging
+
+logger = logging.getLogger(__name__)
 
 # ===== HIERARQUIA: FÁBRICA E ÁREA =====
 
 class Fabrica(models.Model):
     """Fábrica (unidade fabril)"""
     nome = models.CharField(max_length=100, verbose_name='Nome da Fábrica')
-    codigo = models.CharField(max_length=20, unique=True, verbose_name='Código')
+    codigo = models.CharField(max_length=20, unique=True, verbose_name='Código', blank=True)
     localizacao = models.CharField(max_length=200, blank=True, verbose_name='Localização')
     criado_em = models.DateTimeField(auto_now_add=True)
     atualizado_em = models.DateTimeField(auto_now=True)
@@ -16,6 +19,28 @@ class Fabrica(models.Model):
         verbose_name = 'Fábrica'
         verbose_name_plural = 'Fábricas'
         ordering = ['nome']
+
+    def save(self, *args, **kwargs):
+        """Auto-gera código sequencial se não fornecido"""
+        if not self.codigo:
+            with transaction.atomic():
+                # Busca o último código F existente
+                last_fabrica = Fabrica.objects.select_for_update().filter(
+                    codigo__startswith='F'
+                ).order_by('-codigo').first()
+                
+                if last_fabrica and last_fabrica.codigo[1:].isdigit():
+                    # Extrai o número e incrementa
+                    last_num = int(last_fabrica.codigo[1:])
+                    new_num = last_num + 1
+                else:
+                    # Primeira fábrica
+                    new_num = 1
+                
+                self.codigo = f'F{new_num:03d}'
+                logger.info(f"✓ Gerado código {self.codigo} para fábrica '{self.nome}'")
+        
+        super().save(*args, **kwargs)
 
     def __str__(self):
         return f'{self.nome} ({self.codigo})'
@@ -383,7 +408,7 @@ class Equipamento(models.Model):
         verbose_name='Linha de Produção'
     )
     nome = models.CharField(max_length=100, unique=True, verbose_name='Nome do Equipamento')
-    codigo = models.CharField(max_length=50, unique=True, verbose_name='Código')
+    codigo = models.CharField(max_length=50, unique=True, verbose_name='Código', blank=True)
     tipo = models.CharField(
         max_length=50, 
         verbose_name='Tipo',
@@ -428,6 +453,28 @@ class Equipamento(models.Model):
         verbose_name = 'Equipamento'
         verbose_name_plural = 'Equipamentos'
         ordering = ['linha', 'ordem_na_linha']
+    
+    def save(self, *args, **kwargs):
+        """Auto-gera código sequencial se não fornecido"""
+        if not self.codigo:
+            with transaction.atomic():
+                # Busca o último código E existente
+                last_equipamento = Equipamento.objects.select_for_update().filter(
+                    codigo__startswith='E'
+                ).order_by('-codigo').first()
+                
+                if last_equipamento and last_equipamento.codigo[1:].isdigit():
+                    # Extrai o número e incrementa
+                    last_num = int(last_equipamento.codigo[1:])
+                    new_num = last_num + 1
+                else:
+                    # Primeiro equipamento
+                    new_num = 1
+                
+                self.codigo = f'E{new_num:03d}'
+                logger.info(f"✓ Gerado código {self.codigo} para equipamento '{self.nome}' (Linha: {self.linha.codigo})")
+        
+        super().save(*args, **kwargs)
     
     def __str__(self):
         return f'{self.nome} ({self.tipo})'
@@ -500,12 +547,14 @@ class TagColeta(models.Model):
 # ===== SENSORES =====
 
 class TipoSensor(models.TextChoices):
-    ENTRADA = 'ENTRADA', 'Sensor de Entrada'
-    SAIDA = 'SAIDA', 'Sensor de Saída'
-    TEMPERATURA = 'TEMPERATURA', 'Sensor de Temperatura'
-    PRESSAO = 'PRESSAO', 'Sensor de Pressão'
-    VELOCIDADE = 'VELOCIDADE', 'Sensor de Velocidade'
-    NIVEL = 'NIVEL', 'Sensor de Nível'
+    INPUT_BOOL = 'INPUT_BOOL', 'Input Digital (Booleano)'
+    INPUT_FLOAT = 'INPUT_FLOAT', 'Input Analógico (Decimal)'
+    INPUT_INT = 'INPUT_INT', 'Input Inteiro'
+    TIMER = 'TIMER', 'Temporizador (Tempo)'
+    COUNTER = 'COUNTER', 'Contador'
+    SETPOINT = 'SETPOINT', 'Setpoint / Ajuste'
+    LIMIT = 'LIMIT', 'Limite / Parâmetro'
+    OUTRO = 'OUTRO', 'Outro'
 
 class Sensor(models.Model):
     """Sensor associado a um equipamento ou linha"""
@@ -536,8 +585,13 @@ class Sensor(models.Model):
     )
     unidade = models.CharField(max_length=20, blank=True, verbose_name='Unidade de Medida')
     ativo = models.BooleanField(default=True, verbose_name='Sensor Ativo')
-    valor_min = models.FloatField(null=True, blank=True, verbose_name='Valor Mínimo')
-    valor_max = models.FloatField(null=True, blank=True, verbose_name='Valor Máximo')
+    valor_min = models.FloatField(null=True, blank=True, verbose_name='Valor Mínimo (Gauge)')
+    valor_max = models.FloatField(null=True, blank=True, verbose_name='Valor Máximo (Gauge)')
+    
+    # Campos para CEP (Controle Estatístico de Processo)
+    lsl = models.FloatField(null=True, blank=True, verbose_name='LSL (Limite Inferior de Especificação)')
+    usl = models.FloatField(null=True, blank=True, verbose_name='USL (Limite Superior de Especificação)')
+    nominal = models.FloatField(null=True, blank=True, verbose_name='Valor Nominal (Target)')
     criado_em = models.DateTimeField(auto_now_add=True)
     atualizado_em = models.DateTimeField(auto_now=True)
     observacoes = models.TextField(blank=True, verbose_name='Observações')
@@ -633,6 +687,9 @@ class CalendarioProducao(models.Model):
         verbose_name_plural = 'Calendários de Produção'
         ordering = ['-data', 'linha', 'turno']
         unique_together = ['data', 'linha', 'turno']
+        indexes = [
+            models.Index(fields=['data', 'turno']),
+        ]
     
     def __str__(self):
         status = 'Programado' if self.programado else 'Não Programado'
@@ -1210,12 +1267,24 @@ class RegistroProducaoTurno(models.Model):
         # Calcula OEE
         self.oee = (self.disponibilidade * self.performance * self.qualidade) / 10000
         
-        # Calcula Eficiência (vs meta da OP)
-        if self.ordem_producao and self.ordem_producao.meta_turno > 0:
-            self.eficiencia = min(100, (self.producao_unidades / self.ordem_producao.meta_turno) * 100)
+        # Calcula Eficiência (vs meta do Calendário)
+        meta = 0
+        try:
+            cal = CalendarioProducao.objects.filter(
+                linha=self.linha, 
+                turno=self.turno, 
+                data=self.data
+            ).first()
+            if cal:
+                meta = cal.meta_producao_turno
+        except Exception:
+            pass
+            
+        if meta > 0:
+            self.eficiencia = min(100, (self.producao_unidades / meta) * 100)
         else:
             self.eficiencia = 0.0
-        
+
         # Calcula Velocidade Média
         if self.tempo_producao_min > 0:
             self.velocidade_media = self.producao_unidades / self.tempo_producao_min

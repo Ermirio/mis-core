@@ -1,5 +1,6 @@
 import React, { useMemo } from 'react';
 import { format, parseISO, differenceInMinutes } from 'date-fns';
+import { mapEstado } from '@/utils/equipmentStateUtils';
 
 interface EventoEstado {
     id: number;
@@ -16,22 +17,12 @@ interface StateTimelineChartProps {
 }
 
 const StateTimelineChart: React.FC<StateTimelineChartProps> = ({ eventos, dateRange }) => {
-    const getStateColor = (estado: string): string => {
-        const estadoUpper = estado.toUpperCase();
 
-        // Complete state color mapping
-        if (['RUN', 'PRODUZINDO', '1'].includes(estadoUpper)) return 'bg-green-600';
-        if (['WAIT_PREV', '2'].includes(estadoUpper)) return 'bg-cyan-500';
-        if (['BLOCK_NEXT', '3'].includes(estadoUpper)) return 'bg-orange-500';
-        if (['FAULT', '4'].includes(estadoUpper)) return 'bg-red-600';
-        if (['SETUP', '5'].includes(estadoUpper)) return 'bg-purple-500';
-        if (['TESTE_PROJ', '6'].includes(estadoUpper)) return 'bg-blue-500';
-        if (['AGUARD_MNT', '7'].includes(estadoUpper)) return 'bg-yellow-500';
-        if (['MANUTENCAO', '8'].includes(estadoUpper)) return 'bg-red-800';
-        if (['FALTA_MAT', '9'].includes(estadoUpper)) return 'bg-amber-600';
-
-        return 'bg-gray-400';
-    };
+    // Gera lista de estados para legenda
+    const estadosLegenda = [
+        'PRODUZINDO', 'WAIT_PREV', 'BLOCK_NEXT', 'PARADO',
+        'SETUP', 'TESTE_PROJ', 'AGUARD_MNT', 'MANUTENCAO', 'FALTA_MAT'
+    ].map(chave => mapEstado(chave));
 
     const timelineData = useMemo(() => {
         if (!eventos || eventos.length === 0 || !dateRange?.from || !dateRange?.to) {
@@ -54,15 +45,17 @@ const StateTimelineChart: React.FC<StateTimelineChartProps> = ({ eventos, dateRa
             const leftPercent = (offsetMinutes / totalMinutes) * 100;
             const widthPercent = (durationMinutes / totalMinutes) * 100;
 
+            const estadoInfo = mapEstado(evento.estado);
+
             return {
                 id: evento.id,
                 estado: evento.estado,
-                estado_display: evento.estado_display,
+                estado_display: estadoInfo.nome, // Usa nome padronizado
                 inicio: evento.inicio,
                 fim: evento.fim,
                 leftPercent,
                 widthPercent,
-                color: getStateColor(evento.estado),
+                color: estadoInfo.corHex, // Usa cor padronizada
                 durationMinutes
             };
         });
@@ -104,10 +97,11 @@ const StateTimelineChart: React.FC<StateTimelineChartProps> = ({ eventos, dateRa
                 {timelineData.segments.map((segment) => (
                     <div
                         key={segment.id}
-                        className={`absolute top-0 h-full ${segment.color} flex items-center justify-center text-white text-xs font-medium transition-all hover:opacity-80 cursor-pointer group`}
+                        className="absolute top-0 h-full flex items-center justify-center text-white text-xs font-medium transition-all hover:opacity-80 cursor-pointer group"
                         style={{
                             left: `${segment.leftPercent}%`,
-                            width: `${segment.widthPercent}%`
+                            width: `${segment.widthPercent}%`,
+                            backgroundColor: segment.color
                         }}
                         title={`${segment.estado_display}\n${format(parseISO(segment.inicio), 'dd/MM HH:mm')}${segment.fim ? ` - ${format(parseISO(segment.fim), 'HH:mm')}` : ' - Ativo'}\nDuração: ${formatDuration(segment.durationMinutes)}`}
                     >
@@ -125,43 +119,14 @@ const StateTimelineChart: React.FC<StateTimelineChartProps> = ({ eventos, dateRa
                 ))}
             </div>
 
+            {/* Legenda Padronizada */}
             <div className="flex flex-wrap gap-3 text-xs">
-                <div className="flex items-center gap-1.5">
-                    <div className="w-3 h-3 bg-green-600 rounded"></div>
-                    <span>Produzindo</span>
-                </div>
-                <div className="flex items-center gap-1.5">
-                    <div className="w-3 h-3 bg-cyan-500 rounded"></div>
-                    <span>Aguardando</span>
-                </div>
-                <div className="flex items-center gap-1.5">
-                    <div className="w-3 h-3 bg-orange-500 rounded"></div>
-                    <span>Bloqueado</span>
-                </div>
-                <div className="flex items-center gap-1.5">
-                    <div className="w-3 h-3 bg-red-600 rounded"></div>
-                    <span>Falha</span>
-                </div>
-                <div className="flex items-center gap-1.5">
-                    <div className="w-3 h-3 bg-purple-500 rounded"></div>
-                    <span>Setup</span>
-                </div>
-                <div className="flex items-center gap-1.5">
-                    <div className="w-3 h-3 bg-blue-500 rounded"></div>
-                    <span>Teste</span>
-                </div>
-                <div className="flex items-center gap-1.5">
-                    <div className="w-3 h-3 bg-yellow-500 rounded"></div>
-                    <span>Ag. Manut.</span>
-                </div>
-                <div className="flex items-center gap-1.5">
-                    <div className="w-3 h-3 bg-red-800 rounded"></div>
-                    <span>Manutenção</span>
-                </div>
-                <div className="flex items-center gap-1.5">
-                    <div className="w-3 h-3 bg-amber-600 rounded"></div>
-                    <span>Sem Material</span>
-                </div>
+                {estadosLegenda.map((estadoInfo) => (
+                    <div key={estadoInfo.chave} className="flex items-center gap-1.5">
+                        <div className="w-3 h-3 rounded" style={{ backgroundColor: estadoInfo.corHex }}></div>
+                        <span>{estadoInfo.nome}</span>
+                    </div>
+                ))}
             </div>
         </div>
     );

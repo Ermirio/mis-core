@@ -17,7 +17,7 @@ def obter_turno_atual() -> Optional[TurnoProducao]:
     Returns:
         TurnoProducao ativo ou None se não houver turno ativo
     """
-    agora = timezone.now()
+    agora = timezone.localtime(timezone.now())
     hora_atual = agora.time()
     
     turnos = TurnoProducao.objects.filter(ativo=True)
@@ -50,9 +50,9 @@ def calcular_inicio_turno(turno: Optional[TurnoProducao] = None) -> datetime:
     
     if not turno:
         # Fallback: início do dia atual
-        return timezone.now().replace(hour=0, minute=0, second=0, microsecond=0)
+        return timezone.localtime(timezone.now()).replace(hour=0, minute=0, second=0, microsecond=0)
     
-    agora = timezone.now()
+    agora = timezone.localtime(timezone.now())
     inicio_turno = agora.replace(
         hour=turno.hora_inicio.hour,
         minute=turno.hora_inicio.minute,
@@ -87,7 +87,7 @@ def calcular_fim_turno(turno: Optional[TurnoProducao] = None) -> datetime:
     
     if not turno:
         # Fallback: fim do dia atual
-        return timezone.now().replace(hour=23, minute=59, second=59, microsecond=999999)
+        return timezone.localtime(timezone.now()).replace(hour=23, minute=59, second=59, microsecond=999999)
     
     inicio_turno = calcular_inicio_turno(turno)
     
@@ -113,7 +113,7 @@ def detectar_turno_encerrado() -> Optional[TurnoProducao]:
     Returns:
         TurnoProducao que acabou de encerrar ou None
     """
-    agora = timezone.now()
+    agora = timezone.localtime(timezone.now())
     
     turnos = TurnoProducao.objects.filter(ativo=True)
     
@@ -162,7 +162,7 @@ def get_turno_info(turno: Optional[TurnoProducao] = None) -> dict:
     fim = calcular_fim_turno(turno)
     duracao = (fim - inicio).total_seconds() / 3600.0
     
-    agora = timezone.now()
+    agora = timezone.localtime(timezone.now())
     em_andamento = inicio <= agora <= fim
     
     return {
