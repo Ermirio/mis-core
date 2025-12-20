@@ -71,6 +71,15 @@ const Sidebar: React.FC<SidebarProps> = ({ collapsed, onToggle }) => {
           {!collapsed && <span>Gestão Fabril</span>}
         </NavLink>
 
+        <NavLink
+          to="/analytics"
+          className={({ isActive }) => isActive ? "sidebar-link active" : "sidebar-link"}
+          title="Analytics"
+        >
+          <span>📊</span>
+          {!collapsed && <span>Analytics</span>}
+        </NavLink>
+
         <div className="sidebar-divider"></div>
         {!collapsed && <p className="sidebar-section-title">LINHAS DE PRODUÇÃO</p>}
 

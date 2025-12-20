@@ -7,6 +7,7 @@ from decouple import config
 from production_engine import get_engine
 from routes import api_bp
 from kpis_routes import kpis_bp
+from blueprints.analytics import analytics_bp
 
 # ===== CONFIGS =====
 INFLUX_HOST = config('INFLUXDB_HOST', default='127.0.0.1')
@@ -52,6 +53,7 @@ def create_app():
     # Registra Rotas
     app.register_blueprint(api_bp)
     app.register_blueprint(kpis_bp)
+    app.register_blueprint(analytics_bp, url_prefix='/api')
     
     # Diagnóstico de Rotas
     with app.app_context():

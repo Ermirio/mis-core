@@ -241,7 +241,7 @@ class SensorAdmin(ImportExportModelAdmin):
             'fields': ('codigo', 'nome', 'tipo', 'tag_influxdb', 'unidade', 'ativo')
         }),
         ('Limites', {
-            'fields': ('valor_min', 'valor_max'),
+            'fields': ('valor_min', 'valor_max', 'lsl', 'usl', 'nominal'),
             'classes': ('collapse',)
         }),
         ('Observações', {

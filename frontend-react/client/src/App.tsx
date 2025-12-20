@@ -8,6 +8,7 @@ import DiagnosticosLogs from "./pages/DiagnosticosLogs";
 import LineManagement from "./pages/LineManagement.tsx";
 import LineDeepView from "./pages/LineDeepView";
 import FactoryManagementPanel from "./pages/FactoryManagementPanel";
+import LineAnalytics from "./pages/LineAnalytics";
 
 function App() {
   return (
@@ -21,6 +22,7 @@ function App() {
           <Route path="factory-panel" element={<FactoryManagementPanel />} />
           <Route path="diagnosticos" element={<DiagnosticosLogs />} />
           <Route path="linha-management/:linhaId" element={<LineManagement />} />
+          <Route path="analytics" element={<LineAnalytics />} />
         </Route>
       </Routes>
     </BrowserRouter>
