@@ -1,0 +1,198 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, manus-docker, version-dev ]
+  pull_request:
+    branches: [ main, manus-docker ]
+
+jobs:
+  # ===== TESTES BACKEND DJANGO =====
+  test-django:
+    runs-on: ubuntu-latest
+    
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_DB: test_db
+          POSTGRES_USER: test_user
+          POSTGRES_PASSWORD: test_pass
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    
+    steps:
+      - name: Checkout código
+        uses: actions/checkout@v4
+      
+      - name: Configurar Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+      
+      - name: Instalar dependências Django
+        run: |
+          cd backend-django
+          pip install -r requirements.txt
+          pip install pytest pytest-django pytest-cov
+      
+      - name: Executar testes Django
+        env:
+          POSTGRES_DB: test_db
+          POSTGRES_USER: test_user
+          POSTGRES_PASSWORD: test_pass
+          POSTGRES_HOST: localhost
+          POSTGRES_PORT: 5432
+          DJANGO_SECRET_KEY: test-secret-key
+        run: |
+          cd backend-django
+          python manage.py test --verbosity=2
+      
+      - name: Gerar relatório de cobertura
+        run: |
+          cd backend-django
+          pytest --cov=equipamentos --cov-report=xml --cov-report=html
+      
+      - name: Upload relatório de cobertura
+        uses: codecov/codecov-action@v4
+        with:
+          files: ./backend-django/coverage.xml
+          flags: django
+          name: django-coverage
+
+  # ===== TESTES BACKEND FLASK =====
+  test-flask:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout código
+        uses: actions/checkout@v4
+      
+      - name: Configurar Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+      
+      - name: Instalar dependências Flask
+        run: |
+          cd backend-flask
+          pip install -r requirements.txt
+      
+      - name: Executar testes Flask
+        run: |
+          cd backend-flask
+          pytest tests/ -v --cov=. --cov-report=xml --cov-report=html
+      
+      - name: Upload relatório de cobertura
+        uses: codecov/codecov-action@v4
+        with:
+          files: ./backend-flask/coverage.xml
+          flags: flask
+          name: flask-coverage
+
+  # ===== LINT E QUALIDADE DE CÓDIGO =====
+  code-quality:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout código
+        uses: actions/checkout@v4
+      
+      - name: Configurar Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      
+      - name: Instalar ferramentas de lint
+        run: |
+          pip install flake8 black isort
+      
+      - name: Executar flake8
+        run: |
+          flake8 backend-django backend-flask --max-line-length=120 --exclude=migrations,venv
+      
+      - name: Verificar formatação com black
+        run: |
+          black --check backend-django backend-flask --exclude=migrations
+      
+      - name: Verificar imports com isort
+        run: |
+          isort --check-only backend-django backend-flask --skip migrations --skip venv
+
+  # ===== BUILD DAS IMAGENS DOCKER =====
+  build-images:
+    runs-on: ubuntu-latest
+    needs: [test-django, test-flask, code-quality]
+    
+    steps:
+      - name: Checkout código
+        uses: actions/checkout@v4
+      
+      - name: Configurar Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      
+      - name: Build imagem Django
+        uses: docker/build-push-action@v5
+        with:
+          context: ./backend-django
+          push: false
+          tags: mis-core-django:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      
+      - name: Build imagem Flask
+        uses: docker/build-push-action@v5
+        with:
+          context: ./backend-flask
+          push: false
+          tags: mis-core-flask:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      
+      - name: Build imagem Frontend
+        uses: docker/build-push-action@v5
+        with:
+          context: ./frontend-react
+          push: false
+          tags: mis-core-frontend:latest
+          build-args: |
+            VITE_DJANGO_API_URL=http://localhost:8000/api
+            VITE_FLASK_API_URL=http://localhost:5000/api
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # ===== TESTE DE INTEGRAÇÃO COM DOCKER COMPOSE =====
+  integration-test:
+    runs-on: ubuntu-latest
+    needs: build-images
+    
+    steps:
+      - name: Checkout código
+        uses: actions/checkout@v4
+      
+      - name: Criar arquivo .env de teste
+        run: |
+          cp .env .env.test
+      
+      - name: Iniciar serviços com Docker Compose
+        run: |
+          docker compose up -d
+          sleep 60  # Aguardar inicialização
+      
+      - name: Verificar saúde dos serviços
+        run: |
+          docker compose ps
+          curl -f http://localhost:8000/admin/ || exit 1
+          curl -f http://localhost:5000/api/health || exit 1
+          curl -f http://localhost:3000/health || exit 1
+      
+      - name: Parar serviços
+        run: |
+          docker compose down -v
