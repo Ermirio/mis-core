@@ -1,6 +1,11 @@
 Django==5.0.0
 djangorestframework==3.14.0
 django-cors-headers==4.3.1
-psycopg2-binary==2.9.9
 python-decouple==3.8
 influxdb==5.3.1
+gunicorn==21.2.0
+whitenoise==6.6.0
+django-apscheduler==0.6.2
+django-import-export==3.3.1
+pymysql==1.1.1
+

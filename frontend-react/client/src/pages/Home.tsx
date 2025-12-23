@@ -326,6 +326,7 @@ export default function Home() {
                       cuc={linha.ole_data?.cuc || dadosProducao?.cuc}
                       formatoAtual={linha.ole_data?.formato || dadosProducao?.formato_gramas || metricas.formato_gramas}
                       vazaoTurno={linha.ole_data?.taxa_instantanea || metricas.vazao_real_ton_hora}
+                      projecao={linha.ole_data?.projecao} // Added backend projection
                     />
                   </div>
 

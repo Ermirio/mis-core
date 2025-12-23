@@ -389,6 +389,8 @@ class StatusEquipamento(models.TextChoices):
 class EstadoEquipamento(models.TextChoices):
     """Estados industriais para cálculo de OEE"""
     RUN = 'RUN', 'Produzindo'
+    PARTINDO = 'PARTINDO', 'Partindo'
+    PARANDO = 'PARANDO', 'Parando'
     WAIT_PREV = 'WAIT_PREV', 'Aguardando equipamento anterior'
     BLOCK_NEXT = 'BLOCK_NEXT', 'Equipamento seguinte bloqueado'
     FAULT = 'FAULT', 'Falha'
@@ -595,7 +597,7 @@ class Sensor(models.Model):
     criado_em = models.DateTimeField(auto_now_add=True)
     atualizado_em = models.DateTimeField(auto_now=True)
     observacoes = models.TextField(blank=True, verbose_name='Observações')
-    
+
     class Meta:
         verbose_name = 'Sensor'
         verbose_name_plural = 'Sensores'

@@ -2,6 +2,7 @@ from flask import Blueprint, request, jsonify, current_app
 import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
+import pytz
 import logging
 
 analytics_bp = Blueprint('analytics', __name__)
@@ -46,7 +47,8 @@ def query_influx_to_df(client, tags, start_time, end_time):
             
             if points:
                 df = pd.DataFrame(points)
-                df['time'] = pd.to_datetime(df['time'])
+                # Convert UTC to America/Sao_Paulo
+                df['time'] = pd.to_datetime(df['time'], utc=True).dt.tz_convert('America/Sao_Paulo')
                 df.set_index('time', inplace=True)
                 df.rename(columns={field: alias}, inplace=True)
                 # Ensure numeric

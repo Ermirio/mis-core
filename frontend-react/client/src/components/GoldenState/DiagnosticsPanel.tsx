@@ -3,7 +3,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Activity, AlertTriangle, CheckCircle, Info, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Progress } from "@/components/ui/progress";
+import { Activity, AlertTriangle, CheckCircle, Info, ChevronLeft, ChevronRight, Play, XCircle } from 'lucide-react';
 
 interface DiagnosticAlert {
     rule: string;
@@ -31,10 +33,126 @@ const DiagnosticsPanel: React.FC<DiagnosticsPanelProps> = ({ equipamentoCodigo }
     const [goldenState, setGoldenState] = useState<GoldenStateProfile | null>(null);
     const [loading, setLoading] = useState(true);
     const [capturing, setCapturing] = useState(false);
+
+    // UI Logic for History
     const [histPage, setHistPage] = useState(1);
     const HIST_ITEMS_PER_PAGE = 5;
-
     const [history, setHistory] = useState<GoldenStateProfile[]>([]);
+
+    // --- ISA 101 WRITE INTERFACE STATE ---
+    const [dialogOpen, setDialogOpen] = useState(false);
+    const [step, setStep] = useState<'CONFIRM' | 'EXECUTING' | 'RESULT'>('CONFIRM');
+    const [selectedProfile, setSelectedProfile] = useState<GoldenStateProfile | null>(null);
+    const [writeStatus, setWriteStatus] = useState({
+        status: 'PENDING',
+        message: 'Aguardando confirmação...',
+        progress: 0,
+        current: 0,
+        total: 0
+    });
+    // -------------------------------------
+
+    const handleApplyClick = (profile: GoldenStateProfile) => {
+        setSelectedProfile(profile);
+        setStep('CONFIRM');
+        setWriteStatus({
+            status: 'PENDING',
+            message: 'Aguardando confirmação...',
+            progress: 0,
+            current: 0,
+            total: 0
+        });
+        setDialogOpen(true);
+    };
+
+    const confirmApply = async () => {
+        if (!selectedProfile) return;
+
+        setStep('EXECUTING');
+        setWriteStatus(prev => ({ ...prev, message: 'Enviando comando para fila...', progress: 5 }));
+
+        try {
+            const response = await fetch(`${import.meta.env.VITE_FLASK_API_URL}/golden-state/apply`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    equipamento_codigo: equipamentoCodigo,
+                    profile_timestamp: selectedProfile.time
+                })
+            });
+            const data = await response.json();
+
+            if (response.ok && data.status === 'queued') {
+                const batchId = data.batch_id;
+
+                // Polling
+                const pollInterval = setInterval(async () => {
+                    try {
+                        const res = await fetch(`${import.meta.env.VITE_FLASK_API_URL}/golden-state/status/${batchId}`);
+                        const statusData = await res.json();
+
+                        // Parse Progress
+                        let pct = 0;
+                        let curr = 0;
+                        let tot = statusData.progress?.total || 1;
+
+                        if (statusData.progress) {
+                            curr = statusData.progress.current;
+                            tot = statusData.progress.total;
+                            pct = tot > 0 ? (curr / tot) * 100 : 0;
+                        }
+
+                        if (['SUCCESS', 'ERROR', 'PARTIAL_SUCCESS'].includes(statusData.status)) {
+                            clearInterval(pollInterval);
+                            setWriteStatus({
+                                status: statusData.status,
+                                message: statusData.message,
+                                progress: 100,
+                                current: tot,
+                                total: tot
+                            });
+                            setStep('RESULT');
+                        } else {
+                            // Update Intermediate Status
+                            setWriteStatus({
+                                status: 'PENDING',
+                                message: statusData.message || 'Processando...',
+                                progress: Math.max(5, pct), // Keep at least 5% to show activity
+                                current: curr,
+                                total: tot
+                            });
+                        }
+                    } catch (e) {
+                        console.error("Polling error", e);
+                    }
+                }, 1000);
+
+                // Timeout Safety
+                setTimeout(() => {
+                    clearInterval(pollInterval);
+                    setWriteStatus(prev => {
+                        if (prev.status === 'PENDING') {
+                            setStep('RESULT');
+                            return { ...prev, status: 'ERROR', message: 'Timeout: Sem resposta do Coletor em 20s.' };
+                        }
+                        return prev;
+                    });
+                }, 20000);
+
+            } else {
+                setWriteStatus({
+                    status: 'ERROR',
+                    message: data.status === 'skipped' ? "Nenhum parâmetro configurado encontrado." : (data.error || 'Falha ao enfileirar.'),
+                    progress: 0, current: 0, total: 0
+                });
+                setStep('RESULT');
+            }
+        } catch (error) {
+            console.error("Error applying golden state:", error);
+            setWriteStatus({ status: 'ERROR', message: 'Erro de conexão com servidor.', progress: 0, current: 0, total: 0 });
+            setStep('RESULT');
+        }
+    };
 
     const fetchDiagnostics = async () => {
         try {
@@ -90,10 +208,7 @@ const DiagnosticsPanel: React.FC<DiagnosticsPanelProps> = ({ equipamentoCodigo }
         if (!goldenState) return [];
         const ignore = ['time', 'equipamento', 'sku', 'capture_type', 'velocidade_atual', 'oee_atual', 'measurement'];
         const sensors: any[] = [];
-
-        // Group min/max/val
         const keys = Object.keys(goldenState).filter(k => !ignore.includes(k) && !k.endsWith('_min') && !k.endsWith('_max'));
-
         keys.forEach(k => {
             sensors.push({
                 name: k,
@@ -102,7 +217,6 @@ const DiagnosticsPanel: React.FC<DiagnosticsPanelProps> = ({ equipamentoCodigo }
                 max: goldenState[`${k}_max`]
             });
         });
-
         return sensors;
     };
 
@@ -122,7 +236,6 @@ const DiagnosticsPanel: React.FC<DiagnosticsPanelProps> = ({ equipamentoCodigo }
 
     const histTotalPages = Math.ceil(history.length / HIST_ITEMS_PER_PAGE);
     const histCurrentItems = history.slice((histPage - 1) * HIST_ITEMS_PER_PAGE, histPage * HIST_ITEMS_PER_PAGE);
-
     const sensors = getSensors();
 
     return (
@@ -141,6 +254,97 @@ const DiagnosticsPanel: React.FC<DiagnosticsPanelProps> = ({ equipamentoCodigo }
                     {capturing ? 'Capturando...' : 'Capturar Golden State'}
                 </Button>
             </div>
+
+            {/* ISA 101 WRITING COMPLIANT DIALOG */}
+            <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+                <DialogContent className="sm:max-w-md">
+                    <DialogHeader>
+                        <DialogTitle>Aplicar Parâmetros (Golden State)</DialogTitle>
+                        <DialogDescription>
+                            {step === 'CONFIRM' && "Por favor, confirme a operação de escrita no controlador."}
+                            {step === 'EXECUTING' && "Aplicação em andamento. Não feche esta janela."}
+                            {step === 'RESULT' && "Operação finalizada."}
+                        </DialogDescription>
+                    </DialogHeader>
+
+                    <div className="py-4">
+                        {step === 'CONFIRM' && selectedProfile && (
+                            <div className="space-y-4">
+                                <Alert className="bg-blue-50 border-blue-200">
+                                    <Info className="h-4 w-4 text-blue-500" />
+                                    <AlertTitle className="text-blue-700">Resumo da Operação</AlertTitle>
+                                    <AlertDescription className="text-blue-600">
+                                        Você está prestes a escrever os parâmetros deste perfil na máquina.
+                                    </AlertDescription>
+                                </Alert>
+                                <div className="grid grid-cols-2 gap-4 text-sm">
+                                    <div className="font-semibold">Horário do Perfil:</div>
+                                    <div>{new Date(selectedProfile.time).toLocaleString()}</div>
+                                    <div className="font-semibold">SKU:</div>
+                                    <div>{selectedProfile.sku || 'N/A'}</div>
+                                    <div className="font-semibold">Velocidade Alvo:</div>
+                                    <div>{selectedProfile.velocidade_atual?.toFixed(0)} un/min</div>
+                                </div>
+                            </div>
+                        )}
+
+                        {step === 'EXECUTING' && (
+                            <div className="space-y-6">
+                                <div className="space-y-2">
+                                    <div className="flex justify-between text-sm">
+                                        <span>Progresso da Escrita</span>
+                                        <span className="font-bold">{Math.round(writeStatus.progress)}%</span>
+                                    </div>
+                                    <Progress value={writeStatus.progress} className="h-2" />
+                                </div>
+                                <div className="bg-slate-950 text-slate-50 p-3 rounded-md font-mono text-xs h-24 overflow-y-auto">
+                                    &gt; {writeStatus.message}<br />
+                                    {writeStatus.total > 0 && `&gt; Processando item ${writeStatus.current} de ${writeStatus.total}...`}
+                                </div>
+                            </div>
+                        )}
+
+                        {step === 'RESULT' && (
+                            <div className="space-y-4 text-center">
+                                {writeStatus.status === 'SUCCESS' ? (
+                                    <div className="flex flex-col items-center gap-2 text-green-600">
+                                        <CheckCircle className="h-12 w-12" />
+                                        <h4 className="text-lg font-bold">Sucesso!</h4>
+                                        <p className="text-sm text-foreground">{writeStatus.message}</p>
+                                    </div>
+                                ) : (
+                                    <div className="flex flex-col items-center gap-2 text-red-600">
+                                        <XCircle className="h-12 w-12" />
+                                        <h4 className="text-lg font-bold">Falha na Escrita</h4>
+                                        <p className="text-sm text-foreground">{writeStatus.message}</p>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+                    </div>
+
+                    <DialogFooter className="sm:justify-between">
+                        {step === 'CONFIRM' && (
+                            <>
+                                <Button variant="ghost" onClick={() => setDialogOpen(false)}>Cancelar</Button>
+                                <Button onClick={confirmApply} className="bg-blue-600 hover:bg-blue-700 text-white">
+                                    <Play className="mr-2 h-4 w-4" /> Confirmar e Aplicar
+                                </Button>
+                            </>
+                        )}
+                        {step === 'EXECUTING' && (
+                            <Button disabled variant="secondary" className="w-full">
+                                <Activity className="mr-2 h-4 w-4 animate-spin" /> Processando...
+                            </Button>
+                        )}
+                        {step === 'RESULT' && (
+                            <Button className="w-full" onClick={() => setDialogOpen(false)}>
+                                Fechar
+                            </Button>
+                        )}
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
 
             {/* Golden State Status */}
             <Card className="border-l-4 border-l-blue-500">
@@ -229,6 +433,7 @@ const DiagnosticsPanel: React.FC<DiagnosticsPanelProps> = ({ equipamentoCodigo }
                                         {histSensorKeys.map(k => (
                                             <th key={k} className="p-2 capitalize border-l border-border/50">{k.replace(/_/g, ' ')}</th>
                                         ))}
+                                        <th className="p-2 border-l">Ações</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -242,19 +447,27 @@ const DiagnosticsPanel: React.FC<DiagnosticsPanelProps> = ({ equipamentoCodigo }
                                             {/* Dynamic Values */}
                                             {histSensorKeys.map(k => {
                                                 const val = h[k];
-                                                // Check for min/max to color code if needed in future
                                                 return (
                                                     <td key={k} className="p-2 border-l border-border/50">
                                                         {val !== undefined ? (typeof val === 'number' ? val.toFixed(1) : val) : '-'}
                                                     </td>
                                                 );
                                             })}
+                                            <td className="p-2 border-l">
+                                                <Button
+                                                    variant="ghost"
+                                                    size="sm"
+                                                    className="h-8 text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                                                    onClick={() => handleApplyClick(h)}
+                                                >
+                                                    Aplicar
+                                                </Button>
+                                            </td>
                                         </tr>
                                     ))}
                                 </tbody>
                             </table>
                         </div>
-
                         {/* Pagination Controls */}
                         {histTotalPages > 1 && (
                             <div className="flex justify-between items-center mt-4">
