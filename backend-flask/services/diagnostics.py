@@ -11,7 +11,7 @@ INFLUXDB_HOST = config('INFLUXDB_HOST', default='127.0.0.1')
 INFLUXDB_PORT = config('INFLUXDB_PORT', default=8086, cast=int)
 INFLUXDB_DB = config('INFLUXDB_DATABASE', default='industrial_db')
 INFLUXDB_USER = config('INFLUXDB_USER', default='admin')
-INFLUXDB_PASS = config('INFLUXDB_USER_PASSWORD', default='ixvq10A@10')
+INFLUXDB_PASS = config('INFLUXDB_PASSWORD', default='admin123')
 
 client = InfluxDBClient(host=INFLUXDB_HOST, port=INFLUXDB_PORT, username=INFLUXDB_USER, password=INFLUXDB_PASS, database=INFLUXDB_DB)
 
