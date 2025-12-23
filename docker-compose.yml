@@ -51,6 +51,7 @@ services:
 
   # ===== DJANGO =====
   django:
+    image: mis-core-django:v1.0
     build:
       context: ./backend-django
       dockerfile: Dockerfile
@@ -100,6 +101,7 @@ services:
 
   # ===== FLASK =====
   flask:
+    image: mis-core-flask:v1.0
     build:
       context: ./backend-flask
       dockerfile: Dockerfile
@@ -136,6 +138,7 @@ services:
 
   # ===== COLETOR OPC UA =====
   coletor:
+    image: mis-core-coletor:v1.0
     build:
       context: ./coletor
       dockerfile: Dockerfile
@@ -159,6 +162,7 @@ services:
 
   # ===== FRONTEND (NGINX) =====
   frontend:
+    image: mis-core-frontend:v1.0
     build:
       context: ./frontend-react
       dockerfile: Dockerfile

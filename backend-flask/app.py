@@ -8,6 +8,7 @@ from production_engine import get_engine
 from routes import api_bp
 from kpis_routes import kpis_bp
 from blueprints.analytics import analytics_bp
+from blueprints.golden_state import golden_state_bp
 
 # ===== CONFIGS =====
 INFLUX_HOST = config('INFLUXDB_HOST', default='127.0.0.1')
@@ -54,6 +55,7 @@ def create_app():
     app.register_blueprint(api_bp)
     app.register_blueprint(kpis_bp)
     app.register_blueprint(analytics_bp, url_prefix='/api')
+    app.register_blueprint(golden_state_bp, url_prefix='/api/golden-state')
     
     # Diagnóstico de Rotas
     with app.app_context():

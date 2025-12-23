@@ -597,7 +597,7 @@ class Sensor(models.Model):
     criado_em = models.DateTimeField(auto_now_add=True)
     atualizado_em = models.DateTimeField(auto_now=True)
     observacoes = models.TextField(blank=True, verbose_name='Observações')
-    
+
     class Meta:
         verbose_name = 'Sensor'
         verbose_name_plural = 'Sensores'
