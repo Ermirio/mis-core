@@ -1,8 +1,9 @@
-
 .sidebar {
   width: 260px;
-  background-color: #2e2e2e; /* ISA 101: Dark Gray Background */
-  color: #dcdcdc; /* ISA 101: Light Gray Text */
+  background-color: #2e2e2e;
+  /* ISA 101: Dark Gray Background */
+  color: #dcdcdc;
+  /* ISA 101: Light Gray Text */
   height: 100vh;
   padding: 20px;
   position: fixed;
@@ -12,7 +13,8 @@
   display: flex;
   flex-direction: column;
   transition: width 0.3s ease;
-  z-index: 50; /* Ensure it stays on top */
+  z-index: 50;
+  /* Ensure it stays on top */
 }
 
 .sidebar.collapsed {
@@ -66,7 +68,8 @@
   display: flex;
   align-items: center;
   gap: 12px;
-  white-space: nowrap; /* Prevent text wrap */
+  white-space: nowrap;
+  /* Prevent text wrap */
   overflow: hidden;
 }
 
@@ -81,10 +84,12 @@
 }
 
 .sidebar-link.active {
-  background-color: #4a4a4a; /* ISA 101: Distinct Active State */
+  background-color: #4a4a4a;
+  /* ISA 101: Distinct Active State */
   color: #ffffff;
   font-weight: 600;
-  border-left: 4px solid #007acc; /* High contrast indicator */
+  border-left: 4px solid #007acc;
+  /* High contrast indicator */
 }
 
 /* Tooltip behavior handled via 'title' attribute naturally */

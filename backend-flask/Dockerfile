@@ -13,6 +13,10 @@ WORKDIR /app
 # Instalar dependências do sistema
 RUN apt-get update && apt-get install -y \
     gcc \
+    netcat-openbsd \
+    default-mysql-client \
+    pkg-config \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
 # Copiar requirements e instalar dependências Python
@@ -30,4 +34,4 @@ COPY docker-entrypoint.sh /docker-entrypoint.sh
 RUN chmod +x /docker-entrypoint.sh
 
 ENTRYPOINT ["/docker-entrypoint.sh"]
-CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "4", "--timeout", "120", "--worker-class", "sync", "app:app"]
+CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "4", "--timeout", "120", "--worker-class", "sync", "run:app"]

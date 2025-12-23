@@ -1,32 +1,34 @@
-#!/bin/bash
+#!/bin/sh
 set -e
 
-echo "🔄 Aguardando PostgreSQL..."
-while ! nc -z $POSTGRES_HOST $POSTGRES_PORT; do
-  sleep 1
-done
-echo "✅ PostgreSQL está pronto!"
+echo "[entrypoint] Starting Django entrypoint..."
 
-echo "🔄 Aplicando migrações..."
+# Defaults seguros (caso env não exista)
+MYSQL_HOST="${MYSQL_HOST:-mysql}"
+MYSQL_PORT="${MYSQL_PORT:-3306}"
+
+INFLUXDB_HOST="${INFLUXDB_HOST:-influxdb}"
+INFLUXDB_PORT="${INFLUXDB_PORT:-8086}"
+
+echo "[entrypoint] Waiting for MySQL at ${MYSQL_HOST}:${MYSQL_PORT}..."
+until nc -z "$MYSQL_HOST" "$MYSQL_PORT"; do
+  echo "[entrypoint] MySQL not ready yet..."
+  sleep 2
+done
+echo "[entrypoint] MySQL is up."
+
+echo "[entrypoint] Waiting for InfluxDB at ${INFLUXDB_HOST}:${INFLUXDB_PORT}..."
+until nc -z "$INFLUXDB_HOST" "$INFLUXDB_PORT"; do
+  echo "[entrypoint] InfluxDB not ready yet..."
+  sleep 2
+done
+echo "[entrypoint] InfluxDB is up."
+
+echo "[entrypoint] Running migrations..."
 python manage.py migrate --noinput
 
-echo "🔄 Coletando arquivos estáticos..."
-python manage.py collectstatic --noinput --clear
+echo "[entrypoint] Collecting static files..."
+python manage.py collectstatic --noinput || true
 
-echo "🔄 Criando superusuário (se não existir)..."
-python manage.py shell << END
-from django.contrib.auth import get_user_model
-User = get_user_model()
-if not User.objects.filter(username='$DJANGO_SUPERUSER_USERNAME').exists():
-    User.objects.create_superuser(
-        username='$DJANGO_SUPERUSER_USERNAME',
-        email='$DJANGO_SUPERUSER_EMAIL',
-        password='$DJANGO_SUPERUSER_PASSWORD'
-    )
-    print('✅ Superusuário criado!')
-else:
-    print('ℹ️  Superusuário já existe.')
-END
-
-echo "🚀 Iniciando servidor Django..."
+echo "[entrypoint] Starting server..."
 exec "$@"

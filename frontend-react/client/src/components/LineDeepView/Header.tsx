@@ -28,6 +28,18 @@ const Header: React.FC<HeaderProps> = ({
     status = 'Em Produção',
     formato = 0
 }) => {
+    // Status Color Mapping
+    const getStatusColor = (status: string) => {
+        const statusLower = status.toLowerCase();
+        if (statusLower.includes('produzindo')) return 'bg-green-100 text-green-800 border border-green-200';
+        if (statusLower.includes('parada') || statusLower.includes('parado')) return 'bg-red-100 text-red-800 border border-red-200';
+        if (statusLower.includes('falha') || statusLower.includes('quebra')) return 'bg-red-200 text-red-900 border border-red-300';
+        if (statusLower.includes('manutenção') || statusLower.includes('manutencao') || statusLower.includes('setup')) return 'bg-yellow-100 text-yellow-800 border border-yellow-200';
+        if (statusLower.includes('aguardando')) return 'bg-blue-100 text-blue-800 border border-blue-200';
+        if (statusLower.includes('offline') || statusLower.includes('sem comunicação')) return 'bg-gray-200 text-gray-700 border border-gray-300';
+        return 'bg-gray-100 text-gray-600 border border-gray-200';
+    };
+
     const isOffline = status === 'Sem Comunicação' || status === 'Offline';
 
     return (
@@ -38,8 +50,7 @@ const Header: React.FC<HeaderProps> = ({
                 <div className="flex-1">
                     <div className="flex items-center gap-3 mb-2">
                         <h1 className="text-2xl font-bold text-gray-900">{linha}</h1>
-                        <span className={`px-2 py-1 text-xs font-semibold rounded-full ${isOffline ? 'bg-red-100 text-red-800' : 'bg-green-100 text-green-800'
-                            }`}>
+                        <span className={`px-3 py-1 text-xs font-semibold rounded-full ${getStatusColor(status)}`}>
                             {status}
                         </span>
                     </div>

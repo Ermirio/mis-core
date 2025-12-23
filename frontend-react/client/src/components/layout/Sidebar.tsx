@@ -45,7 +45,12 @@ const Sidebar: React.FC<SidebarProps> = ({ collapsed, onToggle }) => {
 
         {!collapsed && (
           <Link to="/" className="sidebar-title-link">
-            <h2 className="sidebar-title">MIS - CORE</h2>
+            <img
+              src="/mis-core-logo-v2.png"
+              alt="MIS-CORE"
+              className="sidebar-logo"
+              style={{ maxWidth: '100%', height: 'auto', maxHeight: '60px' }}
+            />
             <p className="sidebar-subtitle">Monitoramento Industrial</p>
           </Link>
         )}

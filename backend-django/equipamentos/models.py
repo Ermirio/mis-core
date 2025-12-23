@@ -389,6 +389,8 @@ class StatusEquipamento(models.TextChoices):
 class EstadoEquipamento(models.TextChoices):
     """Estados industriais para cálculo de OEE"""
     RUN = 'RUN', 'Produzindo'
+    PARTINDO = 'PARTINDO', 'Partindo'
+    PARANDO = 'PARANDO', 'Parando'
     WAIT_PREV = 'WAIT_PREV', 'Aguardando equipamento anterior'
     BLOCK_NEXT = 'BLOCK_NEXT', 'Equipamento seguinte bloqueado'
     FAULT = 'FAULT', 'Falha'

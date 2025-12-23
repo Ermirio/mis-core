@@ -29,7 +29,7 @@ interface LineOverviewProps {
   metaProducao?: number;
   toneladasProduzidasOP?: number;
   diferencaOP?: number;
-  projecao?: any;
+  projecao?: number;
 }
 
 const LineOverview: React.FC<LineOverviewProps> = ({
@@ -46,6 +46,7 @@ const LineOverview: React.FC<LineOverviewProps> = ({
   cuc,
   descricao,
   ordemProducao,
+  projecao, // Added
 }) => {
   const navigate = useNavigate();
 
@@ -71,11 +72,14 @@ const LineOverview: React.FC<LineOverviewProps> = ({
   // Cálculo da Projeção Estimada baseada no OLE atual
   // Se mantivermos a eficiência atual (OLE), quanto produziremos?
   // Projeção = Meta * (OLE / 100)
-  const projecaoEstimada = metaTotal > 0 ? metaTotal * (ole / 100) : 0;
+  // FIX: Se recebermos projecao do backend (mais preciso), usamos.
+  const projecaoEstimada = projecao && projecao > 0
+    ? projecao
+    : (metaTotal > 0 ? metaTotal * (ole / 100) : 0);
 
   return (
     <div
-      onClick={() => navigate(`/linha/${nome}/detalhes`)}
+      onClick={() => navigate(`/linha/${encodeURIComponent(nome)}/detalhes`)}
       className="bg-gradient-to-r from-neutral-50 to-neutral-100 dark:from-neutral-800 dark:to-neutral-900 border border-neutral-300 dark:border-neutral-700 rounded-lg shadow-md p-6 cursor-pointer hover:shadow-lg transition-shadow"
     >
 

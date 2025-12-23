@@ -45,9 +45,19 @@ logging.getLogger("asyncua.client.ua_client.UaClient").setLevel(logging.ERROR)
 
 # ===== MAPEAMENTO DE ESTADOS =====
 MAPEAMENTO_ESTADOS = {
-    1: 'RUN', 2: 'WAIT_PREV', 3: 'BLOCK_NEXT', 4: 'FAULT',
-    5: 'SETUP', 6: 'TESTE_PROJ', 7: 'AGUARD_MNT', 8: 'MANUTENCAO',
-    9: 'FALTA_MAT', 0: 'OUTRO',
+    0: 'OUTRO',
+    1: 'RUN',
+    2: 'WAIT_PREV',
+    3: 'BLOCK_NEXT',
+    4: 'FAULT',
+    5: 'SETUP',
+    6: 'TESTE_PROJ',
+    7: 'AGUARD_MNT',
+    8: 'MANUTENCAO',
+    9: 'FALTA_MAT',
+    10: 'OUTRO',  # Reservado
+    11: 'PARTINDO',
+    12: 'PARANDO',
 }
 
 class ColetorOPC:

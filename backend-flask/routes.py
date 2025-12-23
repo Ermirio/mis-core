@@ -8,13 +8,21 @@ from flask import Blueprint, jsonify, request, current_app
 # Helper para normalizar nome da linha (Linha 01 -> L01)
 def normalize_line_name(linha_nome):
     if not linha_nome: return linha_nome
-    if linha_nome.startswith("L") and len(linha_nome) <= 3 and linha_nome[1:].isdigit():
-        return linha_nome
-    if "Linha" in linha_nome:
-        parts = linha_nome.split()
+    
+    # Normaliza para lidar com LINHA, Linha, linha
+    nome_upper = linha_nome.upper()
+    
+    # Se ja for L01, L02...
+    if nome_upper.startswith("L") and len(nome_upper) <= 3 and nome_upper[1:].isdigit():
+        return nome_upper.replace("l", "L") # Garante L maiusculo
+        
+    if "LINHA" in nome_upper:
+        parts = nome_upper.split()
         if len(parts) > 1 and parts[1].isdigit():
              return f"L{parts[1].zfill(2)}" # Ensure L01, L02
-    return linha_nome.replace("Linha ", "L")
+             
+    # Fallback genérico
+    return nome_upper.replace("LINHA ", "L").replace("LINHA", "L")
 
 DJANGO_API_URL = config('DJANGO_API_URL', default='http://localhost:8000/api')
 
@@ -648,10 +656,13 @@ def get_ole_realtime(linha_nome):
         # Fallback se falhar (mantem logica antiga de MAX)
         if producao_real_ton == 0:
             query = f"SELECT last(toneladas_turno) FROM production WHERE \"line\" = '{normalize_line_name(linha_nome)}' GROUP BY \"equipment\""
+            logger.info(f"DEBUG OLE: Fallback Query: {query}")
             rs = influx_client.query(query)
             points = list(rs.get_points())
             if points:
                 producao_real_ton = max([float(p['last']) for p in points if p['last'] is not None], default=0.0)
+
+        logger.info(f"DEBUG OLE: Real={producao_real_ton} Meta={meta_toneladas}")
 
         # 2. Busca Meta do Turno (Django) e Calcula Tempo
         meta_toneladas = 0.0
@@ -1039,9 +1050,6 @@ def get_equipamento_historico_detalhado(codigo):
         data_ref = request.args.get('date')
 
         start_time = None
-        end_time = None
-        group_by = "1h"
-
         # Lógica de Tempo: Prioriza start/end, fallback para period/date
         if start_param and end_param:
             try:

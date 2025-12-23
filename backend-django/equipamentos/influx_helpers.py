@@ -18,7 +18,7 @@ def get_influx_client() -> InfluxDBClient:
         host=config('INFLUXDB_HOST', default='127.0.0.1'),
         port=config('INFLUXDB_PORT', default=8086, cast=int),
         username=config('INFLUXDB_USER', default='admin'),
-        password=config('INFLUXDB_USER_PASSWORD', default='ixvq10A@10'),
+        password=config('INFLUXDB_PASSWORD', default='admin123'),
         database=config('INFLUXDB_DATABASE', default='industrial_db')
     )
 
