@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, RefreshCw, AlertTriangle } from 'lucide-react';
 
@@ -12,6 +12,19 @@ import Upstream from '../components/LineDeepView/Upstream';
 import Downstream from '../components/LineDeepView/Downstream';
 import LossTreeCard from '../components/LossAnalysis/LossTreeCard';
 import { LossWasteAnalysis } from '../components/LossAnalysis/LossWasteAnalysis';
+
+// Importar funções utilitárias
+import {
+    safeArray,
+    safeNumber,
+    safeString,
+    isValidArray,
+    extractValue
+} from '../utils/dataValidation';
+import {
+    calculateProduction,
+    createSafeProductionData
+} from '../utils/productionCalculations';
 
 const FLASK_API_URL = import.meta.env.VITE_FLASK_API_URL || 'http://localhost:5000/api';
 const DJANGO_API_URL = import.meta.env.VITE_DJANGO_API_URL || 'http://localhost:8000/api';
@@ -78,125 +91,202 @@ const LineDeepView: React.FC = () => {
     const [metricasConsolidadas, setMetricasConsolidadas] = useState<any>(null);
     const [diagnosticAlerts, setDiagnosticAlerts] = useState<string[]>([]);
 
+    // Controle de fetch para evitar race conditions
+    const isFetchingRef = useRef(false);
+
+    /**
+     * Fetch de dados em tempo real de um equipamento com validação robusta
+     */
     const fetchTempoReal = async (codigoEquipamento: string): Promise<Partial<EquipamentoCompleto> | null> => {
+        if (!codigoEquipamento) return null;
+
         try {
-            const [resOperacao, resEquipamento] = await Promise.all([
+            const [resOperacao, resEquipamento] = await Promise.allSettled([
                 fetch(`${FLASK_API_URL}/operacao/dados/${codigoEquipamento}`),
                 fetch(`${FLASK_API_URL}/equipamento/dados/${codigoEquipamento}`)
             ]);
 
-            if (!resOperacao.ok || !resEquipamento.ok) return null;
+            // Verificar se ambas as requisições foram bem-sucedidas
+            if (resOperacao.status !== 'fulfilled' || resEquipamento.status !== 'fulfilled') {
+                return null;
+            }
 
-            const dadosOp = await resOperacao.json();
-            const dadosEq = await resEquipamento.json();
+            const [respOp, respEq] = [resOperacao.value, resEquipamento.value];
+
+            if (!respOp.ok || !respEq.ok) return null;
+
+            const dadosOp = await respOp.json();
+            const dadosEq = await respEq.json();
 
             const medicoes: MedicoesCombinadas = {
-                velocidade_atual: dadosEq.velocidade_atual,
-                estado: dadosEq.estado_atual,
-                pecas_produzidas_equipamento: dadosEq.pecas_produzidas,
-                cuc: dadosOp.cuc,
-                sku_codigo: dadosOp.sku,
-                descricao: dadosOp.descricao,
-                ordem_producao: dadosOp.ordem_producao,
-                formato_gramas: dadosOp.formato_gramas,
-                planejado_op: dadosOp.planejado_op,
-                produzido_op: dadosOp.produzido_op,
-                diferenca_op: dadosOp.diferenca_op,
-                toneladas_op: dadosOp.toneladas_op,
-                oee: dadosOp.oee || dadosEq.oee_atual || 0,
-                pecas_boas: dadosOp.pecas_boas,
-                pecas_ruins: dadosOp.pecas_ruins,
-                timestamp: dadosEq.timestamp
+                velocidade_atual: safeNumber(dadosEq.velocidade_atual, 0),
+                estado: safeString(dadosEq.estado_atual, 'Desconhecido'),
+                pecas_produzidas_equipamento: safeNumber(dadosEq.pecas_produzidas, 0),
+                cuc: safeString(dadosOp.cuc, 'N/A'),
+                sku_codigo: safeString(dadosOp.sku, 'N/A'),
+                descricao: safeString(dadosOp.descricao, 'Produto Genérico'),
+                ordem_producao: safeString(dadosOp.ordem_producao, 'N/A'),
+                formato_gramas: safeNumber(dadosOp.formato_gramas, 0),
+                planejado_op: safeNumber(dadosOp.planejado_op, 0),
+                produzido_op: safeNumber(dadosOp.produzido_op, 0),
+                diferenca_op: safeNumber(dadosOp.diferenca_op, 0),
+                toneladas_op: safeNumber(dadosOp.toneladas_op, 0),
+                oee: safeNumber(dadosOp.oee || dadosEq.oee_atual, 0),
+                pecas_boas: safeNumber(dadosOp.pecas_boas, 0),
+                pecas_ruins: safeNumber(dadosOp.pecas_ruins, 0),
+                timestamp: safeString(dadosEq.timestamp, new Date().toISOString())
             };
 
             return {
                 medicoes,
-                status: dadosEq.estado_atual || 'Offline',
+                status: safeString(dadosEq.estado_atual, 'Offline'),
                 timestamp: dadosEq.timestamp
             };
         } catch (error) {
+            console.error(`Erro ao buscar dados de ${codigoEquipamento}:`, error);
             return null;
         }
     };
 
+    /**
+     * Busca configuração de linha com estratégia robusta de resolução
+     * Prioridade: código exato > busca por nome > primeiro resultado
+     */
+    const fetchLinhaConfig = async (identifier: string): Promise<LinhaConfig | null> => {
+        if (!identifier) return null;
+
+        try {
+            // Tentativa 1: Buscar por código exato
+            let response = await fetch(`${DJANGO_API_URL}/linhas/?codigo=${encodeURIComponent(identifier)}`);
+            let data = await response.json();
+            let results = safeArray(data.results || data);
+
+            // Se encontrou resultado exato por código
+            if (results.length > 0) {
+                const exactMatch = results.find((r: any) => r.codigo === identifier);
+                if (exactMatch) return exactMatch;
+            }
+
+            // Tentativa 2: Buscar por nome/search
+            response = await fetch(`${DJANGO_API_URL}/linhas/?search=${encodeURIComponent(identifier)}`);
+            data = await response.json();
+            results = safeArray(data.results || data);
+
+            if (results.length > 0) {
+                // Tentar match exato por nome
+                const exactNameMatch = results.find((r: any) =>
+                    r.nome === identifier ||
+                    r.nome.toLowerCase() === identifier.toLowerCase() ||
+                    r.codigo === identifier
+                );
+
+                if (exactNameMatch) return exactNameMatch;
+
+                // Fallback: retornar primeiro resultado
+                console.warn(`Match exato não encontrado para "${identifier}", usando primeiro resultado`);
+                return results[0];
+            }
+
+            console.error(`Linha "${identifier}" não encontrada`);
+            return null;
+        } catch (error) {
+            console.error('Erro ao buscar configuração de linha:', error);
+            return null;
+        }
+    };
+
+    /**
+     * Função principal de fetch com controle de concorrência e tratamento robusto
+     */
     const fetchData = async () => {
+        // Prevenir múltiplas requisições simultâneas
+        if (isFetchingRef.current) {
+            console.log("Fetch já em andamento, pulando...");
+            return;
+        }
+
+        isFetchingRef.current = true;
+
         try {
             setLoading(true);
 
-            // 1. Fetch Line Config from Django (Robust Resolution: Code or Name)
-            let resLinha = await fetch(`${DJANGO_API_URL}/linhas/?codigo=${linhaId}`);
-            let linhaData = await resLinha.json();
-            let results = linhaData.results || linhaData;
+            // 1. Buscar configuração da linha com estratégia robusta
+            const lConfig = await fetchLinhaConfig(linhaId || '');
 
-            // If not found by code, try searching by name/search
-            if (!results || results.length === 0) {
-                resLinha = await fetch(`${DJANGO_API_URL}/linhas/?search=${linhaId}`);
-                linhaData = await resLinha.json();
-                results = linhaData.results || linhaData;
+            if (!lConfig) {
+                console.error(`Não foi possível encontrar configuração para linha: ${linhaId}`);
+                setLoading(false);
+                isFetchingRef.current = false;
+                return;
             }
 
-            let linhaIdNumeric = 0;
-            let linhaIdentifier = linhaId || '';
+            setLinhaConfig(lConfig);
+            const linhaIdNumeric = lConfig.id;
+            const linhaIdentifier = lConfig.codigo; // SEMPRE usar código para Flask API
+
+            // 2. Buscar configuração de equipamentos
             let currentEquipamentosConfig: EquipamentoConfig[] = [];
-
-            if (results && results.length > 0) {
-                // Fix: Fuzzy search returns multiple lines. Ensure exact match if possible.
-                const lConfig = results.find((r: any) =>
-                    r.codigo === linhaId ||
-                    r.nome === linhaId ||
-                    r.nome.toLowerCase() === linhaId?.toLowerCase()
-                ) || results[0];
-
-                setLinhaConfig(lConfig);
-                linhaIdNumeric = lConfig.id;
-
-                // CRITICAL: Always use the CODE for Flask API calls
-                linhaIdentifier = lConfig.codigo;
-
-                // 2. Fetch Equipments Config from Django (using numeric ID)
+            try {
                 const resEquipamentos = await fetch(`${DJANGO_API_URL}/equipamentos/?linha=${linhaIdNumeric}`);
                 if (resEquipamentos.ok) {
                     const dataEq = await resEquipamentos.json();
-                    currentEquipamentosConfig = dataEq.results || dataEq;
+                    currentEquipamentosConfig = safeArray(dataEq.results || dataEq);
                     setEquipamentosConfig(currentEquipamentosConfig);
                 }
+            } catch (error) {
+                console.error('Erro ao buscar equipamentos:', error);
             }
 
-            // 3. Parallel requests for Flask Realtime Data (Line Level) - Using resolved identifier
-            const [resStatus, resOle, resKpis, resConsolidadas] = await Promise.all([
-                fetch(`${FLASK_API_URL}/linha/${encodeURIComponent(linhaIdentifier)}/overview-status`),
-                fetch(`${FLASK_API_URL}/linha/${encodeURIComponent(linhaIdentifier)}/realtime`), // CORRECTED to match routes.py
-                fetch(`${FLASK_API_URL}/linha/${encodeURIComponent(linhaIdentifier)}/kpis`),
+            // 3. Buscar dados em tempo real da linha (Flask) - com tratamento individual
+            const fetchPromises = [
+                fetch(`${FLASK_API_URL}/linha/${encodeURIComponent(linhaIdentifier)}/overview-status`)
+                    .then(res => res.ok ? res.json() : null)
+                    .catch(() => null),
+                fetch(`${FLASK_API_URL}/linha/${encodeURIComponent(linhaIdentifier)}/realtime`)
+                    .then(res => res.ok ? res.json() : null)
+                    .catch(() => null),
+                fetch(`${FLASK_API_URL}/linha/${encodeURIComponent(linhaIdentifier)}/kpis`)
+                    .then(res => res.ok ? res.json() : null)
+                    .catch(() => null),
                 fetch(`${DJANGO_API_URL}/metricas_fabrica_consolidadas/`)
-            ]);
+                    .then(res => res.ok ? res.json() : null)
+                    .catch(() => null)
+            ];
 
-            if (resStatus.ok) setLineStatus(await resStatus.json());
-            if (resOle.ok) setOleData(await resOle.json());
-            if (resKpis.ok) setKpisData(await resKpis.json());
+            const [statusData, oleDataRaw, kpisDataRaw, consolidadasData] = await Promise.all(fetchPromises);
 
+            // Atualizar estados com dados válidos
+            if (statusData) setLineStatus(statusData);
+            if (oleDataRaw) setOleData(oleDataRaw);
+            if (kpisDataRaw) setKpisData(kpisDataRaw);
+
+            // Buscar métricas consolidadas da linha específica
             let metricasLinha = null;
-            if (resConsolidadas.ok) {
-                const consolidadas = await resConsolidadas.json();
-                metricasLinha = consolidadas.find((m: any) => m.linha_id === linhaIdNumeric);
+            if (consolidadasData && isValidArray(consolidadasData)) {
+                metricasLinha = consolidadasData.find((m: any) => m.linha_id === linhaIdNumeric);
             }
+            setMetricasConsolidadas(metricasLinha);
 
-            // 4. Fetch Detailed Data for Each Equipment AND Diagnostics
+            // 4. Buscar dados detalhados de cada equipamento + diagnósticos
             const allAlerts: string[] = [];
             if (currentEquipamentosConfig.length > 0) {
                 const promises = currentEquipamentosConfig.map(async (eq) => {
-                    const [dadosReais, resAlerts] = await Promise.all([
-                        fetchTempoReal(eq.codigo),
-                        fetch(`${FLASK_API_URL}/diagnostics/alerts/${eq.codigo}`)
-                    ]);
+                    // Buscar dados em tempo real
+                    const dadosReais = await fetchTempoReal(eq.codigo);
 
-                    // Collect Alerts
-                    if (resAlerts.ok) {
-                        const alertsData = await resAlerts.json();
-                        if (alertsData.alerts && Array.isArray(alertsData.alerts)) {
-                            alertsData.alerts.forEach((a: any) => {
-                                allAlerts.push(`${eq.nome}: ${a.message}`);
-                            });
+                    // Buscar alertas de diagnóstico
+                    try {
+                        const resAlerts = await fetch(`${FLASK_API_URL}/diagnostics/alerts/${eq.codigo}`);
+                        if (resAlerts.ok) {
+                            const alertsData = await resAlerts.json();
+                            if (alertsData.alerts && Array.isArray(alertsData.alerts)) {
+                                alertsData.alerts.forEach((a: any) => {
+                                    allAlerts.push(`${eq.nome}: ${a.message || 'Alerta sem mensagem'}`);
+                                });
+                            }
                         }
+                    } catch (error) {
+                        console.error(`Erro ao buscar alertas de ${eq.codigo}:`, error);
                     }
 
                     return {
@@ -206,97 +296,80 @@ const LineDeepView: React.FC = () => {
                 });
 
                 const equipamentosDetalhadosResult = await Promise.all(promises);
-                // Sort by order
+                // Ordenar por ordem na linha
                 equipamentosDetalhadosResult.sort((a, b) => (a.ordem_na_linha || 0) - (b.ordem_na_linha || 0));
                 setEquipamentosDetalhados(equipamentosDetalhadosResult);
             }
 
             setDiagnosticAlerts(allAlerts);
-            setMetricasConsolidadas(metricasLinha);
-
             setLastUpdate(new Date());
+
         } catch (error) {
-            console.error("Error fetching line details:", error);
+            console.error("Erro ao buscar detalhes da linha:", error);
         } finally {
             setLoading(false);
+            isFetchingRef.current = false;
         }
     };
 
     useEffect(() => {
         fetchData();
         const interval = setInterval(fetchData, 5000); // 5s refresh
-        return () => clearInterval(interval);
+        return () => {
+            clearInterval(interval);
+            isFetchingRef.current = false;
+        };
     }, [linhaId]);
 
+    // Loading state
     if (loading && !lineStatus && equipamentosDetalhados.length === 0) {
-        return <div className="p-10 text-center">Carregando Detalhes da Linha...</div>;
+        return (
+            <div className="p-10 text-center">
+                <RefreshCw className="w-8 h-8 animate-spin mx-auto mb-4 text-gray-500" />
+                <p className="text-gray-600">Carregando Detalhes da Linha...</p>
+            </div>
+        );
     }
 
-    // Fallback if lineStatus fails but we have detailed data, or vice versa
-    // But header relies on lineStatus or detailed data.
-
-    // Leader Equipment Logic (Prioritize Detailed Data)
+    // Encontrar equipamento líder
     const eqLider = equipamentosDetalhados.find(eq =>
-        eq.medicoes?.ordem_producao && eq.medicoes?.ordem_producao !== 'N/A'
+        eq.medicoes?.ordem_producao &&
+        eq.medicoes?.ordem_producao !== 'N/A' &&
+        eq.medicoes?.ordem_producao.trim() !== ''
     ) || equipamentosDetalhados[0];
 
     const dadosProducao = eqLider?.medicoes;
 
-    // Calculations
-    const tempoDecorrido = oleData?.tempo_decorrido || 0;
-    const tempoTotalTurno = oleData?.tempo_total_turno || 28800; // 8h default
-    const tempoDecorridoHoras = tempoDecorrido / 3600;
-    const tempoTotalHoras = tempoTotalTurno / 3600;
+    // Criar dados de produção seguros para cálculos
+    const productionData = createSafeProductionData({
+        producaoReal: oleData?.producao_real,
+        metaTotal: oleData?.meta_turno || oleData?.producao_planejada_total,
+        oleAtual: oleData?.ole,
+        tempoDecorrido: oleData?.tempo_decorrido,
+        tempoTotalTurno: oleData?.tempo_total_turno,
+        taxaInstantanea: oleData?.taxa_instantanea || metricasConsolidadas?.vazao_real_ton_hora,
+        projecaoBackend: oleData?.projecao,
+        ritmoNecessarioBackend: oleData?.ritmo_necessario
+    });
 
-    const producaoReal = oleData?.producao_real || 0;
-    const metaTotal = oleData?.meta_turno || oleData?.producao_planejada_total || 0; // Fallback for Stale Backend
-    const oleAtual = oleData?.ole || 0;
-    const taxaInstantanea = oleData?.taxa_instantanea || 0;
+    // Calcular métricas de produção
+    const calculations = calculateProduction(productionData);
 
-    // Vazão (t/h) - Use Realtime (Flask) > Consolidated (Django) > Calc
-    const vazaoCalculada = taxaInstantanea || (metricasConsolidadas?.vazao_real_ton_hora ?? (tempoDecorridoHoras > 0 ? (producaoReal / tempoDecorridoHoras) : 0));
-
-    // Projeção: Use backend value (Dynamic) or Fallback to Client Calc
-    let projecao = oleData?.projecao || 0;
-    if (!projecao && tempoTotalHoras > 0 && tempoDecorridoHoras > 0) {
-        // Client-Side Projection Calculation (for Stale Backend)
-        // Proj = Real + (Rate * RemainingTime)
-        const remainingHours = tempoTotalHoras - tempoDecorridoHoras;
-        if (remainingHours > 0) {
-            projecao = producaoReal + (vazaoCalculada * remainingHours);
-        } else {
-            projecao = producaoReal;
-        }
-    }
-    // Final Fallback (Simples Rule of Three if no rate)
-    if (!projecao && metaTotal > 0) {
-        projecao = metaTotal * (oleAtual / 100);
-    }
-
-    // Tempo Decorrido %
-    const tempoDecorridoPerc = tempoTotalTurno > 0 ? (tempoDecorrido / tempoTotalTurno) * 100 : 0;
-
-    // Ritmo Necessário: Use backend value (Dynamic) or Fallback
-    const ritmoNecessario = oleData?.ritmo_necessario ?? (tempoTotalHoras > 0 && (metaTotal - producaoReal) > 0 ? ((metaTotal - producaoReal) / (tempoTotalHoras - tempoDecorridoHoras)) : 0);
-
-    // Desvio
-    const desvioProjetado = projecao - metaTotal;
-
-    // Prepare data for Header
-    const currentStatus = lineStatus?.status || 'Carregando...';
+    // Preparar dados para componentes
+    const currentStatus = safeString(lineStatus?.status, 'Carregando...');
     const isSystemOffline = currentStatus === 'Sem Comunicação' || currentStatus === 'Offline';
 
     const headerProps = {
         linha: linhaConfig?.nome || linhaId || 'Linha Desconhecida',
-        op: oleData?.op || dadosProducao?.ordem_producao || 'N/A',
-        sku: oleData?.sku || dadosProducao?.sku_codigo || 'N/A',
-        produto: oleData?.descricao || dadosProducao?.descricao || 'Produto Genérico',
-        cuc: oleData?.cuc || dadosProducao?.cuc || 'N/A',
-        formato: oleData?.formato || dadosProducao?.formato_gramas || 0,
-        equipamentosOnline: oleData?.equipamentos_online || 0,
-        totalEquipamentos: oleData?.equipamentos_total || equipamentosConfig.length,
-        vazao: vazaoCalculada,
-        ole: oleAtual,
+        op: extractValue(oleData?.op, dadosProducao?.ordem_producao) || 'N/A',
+        sku: extractValue(oleData?.sku, dadosProducao?.sku_codigo) || 'N/A',
+        produto: extractValue(oleData?.descricao, dadosProducao?.descricao) || 'Produto Genérico',
+        cuc: extractValue(oleData?.cuc, dadosProducao?.cuc) || 'N/A',
+        formato: safeNumber(extractValue(oleData?.formato, dadosProducao?.formato_gramas), 0),
+        equipamentosOnline: safeNumber(oleData?.equipamentos_online, 0),
+        totalEquipamentos: safeNumber(oleData?.equipamentos_total, equipamentosConfig.length),
+        vazao: calculations.vazaoCalculada,
+        ole: productionData.oleAtual,
         status: currentStatus
     };
 
@@ -341,11 +414,11 @@ const LineDeepView: React.FC = () => {
                     <Header {...headerProps} />
 
                     <Progress
-                        producaoReal={producaoReal}
-                        producaoEsperada={oleData?.producao_esperada || oleData?.producao_planejada_ate_agora || 0}
-                        projecao={projecao}
-                        metaTurno={metaTotal}
-                        tempoDecorridoPerc={tempoDecorridoPerc}
+                        producaoReal={productionData.producaoReal}
+                        producaoEsperada={safeNumber(oleData?.producao_esperada || oleData?.producao_planejada_ate_agora, 0)}
+                        projecao={calculations.projecao}
+                        metaTurno={productionData.metaTotal}
+                        tempoDecorridoPerc={calculations.tempoDecorridoPerc}
                     />
 
                     {/* Equipment Grid */}
@@ -355,18 +428,18 @@ const LineDeepView: React.FC = () => {
                                 key={idx}
                                 nome={eq.nome}
                                 funcao={eq.tipo}
-                                estado={eq.medicoes?.estado ?? 0} // Pass raw state (string or number)
-                                oee={eq.medicoes?.oee || 0}
-                                velocidadeAtual={eq.medicoes?.velocidade_atual || 0}
-                                velocidadeNominal={eq.velocidade_nominal || 100}
-                                boas={eq.medicoes?.pecas_boas || 0}
-                                ruins={eq.medicoes?.pecas_ruins || 0}
+                                estado={eq.medicoes?.estado ?? 'Desconhecido'}
+                                oee={safeNumber(eq.medicoes?.oee, 0)}
+                                velocidadeAtual={safeNumber(eq.medicoes?.velocidade_atual, 0)}
+                                velocidadeNominal={safeNumber(eq.velocidade_nominal, 100)}
+                                boas={safeNumber(eq.medicoes?.pecas_boas, 0)}
+                                ruins={safeNumber(eq.medicoes?.pecas_ruins, 0)}
                                 ultimaParada="N/A"
                             />
                         ))}
                     </div>
 
-                    {/* Timeline Section (Moved to Bottom) */}
+                    {/* Timeline Section */}
                     {linhaConfig && (
                         <>
                             <MultiEquipmentTimeline
@@ -382,7 +455,6 @@ const LineDeepView: React.FC = () => {
                             <LossWasteAnalysis
                                 lineId={String(linhaConfig.id)}
                             />
-
                         </>
                     )}
                 </div>
@@ -390,16 +462,16 @@ const LineDeepView: React.FC = () => {
                 {/* Right Column (KPIs & Details) - Span 4 */}
                 <div className="lg:col-span-4 space-y-6">
                     <KPIs
-                        availability={kpisData?.kpis?.disponibilidade || 0}
-                        performance={kpisData?.kpis?.performance || 0}
-                        quality={kpisData?.kpis?.qualidade || 0}
+                        availability={safeNumber(kpisData?.kpis?.disponibilidade, 0)}
+                        performance={safeNumber(kpisData?.kpis?.performance, 0)}
+                        quality={safeNumber(kpisData?.kpis?.qualidade, 0)}
                         bottleneck={{
-                            name: kpisData?.gargalo?.nome || 'N/A',
-                            oee: kpisData?.gargalo?.oee || 0
+                            name: safeString(kpisData?.gargalo?.nome, 'N/A'),
+                            oee: safeNumber(kpisData?.gargalo?.oee, 0)
                         }}
-                        ritmoAtual={vazaoCalculada}
-                        ritmoNecessario={ritmoNecessario}
-                        desvioProjetado={desvioProjetado}
+                        ritmoAtual={calculations.vazaoCalculada}
+                        ritmoNecessario={calculations.ritmoNecessario}
+                        desvioProjetado={calculations.desvioProjetado}
                         equipamentos={equipamentosConfig}
                     />
 

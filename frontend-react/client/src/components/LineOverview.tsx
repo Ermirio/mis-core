@@ -1,6 +1,7 @@
 import React from "react";
 import { useNavigate } from "react-router-dom";
 import { Activity, Zap, Scale, Gauge, Box, TrendingUp } from "lucide-react";
+import { safeNumber, safeString } from "@/utils/dataValidation";
 
 /**
  * LineOverview - Visão consolidada de uma linha de produção
@@ -32,22 +33,22 @@ interface LineOverviewProps {
   projecao?: number;
 }
 
-const LineOverview: React.FC<LineOverviewProps> = ({
-  nome,
-  ole,
-  totalEquipamentos,
-  equipamentosOnline,
-  producaoReal = 0,
-  producaoEsperada = 0,
-  metaTotal = 0,
-  vazaoTurno = 0,
-  formatoAtual,
-  sku,
-  cuc,
-  descricao,
-  ordemProducao,
-  projecao, // Added
-}) => {
+const LineOverview: React.FC<LineOverviewProps> = (props) => {
+  // Normalizar e validar props
+  const nome = safeString(props.nome, 'Linha Desconhecida');
+  const ole = safeNumber(props.ole, 0);
+  const totalEquipamentos = safeNumber(props.totalEquipamentos, 0);
+  const equipamentosOnline = safeNumber(props.equipamentosOnline, 0);
+  const producaoReal = safeNumber(props.producaoReal, 0);
+  const producaoEsperada = safeNumber(props.producaoEsperada, 0);
+  const metaTotal = safeNumber(props.metaTotal, 0);
+  const vazaoTurno = safeNumber(props.vazaoTurno, 0);
+  const formatoAtual = props.formatoAtual ? safeNumber(props.formatoAtual, 0) : undefined;
+  const sku = safeString(props.sku, 'N/A');
+  const cuc = safeString(props.cuc, 'N/A');
+  const descricao = safeString(props.descricao, 'Produto Genérico');
+  const ordemProducao = safeString(props.ordemProducao, 'N/A');
+  const projecao = props.projecao ? safeNumber(props.projecao, 0) : undefined;
   const navigate = useNavigate();
 
   const getOLEColor = (valor: number): string => {
@@ -59,7 +60,7 @@ const LineOverview: React.FC<LineOverviewProps> = ({
   const calculateProgress = (valor: number, meta: number): number => {
     if (!meta || meta === 0) return 0;
     const percent = (valor / meta) * 100;
-    return Math.min(percent, 100);
+    return Math.min(Math.max(percent, 0), 100); // Clamp entre 0 e 100
   };
 
   const percentualOnline = totalEquipamentos > 0
