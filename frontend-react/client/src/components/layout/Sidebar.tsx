@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { NavLink, Link } from "react-router-dom";
 import { ChevronLeft, ChevronRight, Menu } from "lucide-react";
+import { useSystemHealth } from "../../hooks/useSystemHealth";
 import "./Sidebar.css";
 
 interface SidebarProps {
@@ -31,8 +32,11 @@ const Sidebar: React.FC<SidebarProps> = ({ collapsed, onToggle }) => {
     fetchLinhas();
   }, [DJANGO_API_URL]);
 
+  const { health } = useSystemHealth();
+
   return (
     <div className={`sidebar ${collapsed ? "collapsed" : ""}`}>
+
       <div className="sidebar-header">
         {/* Toggle Button */}
         <button
@@ -49,7 +53,6 @@ const Sidebar: React.FC<SidebarProps> = ({ collapsed, onToggle }) => {
               src="/mis-core-logo-v2.png"
               alt="MIS-CORE"
               className="sidebar-logo"
-              style={{ maxWidth: '100%', height: 'auto', maxHeight: '60px' }}
             />
             <p className="sidebar-subtitle">Monitoramento Industrial</p>
           </Link>
@@ -94,7 +97,7 @@ const Sidebar: React.FC<SidebarProps> = ({ collapsed, onToggle }) => {
           linhas.map((linha) => (
             <NavLink
               key={linha.id}
-              to={`/linha/${linha.id}`}
+              to={`/linha/${linha.codigo || linha.id}/detalhes`}
               className={({ isActive }) =>
                 isActive ? "sidebar-link active" : "sidebar-link"
               }
@@ -110,10 +113,12 @@ const Sidebar: React.FC<SidebarProps> = ({ collapsed, onToggle }) => {
       <div className="sidebar-footer">
         <NavLink
           to="/diagnosticos"
-          className={({ isActive }) => isActive ? "sidebar-link active" : "sidebar-link"}
-          title="Diagnósticos"
+          className={({ isActive }) =>
+            `sidebar-link ${isActive ? "active" : ""} ${health === 'critical' ? 'critical-pulse' : health === 'warning' ? 'warning-glow' : ''}`
+          }
+          title={health === 'critical' ? 'Erro no Sistema' : health === 'warning' ? 'Alertas Ativos' : 'Diagnósticos'}
         >
-          <span>🔧</span>
+          <span>{health === 'critical' ? '🚨' : health === 'warning' ? '⚠️' : '🔧'}</span>
           {!collapsed && <span>Diagnósticos</span>}
         </NavLink>
       </div>

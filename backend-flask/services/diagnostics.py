@@ -136,12 +136,15 @@ def get_latest_golden_state(equipamento_codigo):
         logger.error(f"Error getting Golden State: {e}")
         return None
 
-def get_golden_state_history(equipamento_codigo, limit=20):
+def get_golden_state_history(equipamento_codigo, limit=20, sku=None):
     """
     Retrieves the history of Golden State profiles for the equipment.
     """
     try:
-        query = f"SELECT * FROM golden_state_profile WHERE equipamento = '{equipamento_codigo}' ORDER BY time DESC LIMIT {limit}"
+        if sku:
+            query = f"SELECT * FROM golden_state_profile WHERE equipamento = '{equipamento_codigo}' AND sku = '{sku}' ORDER BY time DESC LIMIT {limit}"
+        else:
+            query = f"SELECT * FROM golden_state_profile WHERE equipamento = '{equipamento_codigo}' ORDER BY time DESC LIMIT {limit}"
         
         result = client.query(query)
         points = list(result.get_points())

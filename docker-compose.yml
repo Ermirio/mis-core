@@ -101,7 +101,7 @@ services:
 
   # ===== FLASK =====
   flask:
-    image: mis-core-flask:v1.0
+    image: mis-core-flask:v1.1
     build:
       context: ./backend-flask
       dockerfile: Dockerfile

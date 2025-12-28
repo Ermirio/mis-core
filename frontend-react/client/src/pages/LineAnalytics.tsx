@@ -114,6 +114,16 @@ const LineAnalytics: React.FC = () => {
 
             const res = await axios.post(`${FLASK_API}${endpoint}`, payload);
 
+            if (res.data && Array.isArray(res.data) && res.data.length > 0) {
+                // Check if all are errors
+                const allErrors = res.data.every((r: any) => r.error === 'No data found' || r.error === 'Empty data');
+                if (allErrors) {
+                    setError("Não há dados registrados para este período. Verifique se o equipamento estava operando (Status/Conexão).");
+                    setLoading(false);
+                    return;
+                }
+            }
+
             if (mode === 'stats') {
                 setStatsData(res.data);
                 setActiveTab('stats');
@@ -135,7 +145,7 @@ const LineAnalytics: React.FC = () => {
 
         } catch (err: any) {
             console.error("Erro na análise:", err);
-            setError("Erro ao executar análise. Verifique o console.");
+            setError("Erro ao executar análise. Verifique se o servidor de banco de dados está online.");
         } finally {
             setLoading(false);
         }
@@ -149,9 +159,33 @@ const LineAnalytics: React.FC = () => {
 
         // Flatten tags
         let tags: any[] = [];
+
+        // Inject Standard Metrics for each equipment
         linha.equipamentos.forEach(eq => {
+            // Standard Metrics
+            const standardMetrics = [
+                { nome: 'Velocidade', tag: 'velocidade_atual' },
+                { nome: 'OEE', tag: 'oee' },
+                { nome: 'Produção', tag: 'contagem_saida' },
+                { nome: 'Descarte', tag: 'descarte' }
+            ];
+
+            standardMetrics.forEach(m => {
+                tags.push({
+                    id: `std-${eq.codigo}-${m.tag}`, // Unique ID
+                    nome: m.nome,
+                    tag_influxdb: m.tag,
+                    equipamento_nome: eq.nome,
+                    equipamento_code: eq.codigo,
+                    lsl: undefined,
+                    usl: undefined,
+                    nominal: undefined
+                });
+            });
+
+            // Dynamic Sensors from Django
             if (eq.sensores) {
-                eq.sensores.forEach(s => {
+                eq.sensores.forEach((s: any) => {
                     tags.push({
                         id: s.id,
                         nome: s.nome,

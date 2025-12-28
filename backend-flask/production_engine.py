@@ -130,9 +130,13 @@ class ProductionEngine:
         self.heartbeats = {} # {equipment_code: timestamp}
         self.MAX_TIME_DELTA = 300  # 5 minutos - proteção contra server offline
 
+
     def recarregar_configuracoes(self):
         self.config_manager._atualizar_cache()
         return self.shift_manager.forcar_atualizacao()
+
+    def get_state(self, equipment_code):
+        return self._get_state(equipment_code)
 
     def _get_state(self, equipment_code):
         if equipment_code not in self._cache:
@@ -272,6 +276,8 @@ class ProductionEngine:
 
         # 6. Deltas de Produção e Refugo
         delta = 0
+        # 6. Deltas de Produção e Refugo
+        delta = 0
         if state['last_raw'] is not None:
             delta = max(0, contagem_bruta - state['last_raw'])
             if delta < 0: delta = contagem_bruta  # Reset físico
@@ -286,8 +292,11 @@ class ProductionEngine:
         # 7. Acumuladores de Produção
         if delta > 0:
             state['acc_op'] += delta
-            if turno_atual not in ["Sem Turno Configurado", "Fora de Turno"]:
+            # Verifica se turno é válido para acumular
+            if turno_atual not in ["Sem Turno Configurado", "Fora de Turno", "N/A"]:
                 state['acc_shift'] += delta
+            else:
+                pass # Ignora acumulação fora de turno
         
         if delta_waste > 0:
             state['acc_waste_op'] += delta_waste
@@ -335,7 +344,7 @@ class ProductionEngine:
             qualidade = max(0.0, (total_prod_op - total_waste_op) / total_prod_op)
         
         oee = disponibilidade * performance * qualidade * 100
-
+        
         # 9. Totais
         ton_op = (total_prod_op * formato_gramas) / 1_000_000.0 if formato_gramas else 0
         dif_op = total_prod_op - planejado
@@ -343,7 +352,7 @@ class ProductionEngine:
         total_turno = state['acc_shift']
         ton_turno = (total_turno * formato_gramas) / 1_000_000.0 if formato_gramas else 0
         
-        return {
+        metrics = {
             'producao_op': int(total_prod_op),
             'refugo_op_acumulado': int(total_waste_op),
             'toneladas_op': float(ton_op),
@@ -357,12 +366,16 @@ class ProductionEngine:
             'performance_realtime': float(performance * 100),
             'quality_realtime': float(qualidade * 100),
             'availability_realtime': float(disponibilidade * 100),
+            'planejado_op': int(planejado), # ADDING THIS TOO as it was missing for logic
             
             # NOVOS: Métricas temporais
             'tempo_planejado_segundos': int(tempo_planejado),
             'tempo_parado_segundos': int(tempo_parado),
             'tempo_produtivo_segundos': int(tempo_planejado - tempo_parado) if tempo_planejado > 0 else 0,
         }
+        
+        state['latest_metrics'] = metrics
+        return metrics
 
 # Singleton
 engine = None

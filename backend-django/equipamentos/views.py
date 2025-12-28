@@ -361,13 +361,12 @@ def configuracao_coletor(request):
             status='ATIVO',
             linha__ativa=True
         ).select_related('linha').prefetch_related(
-            'tags_coleta',
-            'tags_coleta__conexao'
+            'tags_coleta'
         ).order_by('linha__codigo', 'ordem_na_linha')
         
         # Filtra apenas tags ativas
         for eq in equipamentos:
-            eq.tags_coleta_ativas = eq.tags_coleta.filter(ativa=True, conexao__ativa=True)
+            eq.tags_coleta_ativas = eq.tags_coleta.filter(ativa=True)
         
         serializer = EquipamentoColetorSerializer(equipamentos, many=True)
         

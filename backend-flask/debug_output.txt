@@ -1,0 +1,64 @@
+
+--- ROTAS REGISTRADAS ---
+✅ /static/<path:filename> -> static
+✅ /api/health/system -> api.system_health
+✅ /api/realtime/all -> api.get_all_realtime
+✅ /api/linha/<linha_nome>/status -> api.get_linha_status
+✅ /api/linha/<linha_nome>/realtime -> api.get_linha_realtime
+✅ /api/operacao/dados/<eq_code> -> api.get_operacao
+✅ /api/equipamento/dados/<eq_code> -> api.get_equipamento
+✅ /api/dados/inserir -> api.inserir
+✅ /api/linha/<linha_nome>/ole-realtime -> api.get_ole_realtime
+✅ /api/linha/<linha_nome>/overview-status -> api.get_linha_overview_status
+✅ /api/linha/<linha_nome>/kpis -> api.get_linha_kpis
+✅ /api/linha/<linha_nome>/timeline -> api.get_linha_timeline
+✅ /api/linha/<linha_nome>/upstream -> api.get_linha_upstream
+✅ /api/linha/<linha_nome>/downstream -> api.get_linha_downstream
+✅ /api/system/refresh-shifts -> api.refresh_shifts
+✅ /api/health -> api.health
+✅ /api/fabrica/mapa -> api.get_factory_map_route
+✅ /api/equipamento/<codigo>/historico-detalhado -> api.get_equipamento_historico_detalhado
+✅ /api/diagnostics/capture/<equipamento_codigo> -> api.capture_golden_state_endpoint
+✅ /api/diagnostics/alerts/<equipamento_codigo> -> api.get_diagnostics_alerts
+✅ /api/linha/<linha_nome>/historico -> api.get_linha_historico
+✅ /api/linha/<linha>/kpis -> kpis.kpis_linha
+✅ /api/equipamento/<eq>/kpis -> kpis.kpis_equipamento
+✅ /api/fabrica/kpis/ -> kpis.get_factory_kpis_route
+✅ /api/fabrica/kpis -> kpis.kpis_fabrica
+✅ /api/analyze/stats -> analytics.analyze_stats
+✅ /api/analyze/correlation -> analytics.analyze_correlation
+✅ /api/analyze/timeseries -> analytics.analyze_timeseries
+✅ /api/golden-state/apply -> golden_state.apply_golden_state
+✅ /api/golden-state/pending -> golden_state.get_commands
+✅ /api/golden-state/callback -> golden_state.command_callback
+✅ /api/golden-state/status/<batch_id> -> golden_state.get_status
+-------------------------
+
+--- DEBUG: Verifying Velocity Trigger ---
+
+Checking Equipment: E001
+  -> State: 1 (1=Running)
+  -> SKU: 555555551.0
+  -> Current Velocity: 300.0
+  -> Max Historical Velocity: 150.0
+  -> CONDITION MET: 300.0 > 150.0
+  -> Cooldown Active (10m): False
+  -> CONCLUSION: SHOULD TRIGGER
+
+Checking Equipment: E002
+  -> State: 1 (1=Running)
+  -> SKU: 555555551
+  -> Current Velocity: 300.0
+  -> Max Historical Velocity: 0.0
+  -> CONDITION MET: 300.0 > 0.0
+  -> Cooldown Active (10m): False
+  -> CONCLUSION: SHOULD TRIGGER
+
+Checking Equipment: E003
+  -> State: 1 (1=Running)
+  -> SKU: 36457358
+  -> Current Velocity: 120.0
+  -> Max Historical Velocity: 120.0
+  -> CONDITION FAILED: 120.0 <= 120.0
+  -> Cooldown Active (10m): False
+  -> CONCLUSION: WILL NOT TRIGGER

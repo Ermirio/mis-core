@@ -13,8 +13,6 @@ class ConexaoOPCSerializer(serializers.ModelSerializer):
 
 
 class TagColetaSerializer(serializers.ModelSerializer):
-    conexao_detalhes = ConexaoOPCSerializer(source='conexao', read_only=True)
-    
     class Meta:
         model = TagColeta
         fields = '__all__'
@@ -53,19 +51,43 @@ class EquipamentoSerializer(serializers.ModelSerializer):
 
 class EquipamentoColetorSerializer(serializers.ModelSerializer):
     """Serializer otimizado para o endpoint de configuração do coletor"""
-    tags_coleta = TagColetaSerializer(many=True, read_only=True)
+    tags_coleta = serializers.SerializerMethodField()
     linha_codigo = serializers.CharField(source='linha.codigo', read_only=True)
     linha_nome = serializers.CharField(source='linha.nome', read_only=True)
     tipo_display = serializers.CharField(source='get_tipo_display', read_only=True)
     
+    # NOVO: Detalhes da Conexão Resolvida (Herança)
+    conexao_detalhes = serializers.SerializerMethodField()
+
     class Meta:
         model = Equipamento
         fields = [
             'id', 'nome', 'codigo', 'tipo', 'tipo_display', 'linha', 'linha_codigo', 'linha_nome',
             'velocidade_nominal', 'velocidade_maxima', 'meta_oee',
             'temperatura_min', 'temperatura_max', 'pressao_min', 'pressao_max',
-            'tags_coleta'
+            'tags_coleta', 'conexao_detalhes'
         ]
+
+    def get_tags_coleta(self, obj):
+        """Usa tags pré-filtradas (ativas) se disponíveis, senão busca todas"""
+        if hasattr(obj, 'tags_coleta_ativas'):
+            return TagColetaSerializer(obj.tags_coleta_ativas, many=True).data
+        return TagColetaSerializer(obj.tags_coleta.all(), many=True).data
+
+    def get_conexao_detalhes(self, obj):
+        """Resolve a conexão OPC (Linha > None)"""
+        conexao = None
+        if obj.linha:
+            conexao = obj.linha.conexao_padrao
+        
+        if conexao:
+            return {
+                'url': conexao.url_servidor,
+                'tag_monitoramento': conexao.tag_monitoramento,
+                'tipo_monitoramento': conexao.tipo_monitoramento,
+                'nome': conexao.nome
+            }
+        return None
 
 
 class LinhaProducaoSerializer(serializers.ModelSerializer):

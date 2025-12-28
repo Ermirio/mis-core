@@ -92,12 +92,23 @@ const LineOverview: React.FC<LineOverviewProps> = ({
           {/* Esquerda: Identificação */}
           <div className="flex flex-col gap-1 min-w-0">
             <div className="flex items-center gap-3">
-              <div className="p-2 bg-blue-100 dark:bg-blue-900/30 rounded-lg flex-shrink-0">
-                <Activity className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+              <div className={`p-2 ${percentualOnline === 0 ? 'bg-red-100 dark:bg-red-900/30' : 'bg-blue-100 dark:bg-blue-900/30'} rounded-lg flex-shrink-0 animate-pulse`}>
+                {percentualOnline === 0 ? (
+                  <Activity className="w-5 h-5 text-red-600 dark:text-red-400" />
+                ) : (
+                  <Activity className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+                )}
               </div>
-              <h2 className="text-xl font-bold text-neutral-900 dark:text-neutral-100 truncate">
-                {nome}
-              </h2>
+              <div>
+                <h2 className="text-xl font-bold text-neutral-900 dark:text-neutral-100 truncate">
+                  {nome}
+                </h2>
+                {percentualOnline === 0 && (
+                  <span className="text-xs font-bold text-red-600 dark:text-red-400 uppercase tracking-wider">
+                    OFFLINE / ERRO DE COMUNICAÇÃO
+                  </span>
+                )}
+              </div>
             </div>
 
             {/* Subtitle Info Group */}

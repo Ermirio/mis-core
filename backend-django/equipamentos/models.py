@@ -104,6 +104,15 @@ class LinhaProducao(models.Model):
         related_name='linhas', 
         verbose_name='Área'
     )
+    # NOVO: Conexão Padrão da Linha
+    conexao_padrao = models.ForeignKey(
+        'ConexaoOPC', 
+        on_delete=models.SET_NULL, 
+        null=True, 
+        blank=True, 
+        related_name='linhas', 
+        verbose_name="Conexão OPC Padrão"
+    )
     descricao = models.TextField(blank=True, verbose_name='Descrição')
     localizacao = models.CharField(max_length=200, verbose_name='Localização')
     ativa = models.BooleanField(default=True, verbose_name='Linha Ativa')
@@ -341,6 +350,23 @@ class ConexaoOPC(models.Model):
         verbose_name='URL do Servidor OPC',
         help_text='Ex: opc.tcp://192.168.1.10:4840'
     )
+    # NOVOS CAMPOS PARA MONITORAMENTO DE SAÚDE
+    tag_monitoramento = models.CharField(
+        max_length=255, 
+        blank=True, 
+        null=True, 
+        help_text="NodeID da tag de saúde (Ex: ns=2;s=Line1.Heartbeat ou Line1.Error)"
+    )
+    tipo_monitoramento = models.CharField(
+        max_length=20,
+        choices=[
+            ('HEARTBEAT', 'Pulse (Heartbeat)'),
+            ('ERROR_BOOL', 'Bit de Erro (True=Error)'),
+        ],
+        default='HEARTBEAT',
+        verbose_name='Tipo de Monitoramento',
+        help_text="Como interpretar a tag de monitoramento"
+    )
     namespace_prefix = models.CharField(
         max_length=50,
         blank=True,
@@ -497,12 +523,7 @@ class TagColeta(models.Model):
         related_name='tags_coleta',
         verbose_name='Equipamento'
     )
-    conexao = models.ForeignKey(
-        ConexaoOPC,
-        on_delete=models.CASCADE,
-        related_name='tags',
-        verbose_name='Conexão OPC'
-    )
+
     nome_metrica = models.CharField(
         max_length=100,
         verbose_name='Nome da Métrica',
@@ -556,6 +577,8 @@ class TipoSensor(models.TextChoices):
     COUNTER = 'COUNTER', 'Contador'
     SETPOINT = 'SETPOINT', 'Setpoint / Ajuste'
     LIMIT = 'LIMIT', 'Limite / Parâmetro'
+    HEARTBEAT = 'HEARTBEAT', 'Health Check'
+    COMM_ERROR = 'COMM_ERROR', 'Erro de Comunicação'
     OUTRO = 'OUTRO', 'Outro'
 
 class Sensor(models.Model):
@@ -708,6 +731,9 @@ class TipoFalha(models.Model):
         ('MATERIA_PRIMA', 'Problema Matéria-Prima'),
         ('QUALIDADE', 'Problema de Qualidade'),
         ('SETUP', 'Setup/Troca'),
+        ('SETPOINT', 'Set Point'),
+        ('LIMIT', 'Limite de Processo'),
+        ('HEARTBEAT', 'Health Check'),
         ('OUTROS', 'Outros'),
     ]
     
@@ -1447,4 +1473,8 @@ class StrategicInitiative(models.Model):
         ordering = ["-criado_em"]
 
     def __str__(self):
-        return self.titulo
+        return f"{self.titulo} ({self.get_status_display()})"
+
+
+
+

@@ -287,7 +287,7 @@ const LineDeepView: React.FC = () => {
     const isSystemOffline = currentStatus === 'Sem Comunicação' || currentStatus === 'Offline';
 
     const headerProps = {
-        linha: linhaId || 'Linha Desconhecida',
+        linha: linhaConfig?.nome || linhaId || 'Linha Desconhecida',
         op: oleData?.op || dadosProducao?.ordem_producao || 'N/A',
         sku: oleData?.sku || dadosProducao?.sku_codigo || 'N/A',
         produto: oleData?.descricao || dadosProducao?.descricao || 'Produto Genérico',
@@ -400,6 +400,7 @@ const LineDeepView: React.FC = () => {
                         ritmoAtual={vazaoCalculada}
                         ritmoNecessario={ritmoNecessario}
                         desvioProjetado={desvioProjetado}
+                        equipamentos={equipamentosConfig}
                     />
 
                     <Diagnostics alerts={diagnosticAlerts} />
