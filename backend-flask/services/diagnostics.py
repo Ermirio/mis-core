@@ -121,15 +121,35 @@ def capture_golden_state(equipamento_codigo, capture_type='MANUAL'):
 def get_latest_golden_state(equipamento_codigo):
     """
     Retrieves the latest Golden State profile for the equipment using InfluxQL.
+    Prioriza registros com SKU válido (não 'N/A'), mas fallback para último registro se necessário.
     """
     try:
-        query = f"SELECT * FROM golden_state_profile WHERE equipamento = '{equipamento_codigo}' ORDER BY time DESC LIMIT 1"
+        # Tenta buscar último registro COM SKU válido (não 'N/A')
+        query_with_sku = f"""
+            SELECT * FROM golden_state_profile 
+            WHERE equipamento = '{equipamento_codigo}' AND sku != 'N/A'
+            ORDER BY time DESC LIMIT 1
+        """
         
-        result = client.query(query)
+        result = client.query(query_with_sku)
         points = list(result.get_points())
         
         if points:
             return points[0]
+        
+        # Fallback: Se não há nenhum com SKU válido, busca o último de qualquer forma
+        query_any = f"""
+            SELECT * FROM golden_state_profile 
+            WHERE equipamento = '{equipamento_codigo}' 
+            ORDER BY time DESC LIMIT 1
+        """
+        
+        result_any = client.query(query_any)
+        points_any = list(result_any.get_points())
+        
+        if points_any:
+            return points_any[0]
+            
         return None
 
     except Exception as e:

@@ -577,7 +577,7 @@ const EquipamentoDetalhes: React.FC = () => {
             <TabsTrigger value="tabela">Tabela</TabsTrigger>
             <TabsTrigger value="estados">Estados</TabsTrigger>
             <TabsTrigger value="eventos">Eventos</TabsTrigger>
-            <TabsTrigger value="diagnosticos">Diagnósticos</TabsTrigger>
+            <TabsTrigger value="diagnosticos">Golden State</TabsTrigger>
           </TabsList>
 
           <TabsContent value="variaveis">

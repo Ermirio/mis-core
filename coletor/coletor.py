@@ -415,12 +415,15 @@ class ColetorOPC:
 
     async def verificar_comandos(self):
         """Busca comandos pendentes do Flask e reporta resultado."""
+        logger.info("🔍 DEBUG: verificar_comandos() INICIADO")
         try:
-            url = f"{FLASK_API_URL}/golden-state/pending" 
+            url = f"{FLASK_API_URL}/golden-state/pending"
+            logger.info(f"🔍 DEBUG: Buscando comandos em {url}")
             response = requests.get(url, timeout=TIMEOUT_REQUEST)
             if not response.ok: return
             
             batches = response.json()
+            logger.info(f"🔍 DEBUG: Recebidos {len(batches)} batches do Flask")
             if not batches: return
 
             logger.info(f"📩 Recebidos {len(batches)} lotes de comando.")
@@ -441,8 +444,35 @@ class ColetorOPC:
                     self.reportar_status_batch(batch_id, 'ERROR', "Equipamento não configurado no Coletor.")
                     continue
                 
+                # CORREÇÃO CRÍTICA: Buscar URL da conexão OPC do EQUIPAMENTO (não da tag)
+                conn_details = eq_config.get('conexao_detalhes', {})
+                url_server = conn_details.get('url')
+                
+                if not url_server:
+                    error_msg = f"Equipamento {eq_codigo} não possui URL de conexão OPC configurada"
+                    logger.error(f"❌ {error_msg}")
+                    self.reportar_status_batch(batch_id, 'ERROR', error_msg)
+                    continue
+                
+                logger.info(f"🔍 DEBUG: Equipamento {eq_codigo} → URL OPC: {url_server}")
+                logger.info(f"🔍 DEBUG: Clientes OPC disponíveis: {list(self.clientes_opc.keys())}")
+                
+                # Verificar se cliente OPC está conectado ANTES do loop
+                cliente = self.clientes_opc.get(url_server)
+                if not cliente:
+                    error_msg = f"Cliente OPC não conectado para URL '{url_server}' (Equipamento: {eq_codigo})"
+                    logger.error(f"❌ {error_msg}")
+                    logger.error(f"💡 DICA: Verifique se a conexão OPC está ativa")
+                    self.reportar_status_batch(batch_id, 'ERROR', error_msg)
+                    continue
+                
+                logger.info(f"✅ Cliente OPC encontrado para {eq_codigo}")
+                
                 # Report Started
                 self.reportar_status_batch(batch_id, 'PENDING', "Iniciando escrita...", {'current': 0, 'total': len(commands)})
+                
+                success_count = 0
+                error_count = 0
                 
                 for i, cmd in enumerate(commands):
                     tag_name = cmd.get('tag')
@@ -454,22 +484,27 @@ class ColetorOPC:
                     
                     tag_config = next((t for t in eq_config.get('tags_coleta', []) if t['nome_metrica'] == tag_name), None)
                     if not tag_config:
-                        logger.warning(f"Tag {tag_name} não encontrada.")
+                        error_msg = f"Tag '{tag_name}' não encontrada na configuração do equipamento {eq_codigo}"
+                        logger.warning(f"❌ {error_msg}")
+                        self.reportar_status_batch(batch_id, 'PENDING', error_msg, {'current': i, 'total': len(commands)})
                         error_count += 1
                         continue
                     
                     node_id = tag_config['node_id']
                     tipo = tag_config.get('tipo_dado', 'FLOAT')
-                    url_server = tag_config.get('conexao_detalhes', {}).get('url_servidor')
                     
-                    cliente = self.clientes_opc.get(url_server)
-                    if cliente:
-                        ok = await self.escrever_tag_opc(cliente, node_id, valor, tipo)
-                        if ok: success_count += 1
-                        else: error_count += 1
-                    else:
-                        logger.error(f"Cliente OPC não conectado para {tag_name}")
+                    logger.info(f"🔍 DEBUG: Escrevendo '{tag_name}' → NodeID={node_id}, Tipo={tipo}, Valor={valor}")
+                    
+                    # Cliente já foi validado antes do loop
+                    ok = await self.escrever_tag_opc(cliente, node_id, valor, tipo)
+                    if ok: 
+                        success_count += 1
+                        logger.info(f"✅ ESCRITA SUCESSO: {tag_name} = {valor}")
+                    else: 
                         error_count += 1
+                        error_msg = f"Falha ao escrever {tag_name}: Erro na comunicação OPC UA"
+                        logger.error(f"❌ {error_msg}")
+                        self.reportar_status_batch(batch_id, 'PENDING', error_msg, {'current': i, 'total': len(commands)})
 
                 # Report Final Status for Batch
                 final_status = 'SUCCESS' if error_count == 0 else ('PARTIAL_SUCCESS' if success_count > 0 else 'ERROR')
