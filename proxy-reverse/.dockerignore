@@ -1,0 +1,4 @@
+# Ignorar arquivos desnecessários no build
+*.md
+.git
+.gitignore

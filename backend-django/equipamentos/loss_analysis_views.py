@@ -242,8 +242,8 @@ def perdas_analise(request, linha_id):
                  if inicio_t >= data_inicio:
                      rt_metrics = get_realtime_metrics(gargalo.codigo, formato, inicio_t)
                      if rt_metrics:
-                         c_atual = float(rt_metrics.get('contagem_atual', 0))
-                         c_inicio = float(rt_metrics.get('contagem_inicio_turno', 0))
+                         c_atual = float(rt_metrics.get('contagem_atual') or 0.0)
+                         c_inicio = float(rt_metrics.get('contagem_inicio_turno') or 0.0)
                          pecas_boas_rt = max(0, c_atual - c_inicio)
                          # Refugo realtime se houver logic
                          pecas_ref_rt = 0.0
@@ -268,7 +268,7 @@ def perdas_analise(request, linha_id):
         # Tempo Rodando Real = (Pecas Totais / Velocidade Real)
         # Tempo Rodando Ideal = (Pecas Totais / Velocidade Nominal)
         # Perda Vel = Real - Ideal
-        # Simulação: loss_tree['performance_loss'] já tem microparadas (Blocked/Starved). 
+        # loss_tree['performance_loss'] já tem microparadas (Blocked/Starved). 
         # Falta adicionar a perda por velocidade reduzida.
         
         # Tempo total disponível para produzir (excluindo paradas totais)

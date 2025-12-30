@@ -447,6 +447,11 @@ const LineAnalytics: React.FC = () => {
                                                     Cpk: {res.stats.cpk.toFixed(2)}
                                                 </span>
                                             )}
+                                            {res.stats.cp !== null && (
+                                                <span className={res.stats.cp < 1.33 ? 'text-red-500 font-bold ml-4' : 'text-green-600 font-bold ml-4'}>
+                                                    Cp: {res.stats.cp.toFixed(2)}
+                                                </span>
+                                            )}
                                         </div>
                                     </CardHeader>
                                     <CardContent>

@@ -242,7 +242,7 @@ const LineDeepView: React.FC = () => {
                 fetch(`${FLASK_API_URL}/linha/${encodeURIComponent(linhaIdentifier)}/overview-status`)
                     .then(res => res.ok ? res.json() : null)
                     .catch(() => null),
-                fetch(`${FLASK_API_URL}/linha/${encodeURIComponent(linhaIdentifier)}/realtime`)
+                fetch(`${FLASK_API_URL}/linha/${encodeURIComponent(linhaIdentifier)}/ole-realtime`)
                     .then(res => res.ok ? res.json() : null)
                     .catch(() => null),
                 fetch(`${FLASK_API_URL}/linha/${encodeURIComponent(linhaIdentifier)}/kpis`)

@@ -36,7 +36,7 @@ const DiagnosticsPanel: React.FC<DiagnosticsPanelProps> = ({ equipamentoCodigo }
     const [capturing, setCapturing] = useState(false);
 
     // Filtering State
-    const [filterCurrentSku, setFilterCurrentSku] = useState(true);
+    const [filterCurrentSku, setFilterCurrentSku] = useState(false);
 
     // UI Logic for History
     const [histPage, setHistPage] = useState(1);

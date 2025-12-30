@@ -254,38 +254,42 @@ def get_linha_status(linha_nome):
 @api_bp.route('/api/operacao/dados/<eq_code>', methods=['GET'])
 def get_operacao(eq_code):
     try:
-        influx_client = current_app.extensions.get('influx_client')
-        if not influx_client:
-            return jsonify({'error': 'InfluxDB not initialized'}), 500
+        # Tenta usar Master State (Memory)
+        production_engine = current_app.extensions.get('production_engine')
+        state = production_engine.get_state(eq_code) if production_engine else {}
+        metrics = state.get('latest_metrics', {})
+        d_influx = state.get('last_payload', {}) 
 
-        rs = influx_client.query(f"SELECT last(*) FROM production WHERE \"equipment\" = '{eq_code}'")
-        pts = list(rs.get_points())
-        if not pts: return jsonify({'status': 'Aguardando...'}), 200
-        d = pts[0]
-
-        prod_op = int(d.get('last_producao_op_acumulada', 0) or 0)
-        plan = int(d.get('last_planejado_op', 0) or 0)
-
+        prod_op = metrics.get('producao_op', 0)
+        refugo_op = metrics.get('refugo_op_acumulado', 0)
+        pecas_boas = max(0, prod_op - refugo_op)
+        
+        # Tags de contexto
+        op = str(state.get('last_op_atual', 'N/A'))
+        sku = str(d_influx.get('sku_codigo', 'N/A'))
+        if op == 'N/A': op = str(d_influx.get('ordem_producao', 'N/A'))
+        
         return jsonify({
             "equipamento": eq_code,
-            "cuc": d.get('last_cuc', 'N/A'),
-            "ordem_producao": d.get('last_ordem_producao', 'N/A'),  # Fixed: removed _field suffix
-            "sku": d.get('last_sku_codigo', 'N/A'),  # Fixed: removed _field suffix
-            "descricao": d.get('last_descricao', 'Produto não identificado'),
-            "formato_gramas": int(d.get('last_formato_gramas') or d.get('last_formato') or 0),
-            "planejado_op": plan,
+            "cuc": str(d_influx.get('cuc', 'N/A')),
+            "ordem_producao": op,
+            "sku": sku,
+            "descricao": str(d_influx.get('descricao', 'Produto não identificado')),
+            "formato_gramas": float(d_influx.get('formato_gramas') or d_influx.get('formato') or 0),
+            "planejado_op": int(d_influx.get('planejado_op', 0) or 0),
             "produzido_op": prod_op,
-            "diferenca_op": int(d.get('last_diferenca_op', 0) or (prod_op - plan)),
-            "toneladas_op": float(d.get('last_toneladas_op', 0) or 0),
-            "produzido_turno": int(d.get('last_producao_turno_acumulada', 0) or 0),
-            "toneladas_turno": float(d.get('last_toneladas_turno', 0) or 0),
-            "turno_atual": d.get('last_shift', 'N/A'),
-            "oee": float(d.get('last_oee_realtime', 0) or 0),
-            "pecas_boas": prod_op, 
-            "pecas_ruins": int(d.get('last_descarte', 0) or 0),
+            "diferenca_op": metrics.get('diferenca_op', 0),
+            "toneladas_op": metrics.get('toneladas_op', 0),
+            "produzido_turno": metrics.get('producao_turno', 0),
+            "toneladas_turno": metrics.get('toneladas_turno', 0),
+            "turno_atual": metrics.get('turno_atual_nome', 'N/A'),
+            "oee": metrics.get('oee_realtime', 0),
+            "pecas_boas": pecas_boas, 
+            "pecas_ruins": refugo_op,
             "timestamp": datetime.now().isoformat()
         })
     except Exception as e:
+        logger.error(f"Erro Operacao {eq_code}: {e}")
         return jsonify({'error': str(e)}), 500
 
 @api_bp.route('/api/equipamento/dados/<eq_code>', methods=['GET'])
@@ -433,7 +437,14 @@ def inserir_dados():
                         formato_gramas=fmt,
                         planejado=plan,
                         velocidade_atual=vel_calc,
-                        estado_maquina=est
+                        estado_maquina=est,
+                         extra_context={
+                            'sku_codigo': sku,
+                            'descricao': str(m.get('descricao', 'N/A')),
+                            'cuc': str(m.get('cuc', 'N/A')),
+                            'ordem_producao': op,
+                            'formato_gramas': fmt
+                        }
                     )
                     
                     fields = {
@@ -523,7 +534,14 @@ def inserir_dados():
             formato_gramas=fmt,
             planejado=plan,
             velocidade_atual=vel_calc,
-            estado_maquina=est
+            estado_maquina=est,
+            extra_context={
+                'sku_codigo': sku,
+                'descricao': str(m.get('descricao', 'N/A')),
+                'cuc': str(m.get('cuc', 'N/A')),
+                'ordem_producao': op,
+                'formato_gramas': fmt
+            }
         )
 
         fields = {
@@ -607,32 +625,71 @@ def get_ole_realtime(linha_nome):
             DJANGO_API_URL = config('DJANGO_API_URL', default='http://127.0.0.1:8000/api')
             
             resp_linha = requests.get(f"{DJANGO_API_URL}/linhas/?codigo={linha_nome}", timeout=2)
+            l_id = None
             if resp_linha.ok:
                 data_linha = resp_linha.json()
                 res_l = data_linha.get('results', data_linha)
                 if res_l:
                     l_id = res_l[0]['id']
+                else:
+                    # Fallback: match por nome normalizado
+                    resp_all = requests.get(f"{DJANGO_API_URL}/linhas/", timeout=2)
+                    if resp_all.ok:
+                        all_lines = resp_all.json().get('results', [])
+                        target_norm = normalize_line_name(linha_nome)
+                        for lx in all_lines:
+                            if normalize_line_name(lx.get('codigo', '')) == target_norm or normalize_line_name(lx.get('nome', '')) == target_norm:
+                                l_id = lx['id']
+                                break
+            
+            if l_id:
                     # Busca equipamentos ordenados
                     resp_eq = requests.get(f"{DJANGO_API_URL}/equipamentos/?linha={l_id}", timeout=2)
                     if resp_eq.ok:
                         data_eq = resp_eq.json()
                         eqs = data_eq.get('results', data_eq)
-                        # Ordena por 'ordem_na_linha' descrescente para achar o último
-                        eqs.sort(key=lambda x: x.get('ordem_na_linha', 0), reverse=True)
+                        
                         if eqs:
-                            ultimo_eq = eqs[0]['codigo']
+                            # Ordena para identificar primeiro e último
+                            eqs.sort(key=lambda x: x.get('ordem_na_linha', 0))
+                            primeiro_eq = eqs[0]['codigo']   # Primeiro (velocidade)
+                            ultimo_eq = eqs[-1]['codigo']     # Último (produção)
                             
-                            # Busca dados do ultimo equipamento
-                            q_last = f"SELECT last(toneladas_turno), last(velocidade_atual), last(formato_gramas) FROM production WHERE \"equipment\" = '{ultimo_eq}'"
-                            rs_last = influx_client.query(q_last)
-                            pts_last = list(rs_last.get_points())
-                            if pts_last:
-                                producao_real_ton = float(pts_last[0].get('last', 0) or 0)
-                                vel = float(pts_last[0].get('last_1', 0) or 0)
-                                fmt = float(pts_last[0].get('last_2', 0) or 0)
-                                # Calcula TPH Instantaneo
-                                if fmt > 0:
-                                    taxa_instantanea = (vel * 60 * fmt) / 1_000_000
+                            # Tenta pegar PRODUÇÃO do ÚLTIMO equipamento (produto final)
+                            if production_engine:
+                                st_ultimo = production_engine.get_state(ultimo_eq)
+                                met_ultimo = st_ultimo.get('latest_metrics', {})
+                                producao_real_ton = met_ultimo.get('toneladas_turno', 0.0)
+                                
+                                logger.info(f"DEBUG PRODUCAO: ultimo_eq={ultimo_eq}, producao={producao_real_ton}t")
+                            
+                            # Tenta pegar VELOCIDADE do PRIMEIRO equipamento (dita ritmo)
+                            if production_engine:
+                                st_primeiro = production_engine.get_state(primeiro_eq)
+                                met_primeiro = st_primeiro.get('latest_metrics', {})
+                                vel = met_primeiro.get('velocidade_atual', 0)
+                                fmt = met_primeiro.get('formato_gramas', 0)
+                                if fmt == 0: fmt = st_primeiro.get('last_payload', {}).get('formato_gramas', 0)
+                                
+                                logger.info(f"DEBUG VAZAO: primeiro_eq={primeiro_eq}, vel={vel}, fmt={fmt}")
+                                
+                                # Ton/h = (PPM * 60 * Gramas) / 1M
+                                if fmt > 0 and vel > 0:
+                                    taxa_instantanea = (vel * 60 * fmt) / 1_000_000.0
+                                    logger.info(f"DEBUG VAZAO CALC: ({vel} * 60 * {fmt}) / 1M = {taxa_instantanea} t/h")
+                            
+                            # Fallback Influx se Engine zerado (e Influx tiver histórico)
+                            if producao_real_ton == 0:
+                                q_last = f"SELECT last(toneladas_turno), last(velocidade_atual), last(formato_gramas) FROM production WHERE \"equipment\" = '{primeiro_eq}'"
+                                rs_last = influx_client.query(q_last)
+                                pts_last = list(rs_last.get_points())
+                                if pts_last:
+                                    producao_real_ton = float(pts_last[0].get('last', 0) or 0)
+                                    vel_i = float(pts_last[0].get('last_1', 0) or 0)
+                                    fmt_i = float(pts_last[0].get('last_2', 0) or 0)
+                                    if taxa_instantanea == 0 and fmt_i > 0:
+                                         taxa_instantanea = (vel_i * 60 * fmt_i) / 1_000_000.0
+
         except Exception as e:
             logger.error(f"Erro buscando ultimo eq: {e}")
 
@@ -645,7 +702,7 @@ def get_ole_realtime(linha_nome):
             if points:
                 producao_real_ton = max([float(p['last']) for p in points if p['last'] is not None], default=0.0)
 
-        logger.info(f"DEBUG OLE: Real={producao_real_ton} Meta={meta_toneladas}")
+        logger.info(f"DEBUG OLE: Real={producao_real_ton}")
 
         # 2. Busca Meta do Turno (Django) e Calcula Tempo
         meta_toneladas = 0.0
@@ -659,14 +716,26 @@ def get_ole_realtime(linha_nome):
         # Otimizacao: se ja pegamos l_id acima, reutilizar. Mas o scopo do try acima é local.
         # Repetindo logica de meta com robustez
         try:
-             resp_linha = requests.get(f"{DJANGO_API_URL}/linhas/?codigo={linha_nome}", timeout=2)
-             if resp_linha.status_code == 200:
+              resp_linha = requests.get(f"{DJANGO_API_URL}/linhas/?codigo={linha_nome}", timeout=2)
+              linha_id = None  # Inicializa
+              if resp_linha.status_code == 200:
                 data_linha = resp_linha.json()
                 results_linha = data_linha.get('results', data_linha)
                 if results_linha:
                     linha_id = results_linha[0]['id']
-                    
-                    # Busca Calendário (com correção de data do turno)
+                else:
+                    # Fallback: Buscar todas linhas e fazer match normalizado
+                    resp_all = requests.get(f"{DJANGO_API_URL}/linhas/", timeout=2)
+                    if resp_all.ok:
+                        all_lines = resp_all.json().get('results', [])
+                        target_norm = normalize_line_name(linha_nome)
+                        for lx in all_lines:
+                            if normalize_line_name(lx.get('codigo', '')) == target_norm or normalize_line_name(lx.get('nome', '')) == target_norm:
+                                linha_id = lx['id']
+                                break
+              
+              # Busca Calendário (somente se linha_id foi obtido)
+              if linha_id:
                     if turno_info and 'inicio_timestamp' in turno_info:
                          dt_inicio = datetime.fromtimestamp(turno_info['inicio_timestamp'])
                          query_date = dt_inicio.strftime('%Y-%m-%d')
@@ -717,23 +786,64 @@ def get_ole_realtime(linha_nome):
             if tempo_decorrido > tempo_total_turno:
                 tempo_decorrido = tempo_total_turno
         
-        # 3.5 Calcula Equipamentos Online (FIX: Adicionado para LineDeepView)
+        # 3.5 Calcula Equipamentos Online
         equipamentos_online = 0
         equipamentos_total = 0
+        
+        # Tentativa 1: Production Engine (Memória - Sincronizado com Header)
+        engine_counted = False
         try:
-             q_online = f"SELECT last(estado_maquina) AS estado FROM production WHERE \"line\" = '{normalize_line_name(linha_nome)}' AND time > now() - 10m GROUP BY \"equipment\""
-             rs_online = influx_client.query(q_online)
-             # rs.items() -> ((name, tags), points)
-             for (k, tags), pts in rs_online.items():
-                 equipamentos_total += 1
-                 # Pega o ultimo ponto
-                 for p in pts:
-                     est = int(p.get('estado', 0) or 0)
-                     if est in [1, 2, 3]:
+             # Precisamos da lista de equipamentos. Tenta reutilizar ou busca.
+             if 'eqs' not in locals() or not eqs:
+                  # Busca rápida
+                  if 'l_id' in locals():
+                       resp_eq_chk = requests.get(f"{DJANGO_API_URL}/equipamentos/?linha={l_id}", timeout=2)
+                       if resp_eq_chk.ok:
+                            d_eq = resp_eq_chk.json()
+                            eqs = d_eq.get('results', d_eq)
+                  else:
+                       # Busca ID
+                       r_l = requests.get(f"{DJANGO_API_URL}/linhas/?codigo={linha_nome}", timeout=1)
+                       if r_l.ok:
+                           dl = r_l.json()
+                           res = dl.get('results', dl)
+                           if res:
+                               lid = res[0]['id']
+                               req = requests.get(f"{DJANGO_API_URL}/equipamentos/?linha={lid}", timeout=1)
+                               if req.ok:
+                                   de = req.json()
+                                   eqs = de.get('results', de)
+             
+             if 'eqs' in locals() and eqs and production_engine:
+                 equipamentos_total = len(eqs)
+                 for eq_item in eqs:
+                     cod = eq_item['codigo']
+                     st = production_engine.get_state(cod)
+                     # Heartbeat recente (2 min) define ONLINE, independente do estado
+                     ts = st.get('last_timestamp', 0)
+                     if (time.time() - ts < 120):
                          equipamentos_online += 1
-                     break
+                 engine_counted = True        
         except Exception as e:
-             logger.error(f"Erro contagem online: {e}")
+             logger.error(f"Erro contagem engine: {e}")
+
+        # Tentativa 2: Influx (Fallback)
+        if not engine_counted:
+            try:
+                 # Query otimizada: Apenas Heartbeat check (tem dados recentes?)
+                 q_online = f"SELECT count(estado_maquina) AS heartbeat FROM production WHERE \"line\" = '{normalize_line_name(linha_nome)}' AND time > now() - 2m GROUP BY \"equipment\""
+                 rs_online = influx_client.query(q_online)
+                 count_total = 0
+                 count_on = 0
+                 for (k, tags), pts in rs_online.items():
+                     count_total += 1
+                     # Se retornou ponto, está online
+                     if pts: count_on += 1
+                 
+                 equipamentos_total = count_total
+                 equipamentos_online = count_on
+            except Exception as e:
+                 logger.error(f"Erro contagem online Influx: {e}")
 
         # 4. Cálculo OLE (OMAC) e DYNAMIC METRICS
         producao_esperada = 0.0
@@ -782,30 +892,82 @@ def get_ole_realtime(linha_nome):
             'formato_gramas': 0
         }
         try:
-             # Busca SEMPRE o último valor conhecido de cada campo (Contexto Persistente)
-             # Isso evita que "heartbeats" sem SKU limpem a informação da tela
-             q_ctx = f"SELECT last(sku_codigo_field) as sku_1, last(sku) as sku_2, last(ordem_producao_field) as op_1, last(order_id) as op_2, last(descricao) as desc, last(produto) as prod, last(cuc) as cuc, last(formato_gramas) as fmt FROM production WHERE \"line\" = '{normalize_line_name(linha_nome)}'"
-             
-             rs_ctx = influx_client.query(q_ctx)
-             
-             pts = list(rs_ctx.get_points())
-             if pts:
-                 best_point = pts[0]
+             # Prioridade: Engine (via primeiro_eq que tem os dados de contexto)
+             if 'primeiro_eq' in locals() and primeiro_eq and production_engine:
+                 st = production_engine.get_state(primeiro_eq)
+                 meta = st.get('latest_metrics', {})
+                 ctx = st.get('last_payload', {})
                  
-                 line_context['sku_codigo'] = best_point.get('sku_1') or best_point.get('sku_2') or 'N/A'
-                 line_context['ordem_producao'] = best_point.get('op_1') or best_point.get('op_2') or 'N/A'
-                 line_context['descricao'] = best_point.get('desc') or best_point.get('prod') or 'N/A'
-                 line_context['cuc'] = best_point.get('cuc') or 'N/A'
-                 line_context['formato_gramas'] = float(best_point.get('fmt') or 0)
+                 if ctx:
+                     line_context['sku_codigo'] = str(ctx.get('sku', ctx.get('sku_codigo', line_context['sku_codigo'])))
+                     line_context['ordem_producao'] = str(ctx.get('ordem_producao', line_context['ordem_producao']))
+                     line_context['descricao'] = str(ctx.get('descricao', line_context['descricao']))
+                     line_context['cuc'] = str(ctx.get('cuc', line_context['cuc']))
+                     line_context['formato_gramas'] = float(ctx.get('formato_gramas', 0) or meta.get('formato_gramas', 0) or 0)
+                     
+                     logger.info(f"DEBUG CONTEXT: primeiro_eq={primeiro_eq}, OP={line_context['ordem_producao']}, SKU={line_context['sku_codigo']}, CUC={line_context['cuc']}, Desc={line_context['descricao']}")
+                 else:
+                     logger.warning(f"DEBUG CONTEXT: primeiro_eq={primeiro_eq} last_payload vazio")
+             
+             # Fallback Influx se dados estiverem faltando ("N/A")
+             if line_context['sku_codigo'] == 'N/A':
+                 q_ctx = f"SELECT last(sku_codigo_field) as sku_1, last(sku) as sku_2, last(ordem_producao_field) as op_1, last(order_id) as op_2, last(descricao) as descricao_val, last(produto) as prod, last(cuc) as cuc_val, last(formato_gramas) as fmt FROM production WHERE \"line\" = '{normalize_line_name(linha_nome)}'"
+                 
+                 rs_ctx = influx_client.query(q_ctx)
+                 
+                 pts = list(rs_ctx.get_points())
+                 if pts:
+                     best_point = pts[0]
+                     
+                     line_context['sku_codigo'] = best_point.get('sku_1') or best_point.get('sku_2') or 'N/A'
+                     line_context['ordem_producao'] = best_point.get('op_1') or best_point.get('op_2') or 'N/A'
+                     line_context['descricao'] = best_point.get('descricao_val') or best_point.get('prod') or 'N/A'
+                     line_context['cuc'] = best_point.get('cuc') or 'N/A'
+                     line_context['formato_gramas'] = float(best_point.get('fmt') or 0)
 
         except Exception as e:
              logger.error(f"Erro context line: {e}")
+
+        # Fallback Final: Planner (Django) - Se ainda N/A
+        if line_context['sku_codigo'] in ['N/A', None] or line_context['sku_codigo'] == 'None':
+             try:
+                 # Precisamos do ID da linha
+                 l_id_target = locals().get('l_id') or locals().get('lid')
+                 if not l_id_target:
+                      # 1. Busca Direta
+                       r_l = requests.get(f"{DJANGO_API_URL}/linhas/?codigo={linha_nome}", timeout=1)
+                       if r_l.ok:
+                           dl = r_l.json()
+                           res = dl.get('results', dl)
+                           if res: 
+                                l_id_target = res[0]['id']
+                           else:
+                                # 2. Busca Todos (Fallback de Nome)
+                                r_all = requests.get(f"{DJANGO_API_URL}/linhas/", timeout=1)
+                                if r_all.ok:
+                                     d_all = r_all.json()
+                                     all_lines = d_all.get('results', d_all)
+                                     target_norm = normalize_line_name(linha_nome) # L01
+                                     for lx in all_lines:
+                                          if normalize_line_name(lx['codigo']) == target_norm or normalize_line_name(lx['nome']) == target_norm:
+                                               l_id_target = lx['id']
+                                               break
+
+                 if l_id_target:
+                      r_plan = requests.get(f"{DJANGO_API_URL}/linhas/{l_id_target}/active_op/", timeout=2)
+                      if r_plan.ok:
+                          d_plan = r_plan.json()
+                          line_context['sku_codigo'] = str(d_plan.get('sku_codigo', 'N/A'))
+                          line_context['ordem_producao'] = str(d_plan.get('ordem_producao', 'N/A'))
+                          line_context['descricao'] = str(d_plan.get('descricao', 'N/A'))
+             except Exception as e:
+                 logger.error(f"Erro fallback planner: {e}")
 
         return jsonify({
             'ole': round(ole, 1),
             'producao_real': round(producao_real_ton, 3),
             'producao_esperada': round(producao_esperada, 3),
-            'projecao': round(projecao, 1),
+            'projecao': round(projecao, 3),
             'ritmo_necessario': round(ritmo_necessario, 1),
             'taxa_instantanea': round(taxa_instantanea, 1),
             'meta_turno': round(meta_toneladas, 1),
@@ -896,54 +1058,65 @@ def get_linha_overview_status(linha_nome):
 def get_linha_kpis(linha_nome):
     """
     Retorna KPIs agregados da linha e gargalo.
+    REFACTORED: Usa production_engine para consistência com Home Page.
     """
     try:
-        influx_client = current_app.extensions.get('influx_client')
-        if not influx_client: return jsonify({'error': 'No DB'}), 500
-
-        # Busca últimos dados de todos os equipamentos da linha
-        query = f"SELECT last(availability_realtime), last(performance_realtime), last(quality_realtime), last(estado_maquina) FROM production WHERE \"line\" = '{normalize_line_name(linha_nome)}' GROUP BY \"equipment\""
-        rs = influx_client.query(query)
+        production_engine = current_app.extensions.get('production_engine')
         
-        items = list(rs.items())
-        if not items:
-            return jsonify({
-                'kpis': {'disponibilidade': 0, 'performance': 0, 'qualidade': 0},
-                'gargalo': {'nome': 'N/A', 'oee': 0}
-            })
+        linha_norm = normalize_line_name(linha_nome)
+        
+        # 1. Busca Equipamentos da Linha (Django)
+        try:
+            url = f"{DJANGO_API_URL}/equipamentos/?linha__codigo={linha_norm}"
+            resp = requests.get(url, timeout=2)
+            if resp.ok:
+                data = resp.json()
+                equipamentos = data.get('results', data)
+            else:
+                equipamentos = []
+        except:
+            equipamentos = []
 
-        # Calcula Médias
-        total_avail = 0
-        total_perf = 0
-        total_qual = 0
+        total_avail = 0.0
+        total_perf = 0.0
+        total_qual = 0.0
         count = 0
         
-        equip_stats = []
+        gargalo_nome = 'N/A'
+        gargalo_oee = 100.0
 
-        for (name, tags), generator in items:
-            pts = list(generator)
-            if not pts: continue
-            p = pts[0]
+        for eq in equipamentos:
+            eq_code = eq.get('codigo')
+            # Busca estado do Engine (Mesma fonte da Home)
+            state = production_engine.get_state(eq_code) if production_engine else {}
+            metrics = state.get('latest_metrics', {})
             
-            # Valores de 0 a 100
-            a = float(p.get('last', 0) or 0)
-            pe = float(p.get('last_1', 0) or 0)
-            q = float(p.get('last_2', 0) or 0)
+            # OEE Components
+            a = float(metrics.get('availability_realtime', 0))
+            p = float(metrics.get('performance_realtime', 0))
+            q = float(metrics.get('quality_realtime', 0))
+            if q == 0 and metrics.get('producao_op', 0) > 0: q = 100.0
+            
+            oee = metrics.get('oee_realtime', 0)
             
             total_avail += a
-            total_perf += pe
+            total_perf += p
             total_qual += q
             count += 1
             
-            oee = (a/100.0) * (pe/100.0) * (q/100.0) * 100.0
-            equip_stats.append({'name': tags.get('equipment', 'Unknown'), 'oee': oee})
+            # Gargalo Logic: Menor OEE
+            if count == 1 or oee < gargalo_oee:
+                gargalo_oee = oee
+                gargalo_nome = eq.get('nome', eq_code)
 
-        avg_avail = total_avail / count if count > 0 else 0
-        avg_perf = total_perf / count if count > 0 else 0
-        avg_qual = total_qual / count if count > 0 else 0
-
-        # Identifica Gargalo (Menor OEE)
-        bottleneck = min(equip_stats, key=lambda x: x['oee']) if equip_stats else {'name': 'N/A', 'oee': 0}
+        if count > 0:
+            avg_avail = total_avail / count
+            avg_perf = total_perf / count
+            avg_qual = total_qual / count
+        else:
+            avg_avail = 0.0
+            avg_perf = 0.0
+            avg_qual = 0.0
 
         return jsonify({
             'kpis': {
@@ -952,8 +1125,8 @@ def get_linha_kpis(linha_nome):
                 'qualidade': round(avg_qual, 1)
             },
             'gargalo': {
-                'nome': bottleneck['name'],
-                'oee': round(bottleneck['oee'], 1)
+                'nome': gargalo_nome,
+                'oee': round(gargalo_oee, 1)
             }
         })
 

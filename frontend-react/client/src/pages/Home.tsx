@@ -101,7 +101,7 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
   const [lastUpdate, setLastUpdate] = useState<Date>(new Date());
   const [metricasConsolidadas, setMetricasConsolidadas] = useState<any[]>([]);
-  
+
   // Controle de fetch para evitar race conditions
   const isFetchingRef = useRef(false);
 
@@ -115,16 +115,16 @@ export default function Home() {
         console.error(`Erro ao buscar configuração: ${response.status}`);
         return [];
       }
-      
+
       const data = await response.json();
       const results = data.results || data;
-      
+
       // Validar se é array
       if (!isValidArray(results)) {
         console.error("Configuração retornou dados inválidos");
         return [];
       }
-      
+
       return results;
     } catch (error) {
       console.error("Erro ao buscar configuração:", error);
@@ -165,7 +165,7 @@ export default function Home() {
       }
 
       const [respOp, respEq] = [resOperacao.value, resEquipamento.value];
-      
+
       if (!respOp.ok || !respEq.ok) return null;
 
       const dadosOp = await respOp.json();
@@ -209,7 +209,7 @@ export default function Home() {
     if (!linhaIdentifier) return null;
 
     try {
-      const response = await fetch(`${FLASK_API_URL}/linha/${encodeURIComponent(linhaIdentifier)}/realtime`);
+      const response = await fetch(`${FLASK_API_URL}/linha/${encodeURIComponent(linhaIdentifier)}/ole-realtime`);
       if (response.ok) {
         return await response.json();
       }
@@ -311,13 +311,13 @@ export default function Home() {
       const promisesLinhas = linhasArray.map(async (linha) => {
         const idParaBusca = linha.linha_codigo || linha.linha_nome;
         const oleData = await fetchLinhaOLE(idParaBusca);
-        
+
         // Processar dados OLE com cálculos robustos
         linha.ole_data = processOLEData(oleData);
-        
+
         // Ordenar equipamentos
         linha.equipamentos.sort((a, b) => (a.ordem_na_linha || 0) - (b.ordem_na_linha || 0));
-        
+
         return linha;
       });
 
@@ -359,7 +359,7 @@ export default function Home() {
    */
   const findEquipamentoLider = (equipamentos: EquipamentoCompleto[]) => {
     return equipamentos.find(eq =>
-      eq.medicoes?.ordem_producao && 
+      eq.medicoes?.ordem_producao &&
       eq.medicoes?.ordem_producao !== 'N/A' &&
       eq.medicoes?.ordem_producao.trim() !== ''
     ) || equipamentos[0];
@@ -415,7 +415,7 @@ export default function Home() {
                       producaoEsperada={safeNumber(linha.ole_data?.producao_esperada, 0)}
                       metaTotal={safeNumber(linha.ole_data?.meta_turno, 0)}
                       totalEquipamentos={linha.equipamentos.length}
-                      equipamentosOnline={linha.equipamentos.filter(eq => eq.status !== 'Offline').length}
+                      equipamentosOnline={linha.ole_data?.equipamentos_online ?? linha.equipamentos.filter(eq => eq.status !== 'Offline').length}
                       sku={extractValue(linha.ole_data?.sku, dadosProducao?.sku_codigo, metricas.sku_codigo) || 'N/A'}
                       descricao={extractValue(linha.ole_data?.descricao, dadosProducao?.descricao, metricas.sku_descricao) || 'Produto Genérico'}
                       ordemProducao={extractValue(linha.ole_data?.op, dadosProducao?.ordem_producao, metricas.ordem_producao) || 'N/A'}

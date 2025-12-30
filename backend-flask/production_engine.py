@@ -211,7 +211,7 @@ class ProductionEngine:
             logger.error(f"Erro load state: {e}")
             state['initialized'] = True
 
-    def processar_dados(self, equipamento, op_atual, contagem_bruta, descarte, formato_gramas, planejado, velocidade_atual, estado_maquina):
+    def processar_dados(self, equipamento, op_atual, contagem_bruta, descarte, formato_gramas, planejado, velocidade_atual, estado_maquina, extra_context=None):
         # 1. Contexto
         now_timestamp = time.time()
         turno_info = self.shift_manager.get_turno_info()
@@ -372,9 +372,18 @@ class ProductionEngine:
             'tempo_planejado_segundos': int(tempo_planejado),
             'tempo_parado_segundos': int(tempo_parado),
             'tempo_produtivo_segundos': int(tempo_planejado - tempo_parado) if tempo_planejado > 0 else 0,
+            
+            # Dados para cálculo de vazão
+            'velocidade_atual': int(velocidade_atual),
+            'formato_gramas': int(formato_gramas),
         }
         
         state['latest_metrics'] = metrics
+        
+        # Persistência de Contexto Rico (SKU, Descrição, CUC)
+        if extra_context:
+            state['last_payload'] = extra_context
+            
         return metrics
 
 # Singleton
