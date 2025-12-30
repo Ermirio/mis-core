@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import Plot from 'react-plotly.js';
 import axios from 'axios';
+import { ProfileManager } from '@/components/Analytics/ProfileManager';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -29,6 +30,7 @@ interface Tag {
     tag_influxdb: string; // Was node_id? No, Sensor has tag_influxdb
     equipamento_nome: string;
     equipamento_code: string;
+    linha_nome: string; // Nome da linha para alias legível
     lsl?: number;
     usl?: number;
     nominal?: number;
@@ -104,7 +106,7 @@ const LineAnalytics: React.FC = () => {
                 variables: selectedTags.map(t => ({
                     tag_influx: t.tag_influxdb, // Use correct field
                     equipamento_code: t.equipamento_code,
-                    alias: `${t.equipamento_code} - ${t.nome}`, // Improved Alias: Line/Eq Code - Var Name
+                    alias: `${t.linha_nome} - ${t.equipamento_nome} - ${t.nome}`, // Formato legível: Linha - Equipamento - Variável
                     lsl: t.lsl,
                     usl: t.usl,
                     nominal: t.nominal
@@ -183,6 +185,7 @@ const LineAnalytics: React.FC = () => {
                 tag_influxdb: m.tag,
                 equipamento_nome: eq.nome,
                 equipamento_code: eq.codigo,
+                linha_nome: linha.nome,
                 isStandard: true
             });
         });
@@ -196,6 +199,7 @@ const LineAnalytics: React.FC = () => {
                     tag_influxdb: s.tag_influxdb,
                     equipamento_nome: eq.nome,
                     equipamento_code: eq.codigo,
+                    linha_nome: linha.nome,
                     lsl: s.lsl,
                     usl: s.usl,
                     nominal: s.nominal,
@@ -264,6 +268,16 @@ const LineAnalytics: React.FC = () => {
             }
             return c;
         }));
+    };
+
+    // Carregar perfil salvo
+    const loadProfile = (config: any) => {
+        setSelectedTags(config.selectedTags || []);
+        setHoursBack(config.hoursBack || '8');
+        setActiveTab(config.activeTab || 'stats');
+        setTrendCharts(config.trendCharts || []);
+        setScatterX(config.scatterX || '');
+        setScatterY(config.scatterY || '');
     };
 
     return (
@@ -394,6 +408,20 @@ const LineAnalytics: React.FC = () => {
                                 </TabsTrigger>
                             </TabsList>
                             <div className="flex gap-2">
+                                {linhas.length > 0 && (
+                                    <ProfileManager
+                                        linhaId={linhas[0]?.id}
+                                        currentState={{
+                                            selectedTags,
+                                            hoursBack,
+                                            activeTab,
+                                            trendCharts,
+                                            scatterX,
+                                            scatterY
+                                        }}
+                                        onLoadProfile={loadProfile}
+                                    />
+                                )}
                                 <Button onClick={() => handleRunAnalysis('stats')} variant="secondary" size="sm">Stats</Button>
                                 <Button onClick={() => handleRunAnalysis('timeseries')} variant="default" size="sm">Gerar Gráficos</Button>
                                 <Button onClick={() => handleRunAnalysis('correlation')} variant="outline" size="sm">Correlação</Button>
