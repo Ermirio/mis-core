@@ -125,7 +125,7 @@ export default function Home() {
         return [];
       }
 
-      return results;
+      return results as EquipamentoConfig[];
     } catch (error) {
       console.error("Erro ao buscar configuração:", error);
       return [];
@@ -223,7 +223,7 @@ export default function Home() {
   /**
    * Processa dados OLE com cálculos robustos
    */
-  const processOLEData = (oleData: any): any => {
+  const processOLEData = (oleData: any, metricasLinha?: any): any => {
     if (!oleData) return null;
 
     // Criar dados de produção seguros
@@ -233,7 +233,7 @@ export default function Home() {
       oleAtual: oleData.ole,
       tempoDecorrido: oleData.tempo_decorrido,
       tempoTotalTurno: oleData.tempo_total_turno,
-      taxaInstantanea: oleData.taxa_instantanea,
+      taxaInstantanea: oleData.taxa_instantanea || metricasLinha?.vazao_real_ton_hora,
       projecaoBackend: oleData.projecao,
       ritmoNecessarioBackend: oleData.ritmo_necessario
     });
@@ -245,7 +245,7 @@ export default function Home() {
     return {
       ...oleData,
       projecao: calculations.projecao,
-      producao_esperada: oleData.producao_planejada_ate_agora,
+      producao_esperada: oleData.producao_planejada_ate_agora || oleData.producao_esperada,
       meta_turno: productionData.metaTotal,
       taxa_instantanea: calculations.vazaoCalculada,
       ritmo_necessario: calculations.ritmoNecessario
@@ -311,9 +311,10 @@ export default function Home() {
       const promisesLinhas = linhasArray.map(async (linha) => {
         const idParaBusca = linha.linha_codigo || linha.linha_nome;
         const oleData = await fetchLinhaOLE(idParaBusca);
+        const metricasLinha = metricasConsolidadas.find(m => m.linha_id === linha.linha_id);
 
         // Processar dados OLE com cálculos robustos
-        linha.ole_data = processOLEData(oleData);
+        linha.ole_data = processOLEData(oleData, metricasLinha);
 
         // Ordenar equipamentos
         linha.equipamentos.sort((a, b) => (a.ordem_na_linha || 0) - (b.ordem_na_linha || 0));
