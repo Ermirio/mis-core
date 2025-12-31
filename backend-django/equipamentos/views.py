@@ -51,6 +51,31 @@ class LinhaProducaoViewSet(viewsets.ModelViewSet):
             return Response({'error': 'Linha não encontrada ou erro ao calcular'}, status=status.HTTP_404_NOT_FOUND)
         return Response(projection)
 
+    @action(detail=True, methods=['get'])
+    def active_op(self, request, pk=None):
+        """Retorna a Ordem de Produção (HistóricoSKU) ativa na linha"""
+        try:
+            linha = self.get_object()
+            historico = HistoricoSKU.objects.filter(
+                linha=linha,
+                data_fim__isnull=True
+            ).order_by('-data_inicio').first()
+            
+            if not historico:
+                # Tenta pegar o último fechado se não tiver aberto
+                historico = HistoricoSKU.objects.filter(linha=linha).order_by('-data_inicio').first()
+                
+            if historico:
+                 return Response({
+                     'ordem_producao': historico.ordem_producao,
+                     'sku_codigo': historico.produto.codigo,
+                     'descricao': historico.produto.descricao,
+                     'meta': historico.meta_producao
+                 })
+            return Response({'error': 'Nenhuma OP encontrada avu'}, status=404)
+        except Exception as e:
+            return Response({'error': str(e)}, status=500)
+
 
 class EquipamentoViewSet(viewsets.ModelViewSet):
     queryset = Equipamento.objects.select_related('linha').prefetch_related('sensores')
@@ -361,13 +386,12 @@ def configuracao_coletor(request):
             status='ATIVO',
             linha__ativa=True
         ).select_related('linha').prefetch_related(
-            'tags_coleta',
-            'tags_coleta__conexao'
+            'tags_coleta'
         ).order_by('linha__codigo', 'ordem_na_linha')
         
         # Filtra apenas tags ativas
         for eq in equipamentos:
-            eq.tags_coleta_ativas = eq.tags_coleta.filter(ativa=True, conexao__ativa=True)
+            eq.tags_coleta_ativas = eq.tags_coleta.filter(ativa=True)
         
         serializer = EquipamentoColetorSerializer(equipamentos, many=True)
         
@@ -841,6 +865,9 @@ def metricas_fabrica_consolidadas(request):
                     # Lê diretamente os valores calculados pelo Flask (ProductionCounter)
                     # O Flask agora gerencia o estado, resume de OPs antigas e reseta OPs novas.
                     
+                    producao_op_atual = toneladas_op
+                    producao_sku_atual = 0.0
+
                     dados_linha['toneladas_produzidas_op'] = round(producao_op_atual, 3)
                     dados_linha['toneladas_produzidas_sku'] = round(producao_sku_atual, 3)
                     
@@ -851,7 +878,7 @@ def metricas_fabrica_consolidadas(request):
                                 ordem_producao=str(op_realtime),
                                 linha=linha,
                                 defaults={
-                                    'produto_id': Produto.objects.filter(codigo=sku_realtime).first().id if sku_realtime else None,
+                                    'produto_id': (Produto.objects.filter(codigo=sku_realtime).first().id if (sku_realtime and Produto.objects.filter(codigo=sku_realtime).exists()) else None),
                                     'data_inicio': timezone.now(),
                                     'meta_producao': int(dados_linha.get('meta_producao', 0))
                                 }

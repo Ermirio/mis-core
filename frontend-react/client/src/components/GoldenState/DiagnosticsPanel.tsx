@@ -6,6 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Progress } from "@/components/ui/progress";
 import { Activity, AlertTriangle, CheckCircle, Info, ChevronLeft, ChevronRight, Play, XCircle } from 'lucide-react';
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
 
 interface DiagnosticAlert {
     rule: string;
@@ -27,12 +29,14 @@ interface GoldenStateProfile {
 interface DiagnosticsPanelProps {
     equipamentoCodigo: string;
 }
-
 const DiagnosticsPanel: React.FC<DiagnosticsPanelProps> = ({ equipamentoCodigo }) => {
     const [alerts, setAlerts] = useState<DiagnosticAlert[]>([]);
     const [goldenState, setGoldenState] = useState<GoldenStateProfile | null>(null);
     const [loading, setLoading] = useState(true);
     const [capturing, setCapturing] = useState(false);
+
+    // Filtering State
+    const [filterCurrentSku, setFilterCurrentSku] = useState(false);
 
     // UI Logic for History
     const [histPage, setHistPage] = useState(1);
@@ -156,7 +160,11 @@ const DiagnosticsPanel: React.FC<DiagnosticsPanelProps> = ({ equipamentoCodigo }
 
     const fetchDiagnostics = async () => {
         try {
-            const response = await fetch(`${import.meta.env.VITE_FLASK_API_URL}/diagnostics/alerts/${equipamentoCodigo}`);
+            let url = `${import.meta.env.VITE_FLASK_API_URL}/diagnostics/alerts/${equipamentoCodigo}`;
+            if (filterCurrentSku) {
+                url += `?current_sku_only=true`;
+            }
+            const response = await fetch(url);
             const data = await response.json();
             if (data.status === 'success') {
                 setAlerts(data.alerts);
@@ -193,7 +201,7 @@ const DiagnosticsPanel: React.FC<DiagnosticsPanelProps> = ({ equipamentoCodigo }
         fetchDiagnostics();
         const interval = setInterval(fetchDiagnostics, 10000); // Refresh every 10s
         return () => clearInterval(interval);
-    }, [equipamentoCodigo]);
+    }, [equipamentoCodigo, filterCurrentSku]);
 
     const getSeverityIcon = (severity: string) => {
         switch (severity) {
@@ -417,7 +425,19 @@ const DiagnosticsPanel: React.FC<DiagnosticsPanelProps> = ({ equipamentoCodigo }
             {history.length > 0 && (
                 <Card>
                     <CardHeader className="pb-2">
-                        <CardTitle className="text-sm font-medium">Histórico de Capturas</CardTitle>
+                        <div className="flex justify-between items-center">
+                            <CardTitle className="text-sm font-medium">Histórico de Capturas</CardTitle>
+                            <div className="flex items-center space-x-2">
+                                <Switch
+                                    id="filter-sku"
+                                    checked={filterCurrentSku}
+                                    onCheckedChange={setFilterCurrentSku}
+                                />
+                                <Label htmlFor="filter-sku" className="text-xs">
+                                    Apenas SKU Atual
+                                </Label>
+                            </div>
+                        </div>
                     </CardHeader>
                     <CardContent>
                         <div className="rounded-md border overflow-x-auto">

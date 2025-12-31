@@ -1,5 +1,6 @@
 import { mapEstado } from '@/utils/equipmentStateUtils';
 import { Clock } from 'lucide-react';
+import { safeNumber, safeString, normalizeEstado } from '@/utils/dataValidation';
 
 interface EquipmentCardProps {
     nome: string;
@@ -13,19 +14,19 @@ interface EquipmentCardProps {
     ultimaParada: string; // "12 min atrás"
 }
 
-const EquipmentCard: React.FC<EquipmentCardProps> = ({
-    nome,
-    funcao,
-    estado,
-    oee,
-    velocidadeAtual,
-    velocidadeNominal,
-    boas,
-    ruins,
-    ultimaParada
-}) => {
+const EquipmentCard: React.FC<EquipmentCardProps> = (props) => {
+    // Normalizar e validar props
+    const nome = safeString(props.nome, 'Equipamento Desconhecido');
+    const funcao = props.funcao ? safeString(props.funcao, '') : undefined;
+    const estadoNormalizado = normalizeEstado(props.estado);
+    const oee = safeNumber(props.oee, 0);
+    const velocidadeAtual = safeNumber(props.velocidadeAtual, 0);
+    const velocidadeNominal = safeNumber(props.velocidadeNominal, 100);
+    const boas = safeNumber(props.boas, 0);
+    const ruins = safeNumber(props.ruins, 0);
+    const ultimaParada = safeString(props.ultimaParada, 'N/A');
 
-    const estadoInfo = mapEstado(estado);
+    const estadoInfo = mapEstado(estadoNormalizado);
 
     return (
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">

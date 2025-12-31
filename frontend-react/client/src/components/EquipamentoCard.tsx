@@ -2,6 +2,7 @@ import React from "react";
 import { useNavigate } from "react-router-dom";
 import { TrendingUp } from "lucide-react";
 import { mapEstado } from "@/utils/equipmentStateUtils";
+import { safeNumber, safeString, normalizeEstado } from "@/utils/dataValidation";
 
 interface EquipamentoCardProps {
   id?: number;
@@ -24,30 +25,27 @@ interface EquipamentoCardProps {
   diferenca?: number;
 }
 
-const EquipamentoCard: React.FC<EquipamentoCardProps> = ({
-  id,
-  nome,
-  tipo,
-  estado,
-  velocidadeAtual = 0,
-  velocidadePadrao = 0,
-  oee,
-  pecasBoas,
-  pecasRuins,
-  contagem_entrada,
-  contagem_saida,
-  metaOEE = 85,
-  sku,
-  descricao,
-  ordemProducao,
-  cuc,
-}) => {
+const EquipamentoCard: React.FC<EquipamentoCardProps> = (props) => {
   const navigate = useNavigate();
-  const estadoInfo = mapEstado(estado);
-
-  const calculatedPecasBoas = pecasBoas ?? contagem_saida ?? 0;
-  const calculatedPecasRuins = pecasRuins ?? 0;
-  const calculatedOEE = oee ?? 0;
+  
+  // Normalizar e validar props
+  const id = props.id;
+  const nome = safeString(props.nome, 'Equipamento Desconhecido');
+  const tipo = safeString(props.tipo, 'Tipo Desconhecido');
+  const estadoNormalizado = normalizeEstado(props.estado);
+  const velocidadeAtual = safeNumber(props.velocidadeAtual, 0);
+  const velocidadePadrao = safeNumber(props.velocidadePadrao, 0);
+  const metaOEE = safeNumber(props.metaOEE, 85);
+  const sku = props.sku ? safeString(String(props.sku), 'N/A') : 'N/A';
+  const descricao = safeString(props.descricao, 'Produto Genérico');
+  const ordemProducao = props.ordemProducao ? safeString(String(props.ordemProducao), 'N/A') : 'N/A';
+  const cuc = props.cuc ? safeString(String(props.cuc), 'N/A') : 'N/A';
+  
+  const calculatedPecasBoas = safeNumber(props.pecasBoas ?? props.contagem_saida, 0);
+  const calculatedPecasRuins = safeNumber(props.pecasRuins, 0);
+  const calculatedOEE = safeNumber(props.oee, 0);
+  
+  const estadoInfo = mapEstado(estadoNormalizado);
 
   const handleClick = () => {
     if (id) navigate(`/equipamento/${id}`);

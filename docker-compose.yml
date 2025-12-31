@@ -92,7 +92,7 @@ services:
       influxdb:
         condition: service_healthy
     healthcheck:
-      test: [ "CMD", "curl", "-f", "http://localhost:8000/admin/" ]
+      test: [ "CMD", "curl", "-f", "http://localhost:8000/api/health/" ]
       interval: 30s
       timeout: 10s
       retries: 5
@@ -101,7 +101,7 @@ services:
 
   # ===== FLASK =====
   flask:
-    image: mis-core-flask:v1.0
+    image: mis-core-flask:v1.1
     build:
       context: ./backend-flask
       dockerfile: Dockerfile
@@ -186,6 +186,33 @@ services:
       flask:
         condition: service_healthy
     healthcheck:
+      test: [ "CMD", "wget", "-q", "-O", "-", "http://127.0.0.1/health" ]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    restart: unless-stopped
+
+  # ===== PROXY REVERSO =====
+  nginx-proxy:
+    image: mis-core-proxy:v1.0
+    build:
+      context: ./proxy-reverse
+      dockerfile: Dockerfile
+    container_name: mis-core-proxy
+    environment:
+      TZ: ${TZ}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "3000:80"
+    networks:
+      - mis-network
+    depends_on:
+      frontend:
+        condition: service_healthy
+      django:
+        condition: service_healthy
+    healthcheck:
       test: [ "CMD", "wget", "-q", "-O", "-", "http://localhost/" ]
       interval: 30s
       timeout: 10s
@@ -201,6 +228,11 @@ services:
     environment:
       INFLUXDB_URL: http://influxdb:8086
       INFLUXDB_USERNAME: ${INFLUXDB_ADMIN_USER}
+      KAPACITOR_URL: http://kapacitor:9092
+      KAPACITOR_USERNAME: admin
+      KAPACITOR_PASSWORD: admin123
+      BASE_PATH: /chronograf
+      PUBLIC_URL: /chronograf
       INFLUXDB_PASSWORD: ${INFLUXDB_ADMIN_PASSWORD}
       TZ: ${TZ}
     networks:

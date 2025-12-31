@@ -17,6 +17,7 @@ RUN apt-get update && apt-get install -y \
     default-mysql-client \
     pkg-config \
     curl \
+    dos2unix \
     && rm -rf /var/lib/apt/lists/*
 
 # Copiar requirements e instalar dependências Python
@@ -31,7 +32,7 @@ EXPOSE 5000
 
 # Script de inicialização
 COPY docker-entrypoint.sh /docker-entrypoint.sh
-RUN chmod +x /docker-entrypoint.sh
+RUN dos2unix /docker-entrypoint.sh && chmod +x /docker-entrypoint.sh
 
 ENTRYPOINT ["/docker-entrypoint.sh"]
 CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "1", "--timeout", "120", "--worker-class", "sync", "run:app"]

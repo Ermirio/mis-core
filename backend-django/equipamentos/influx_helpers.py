@@ -184,8 +184,8 @@ def get_realtime_metrics(equipamento_codigo: str, formato_gramas: float,
     toneladas = 0.0
     
     if points:
-        contagem_atual = float(points[0].get('contagem', 0))
-        toneladas = float(points[0].get('toneladas', 0))
+        contagem_atual = float(points[0].get('contagem') or 0.0)
+        toneladas = float(points[0].get('toneladas') or 0.0)
         
     # Buscamos contagem de 1 min atrás para vazão (mantido calculado pois é taxa instantânea)
     contagem_1min = get_count_1min_ago(equipamento_codigo, client)

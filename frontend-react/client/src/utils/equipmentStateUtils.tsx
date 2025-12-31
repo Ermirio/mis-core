@@ -1,8 +1,11 @@
 import React from 'react';
 import { CheckCircle, Clock, AlertTriangle, XCircle, HelpCircle, Settings, FileText, PenTool, AlertOctagon, PlayCircle, Activity, PauseCircle } from 'lucide-react';
 
+import { WifiOff } from 'lucide-react';
+
 // Definição das cores base (Hex) conforme MultiEquipmentTimeline
 const STATE_COLORS: Record<string, string> = {
+    'OFFLINE': '#6b7280',    // gray-500
     'PRODUZINDO': '#16a34a', // green-600
     'WAIT_PREV': '#06b6d4',  // cyan-500
     'BLOCK_NEXT': '#f97316', // orange-500
@@ -20,6 +23,7 @@ const STATE_COLORS: Record<string, string> = {
 
 // Labels em Português conforme MultiEquipmentTimeline
 const STATE_LABELS: Record<string, string> = {
+    'OFFLINE': 'OFFLINE',
     'PRODUZINDO': 'Produzindo',
     'WAIT_PREV': 'Aguardando Anterior',
     'BLOCK_NEXT': 'Bloqueado Próximo',
@@ -37,6 +41,7 @@ const STATE_LABELS: Record<string, string> = {
 
 // Mapeamento de Ícones
 const STATE_ICONS: Record<string, React.ReactNode> = {
+    'OFFLINE': <WifiOff className="w-5 h-5" />,
     'PRODUZINDO': <CheckCircle className="w-5 h-5" />,
     'WAIT_PREV': <Clock className="w-5 h-5" />,
     'BLOCK_NEXT': <AlertTriangle className="w-5 h-5" />,
@@ -63,6 +68,9 @@ export interface EstadoMapeado {
 
 export const normalizeState = (estado: string | number): string => {
     const estadoStr = String(estado || '').toUpperCase().trim();
+
+    // Estado Offline
+    if (['OFFLINE', '999'].includes(estadoStr)) return 'OFFLINE';
 
     // Mapeamento numérico e de texto para chaves padronizadas
     if (['RUN', 'PRODUZINDO', '1', 'ONLINE'].includes(estadoStr)) return 'PRODUZINDO';

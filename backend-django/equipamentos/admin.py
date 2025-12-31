@@ -4,7 +4,8 @@ from .models import (
     LinhaProducao, Equipamento, Sensor, MetricaProducao, 
     Defeito, ConexaoOPC, TagColeta,
     TurnoProducao, CalendarioProducao, EventoEstadoEquipamento,
-    Fabrica, Area, Produto, HistoricoSKU, OrdemProducao, RegistroProducaoTurno
+    Fabrica, Area, Produto, HistoricoSKU, OrdemProducao, RegistroProducaoTurno,
+    StrategicInitiative, EventoParada
 )
 
 from import_export.admin import ImportExportModelAdmin
@@ -68,7 +69,7 @@ class LinhaProducaoAdmin(ImportExportModelAdmin):
     search_fields = ['codigo', 'nome', 'localizacao']
     fieldsets = (
         ('Informações Básicas', {
-            'fields': ('codigo', 'nome', 'area', 'descricao', 'localizacao', 'ativa')
+            'fields': ('codigo', 'nome', 'area', 'conexao_padrao', 'descricao', 'localizacao', 'ativa')
         }),
         ('Metas e Velocidades', {
             'fields': ('velocidade_planejada', 'meta_producao_hora', 'meta_producao_turno', 'meta_oee')
@@ -100,6 +101,10 @@ class ConexaoOPCAdmin(ImportExportModelAdmin):
         ('Informações Básicas', {
             'fields': ('nome', 'url_servidor', 'namespace_prefix', 'ativa')
         }),
+        ('Monitoramento de Saúde', {
+            'fields': ('tag_monitoramento', 'tipo_monitoramento'),
+            'description': 'Configure a tag para monitorar a saúde da conexão (Heartbeat ou Error Bit)'
+        }),
         ('Autenticação', {
             'fields': ('usuario', 'senha'),
             'classes': ('collapse',)
@@ -129,10 +134,10 @@ class TagColetaInline(admin.TabularInline):
     model = TagColeta
     extra = 1
     fields = [
-        'conexao', 'nome_metrica', 'node_id', 'tipo_dado',
+        'nome_metrica', 'node_id', 'tipo_dado',
         'unidade', 'fator_conversao', 'ativa'
     ]
-    autocomplete_fields = ['conexao']
+
 
 
 class SensorInline(admin.TabularInline):
@@ -198,14 +203,14 @@ class TagColetaAdmin(ImportExportModelAdmin):
     resource_class = TagColetaResource
     list_display = [
         'equipamento', 'nome_metrica', 'node_id',
-        'tipo_dado', 'conexao', 'ativa_badge'
+        'tipo_dado', 'ativa_badge'
     ]
-    list_filter = ['tipo_dado', 'ativa', 'conexao', 'equipamento__linha']
+    list_filter = ['tipo_dado', 'ativa', 'equipamento__linha']
     search_fields = ['nome_metrica', 'node_id', 'equipamento__nome']
-    autocomplete_fields = ['equipamento', 'conexao']
+    autocomplete_fields = ['equipamento']
     fieldsets = (
         ('Associação', {
-            'fields': ('equipamento', 'conexao')
+            'fields': ('equipamento',)
         }),
         ('Configuração da Tag', {
             'fields': (
@@ -643,3 +648,25 @@ class RegistroProducaoTurnoAdmin(admin.ModelAdmin):
             color, val
         )
     eficiencia_badge.short_description = 'Eficiência'
+
+
+# ===== EVENTOS DE PARADA & ESTRATÉGIA =====
+
+@admin.register(EventoParada)
+class EventoParadaAdmin(admin.ModelAdmin):
+    list_display = ['inicio', 'maquina', 'categoria_clp', 'duracao_segundos', 'justificado']
+    list_filter = ['categoria_clp', 'maquina', 'justificado']
+    search_fields = ['maquina', 'op', 'sku']
+    date_hierarchy = 'inicio'
+
+@admin.register(StrategicInitiative)
+class StrategicInitiativeAdmin(admin.ModelAdmin):
+    list_display = ['titulo', 'status', 'responsavel', 'data_fim', 'percentual_conclusao_badge']
+    list_filter = ['status', 'responsavel']
+    search_fields = ['titulo', 'descricao']
+    date_hierarchy = 'data_inicio'
+
+    def percentual_conclusao_badge(self, obj):
+        # Placeholder se não houver lógica
+        return obj.get_status_display()
+    percentual_conclusao_badge.short_description = 'Status'

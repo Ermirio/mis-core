@@ -37,6 +37,7 @@ INSTALLED_APPS = [
     'corsheaders',
     'django_apscheduler',  # Scheduler automático
     'equipamentos',
+    'analytics',  # App de perfis de Analytics
     'import_export',
 ]
 

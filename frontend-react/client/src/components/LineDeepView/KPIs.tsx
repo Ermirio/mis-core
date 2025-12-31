@@ -9,6 +9,7 @@ interface KPIsProps {
     ritmoAtual: number;
     ritmoNecessario: number;
     desvioProjetado: number;
+    equipamentos?: Array<{ codigo: string; nome: string }>;
 }
 
 const KPIs: React.FC<KPIsProps> = ({
@@ -18,8 +19,15 @@ const KPIs: React.FC<KPIsProps> = ({
     bottleneck,
     ritmoAtual,
     ritmoNecessario,
-    desvioProjetado
+    desvioProjetado,
+    equipamentos = []
 }) => {
+    // Find friendly name if available
+    const friendlyName = equipamentos.find(eq => eq.codigo === bottleneck.name)?.nome || bottleneck.name;
+    const displayName = friendlyName !== bottleneck.name
+        ? <>{friendlyName} <span className="font-normal text-xs text-red-400">({bottleneck.name})</span></>
+        : bottleneck.name;
+
     return (
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mb-6">
             <h2 className="text-lg font-bold text-gray-900 mb-4">KPIs da Linha</h2>
@@ -50,8 +58,10 @@ const KPIs: React.FC<KPIsProps> = ({
                     <p className="text-sm text-gray-500 mb-2">Gargalo Atual</p>
                     <div className="flex items-center gap-2 text-red-600 bg-red-50 p-3 rounded-lg border border-red-100">
                         <AlertTriangle className="w-5 h-5" />
-                        <span className="font-bold">{bottleneck.name}</span>
-                        <span className="text-sm">({bottleneck.oee.toFixed(1)}%)</span>
+                        <div className="flex flex-col">
+                            <span className="font-bold text-sm">{displayName}</span>
+                        </div>
+                        <span className="text-sm ml-auto font-bold">({bottleneck.oee.toFixed(1)}%)</span>
                     </div>
                 </div>
 

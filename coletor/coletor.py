@@ -63,110 +63,188 @@ MAPEAMENTO_ESTADOS = {
 class ColetorOPC:
     def __init__(self):
         self.configuracao = None
-        self.clientes_opc = {} 
+        self.clientes_opc = {} # URL -> Client
+        self.conexoes_info = {} # URL -> { 'tag_monitoramento': ..., 'tipo_monitoramento': ..., 'status_ok': Bool }
         self.ultima_atualizacao_config = None
         self.estados_anteriores = {} 
         self.metadata_anteriores = {}
         
     async def inicializar(self):
         logger.info("=" * 60)
-        logger.info("COLETOR OPC UA - MODO DIAGNÓSTICO ATIVO")
+        logger.info("COLETOR OPC UA - ARQUITETURA CENTRALIZADA (V2.0)")
         logger.info("=" * 60)
         
         if not await self.atualizar_configuracao():
             logger.error("❌ Falha crítica: Sem configuração do Django.")
             return False
         
-        await self.conectar_servidores_opc()
+        # Conexão Inicial
+        await self.gerenciar_conexoes()
         return True
 
     async def atualizar_configuracao(self) -> bool:
         try:
-            # logger.info("🔄 Buscando configuração do Django...") # Silenciado para não poluir log
             url = f"{DJANGO_API_URL}/configuracao_coletor/"
             response = requests.get(url, timeout=TIMEOUT_REQUEST)
             response.raise_for_status()
             data = response.json()
             
-            if data.get('status') != 'success':
-                return False
+            if data.get('status') != 'success': return False
             
-            # Verifica se houve mudança na configuração
+            # Verifica hash
             novo_hash = json.dumps(data, sort_keys=True)
             atual_hash = json.dumps(self.configuracao, sort_keys=True) if self.configuracao else ""
             
             if novo_hash != atual_hash:
                 self.configuracao = data
-                equipamentos = data.get('equipamentos', [])
-                logger.info(f"✅ NOVA Configuração detectada: {len(equipamentos)} equipamentos.")
-
-                # --- DIAGNÓSTICO 1: O CUC VEIO DO DJANGO? ---
-                for eq in equipamentos:
-                    tags = [t['nome_metrica'] for t in eq.get('tags_coleta', [])]
-                    # logger.info(f"[DIAGNOSTICO] Equipamento {eq['codigo']} tem as tags: {tags}")
-                    if 'cuc' in tags:
-                        pass # logger.info(f"[DIAGNOSTICO] ✅ Tag 'cuc' ENCONTRADA na configuração para {eq['codigo']}")
-                    else:
-                        logger.warning(f"[DIAGNOSTICO] ❌ Tag 'cuc' NÃO ESTÁ na configuração para {eq['codigo']}")
-                # ----------------------------------------------
-                return True # Mudou
+                logger.info(f"✅ NOVA Configuração carregada. {len(data.get('equipamentos', []))} equipamentos.")
+                await self.gerenciar_conexoes() # Reconecta se mudar config
+                return True
             
-            return True # Sucesso, mas sem mudanças
+            return True
         except Exception as e:
             logger.error(f"❌ Erro config Django: {e}")
             return False
     
-    async def conectar_servidores_opc(self) -> bool:
-        try:
-            if not self.configuracao: return False
-            servidores = set()
-            for eq in self.configuracao.get('equipamentos', []):
-                for tag in eq.get('tags_coleta', []):
-                    if tag.get('conexao_detalhes', {}).get('ativa'):
-                        servidores.add(tag['conexao_detalhes']['url_servidor'])
-            
-            for url in servidores:
-                if url not in self.clientes_opc:
-                    try:
-                        c = Client(url=url, timeout=5) # Timeout 5s
-                        await c.connect()
-                        self.clientes_opc[url] = c
-                        logger.info(f"✅ Conectado a {url}")
-                    except Exception as e:
-                        logger.error(f"❌ Falha conexão {url}: {e}")
-            return bool(self.clientes_opc)
-        except Exception as e:
-            logger.error(f"Erro conexão: {e}")
-            return False
-    
-    def remover_cliente_com_falha(self, cliente_falho: Client):
-        """Remove um cliente da lista de conexões ativas para forçar reconexão."""
-        for url, cliente in list(self.clientes_opc.items()):
-            if cliente == cliente_falho:
-                logger.warning(f"⚠️ Removendo cliente desconectado: {url}")
-                # Agenda desconexão sem bloquear
-                try: asyncio.create_task(cliente.disconnect())
+    async def gerenciar_conexoes(self):
+        """Gerencia conexões baseadas na configuração agrupada"""
+        if not self.configuracao: return
+
+        urls_ativas = set()
+        equipamentos = self.configuracao.get('equipamentos', [])
+
+        # 1. Identificar conexões únicas necessárias
+        for eq in equipamentos:
+            conn = eq.get('conexao_detalhes')
+            if conn and conn.get('url'):
+                url = conn['url']
+                urls_ativas.add(url)
+                # Atualiza metadados da conexão (tag monitoramento)
+                self.conexoes_info[url] = {
+                    'tag_monitoramento': conn.get('tag_monitoramento'),
+                    'tipo_monitoramento': conn.get('tipo_monitoramento', 'HEARTBEAT'),
+                    'nome': conn.get('nome'),
+                    'status_ok': False # Reset status
+                }
+
+        # 2. Remover conexões obsoletas
+        for url in list(self.clientes_opc.keys()):
+            if url not in urls_ativas:
+                try: 
+                    logger.info(f"⚠️ Desconectando servidor obsoleto: {url}")
+                    await self.clientes_opc[url].disconnect()
                 except: pass
                 del self.clientes_opc[url]
-                break
 
-    async def ler_tag_opc(self, cliente: Client, node_id: str, tipo_dado: str, fator_conversao: float = 1.0) -> Optional[any]:
+        # 3. Criar novas conexões
+        for url in urls_ativas:
+            if url not in self.clientes_opc:
+                try:
+                    logger.info(f"🔌 Conectando a {url}...")
+                    c = Client(url=url, timeout=5)
+                    await c.connect()
+                    self.clientes_opc[url] = c
+                    logger.info(f"✅ Conectado a {url}")
+                except Exception as e:
+                    logger.error(f"❌ Falha ao conectar {url}: {e}")
+
+    async def executar(self):
+        """Loop principal do Coletor Centralizado"""
+        await self.inicializar()
+        
+        while True:
+            try:
+                loop_start = time.time()
+                
+                # 1. Atualizar Config e Conexões
+                await self.atualizar_configuracao()
+                
+                # 2. Agrupar Equipamentos por URL de Conexão
+                equipamentos_por_url = {}
+                todos_equipamentos = self.configuracao.get('equipamentos', [])
+                
+                for eq in todos_equipamentos:
+                    url = eq.get('conexao_detalhes', {}).get('url')
+                    if url:
+                        if url not in equipamentos_por_url: equipamentos_por_url[url] = []
+                        equipamentos_por_url[url].append(eq)
+                
+                tasks = []
+                
+                # 3. Iterar por Grupo de Conexão
+                for url, equipments_list in equipamentos_por_url.items():
+                    # Check Global Health for this Connection
+                    conexao_ok = await self.verificar_saude_conexao(url)
+                    cliente = self.clientes_opc.get(url)
+                    
+                    if not conexao_ok:
+                        logger.warning(f"⚠️ Grupo Conexão {url} está OFFLINE/ERRO. Forçando {len(equipments_list)} equipamentos para 999.")
+
+                    for eq in equipments_list:
+                         tasks.append(self.coletar_dados_equipamento(eq, cliente, conexao_ok))
+                
+                # 4. Executar coletas (Otimização: Gather)
+                if tasks:
+                    resultados = await asyncio.gather(*tasks, return_exceptions=True)
+                    
+                    pacote_envio = []
+                    for res in resultados:
+                        if isinstance(res, dict):
+                            pacote_envio.append(res)
+                        elif isinstance(res, Exception):
+                             logger.error(f"Erro em tarefa de coleta: {res}")
+                    
+                    # 5. Enviar ao Django
+                    if pacote_envio:
+                        # logger.info(f"📤 Enviando {len(pacote_envio)} registros...")
+                        try:
+                            requests.post(f"{DJANGO_API_URL}/leituras/inserir/", json=pacote_envio, timeout=5)
+                            requests.post(f"{FLASK_API_URL}/dados/inserir", json=pacote_envio, timeout=5)
+                        except Exception as e:
+                            logger.error(f"❌ Erro envio API: {e}")
+
+                # Sleep inteligente
+                elapsed = time.time() - loop_start
+                sleep_time = max(0.1, INTERVALO_COLETA - elapsed)
+                await asyncio.sleep(sleep_time)
+
+            except Exception as e:
+                logger.error(f"💥 Erro fatal no loop: {e}")
+                await asyncio.sleep(5)
+
+    async def verificar_saude_conexao(self, url: str) -> bool:
+        """Verifica se a conexão está saudável (Ping + Tag de Monitoramento)"""
+        client = self.clientes_opc.get(url)
+        info = self.conexoes_info.get(url)
+        
+        if not client: return False
+
         try:
-            node = cliente.get_node(node_id)
-            valor = await node.read_value()
+            # 1. Teste Básico de Conexão (Ler Root Folder ou ServerStatus)
+            # O próprio client.get_node... já testa um pouco
             
-            if tipo_dado in ['FLOAT', 'INT'] and valor is not None:
-                valor = float(valor) * fator_conversao
-                if tipo_dado == 'INT': valor = int(valor)
-            return valor
-        except (OSError, ConnectionError, asyncio.TimeoutError, TimeoutError, AttributeError) as e:
-            # Erros explícitos de rede
-            logger.warning(f"⚠️ Erro de CONEXÃO ao ler tag {node_id}: {e}")
-            self.remover_cliente_com_falha(cliente)
-            return None
+            # 2. Tag de Monitoramento (Se configurada)
+            tag_mon = info.get('tag_monitoramento')
+            if tag_mon:
+                node = client.get_node(tag_mon)
+                val = await node.read_value()
+                
+                # Lógica de Erro
+                tipo = info.get('tipo_monitoramento')
+                if tipo == 'ERROR_BOOL': 
+                    # Se True = ERRO
+                    if bool(val): 
+                        logger.warning(f"🚨 ERRO NA CONEXÃO {url} (Tag {tag_mon} = True)")
+                        return False
+                
+                # Logica Heartbeat seria comparar timestamp, mas por simplicidade
+                # assumimos que se LEU, está OK (o nível acima cuida de stale data)
+            
+            return True
         except Exception as e:
-            # logger.warning(f"Erro leitura tag {node_id}: {e}")
-            return None
+            logger.warning(f"⚠️ Falha Saúde Conexão {url}: {e}")
+            # Tentar reconectar?
+            return False
     
     def mapear_estado_opc(self, valor_opc: int) -> str:
         return MAPEAMENTO_ESTADOS.get(valor_opc, 'OUTRO')
@@ -186,38 +264,57 @@ class ColetorOPC:
             return True
         except: return False
 
-    async def coletar_dados_equipamento(self, equipamento: Dict) -> Optional[Dict]:
+    async def ler_tag_opc(self, cliente: Client, node_id: str, tipo_dado: str, fator_conversao: float = 1.0) -> Optional[any]:
+        try:
+            node = cliente.get_node(node_id)
+            valor = await node.read_value()
+            
+            if tipo_dado in ['FLOAT', 'INT'] and valor is not None:
+                valor = float(valor) * fator_conversao
+                if tipo_dado == 'INT': valor = int(valor)
+            return valor
+        except (OSError, ConnectionError, asyncio.TimeoutError, TimeoutError, AttributeError) as e:
+            # Erros explícitos de rede
+            logger.warning(f"⚠️ Erro de CONEXÃO ao ler tag {node_id}: {e}")
+            # Não remove o cliente aqui, a saúde da conexão é gerenciada centralmente
+            return None
+        except Exception as e:
+            # logger.warning(f"Erro leitura tag {node_id}: {e}")
+            return None
+
+    async def coletar_dados_equipamento(self, equipamento: Dict, cliente_ativo: Client, conexao_ok: bool) -> Optional[Dict]:
         try:
             codigo = equipamento['codigo']
-            tags = equipamento.get('tags_coleta', [])
+            linha_codigo = equipamento.get('linha_codigo') # Extract Line Code from config
             medicoes = {}
-            estado_txt, estado_num = None, None
-            formato_gramas = 0
             
+            # Se a conexão principal está ruim, força OFFLINE
+            if not conexao_ok:
+                medicoes['connection_status'] = 'OFFLINE'
+                medicoes['estado_maquina'] = 999 
+                return {
+                    "equipamento_codigo": codigo,
+                    "medicoes": medicoes,
+                    "timestamp": datetime.utcnow().isoformat() + 'Z'
+                }
+
+            # --- Conexão OK, Ler Tags ---
+            tags = equipamento.get('tags_coleta', [])
+            
+            # Metadata Init
             metadata = {'equipamento_codigo': codigo, 'op_codigo': None, 'sku_codigo': None, 'descricao': None, 'formato': None, 'meta_producao': None}
-            
+            estado_txt, estado_num = None, None
+
             for tag in tags:
                 nome = tag['nome_metrica']
-                logger.info(f"Tag: {nome}")
-                cliente = self.clientes_opc.get(tag.get('conexao_detalhes', {}).get('url_servidor'))
-                if not cliente: continue
+                # Nota: A URL na tag (conexao_detalhes) pode ser ignorada ou validada,
+                # assumimos que usamos o 'cliente_ativo' passado (da conexão do equip)
                 
-                valor = await self.ler_tag_opc(cliente, tag['node_id'], tag['tipo_dado'], tag.get('fator_conversao', 1.0))
-                
-                if valor is None and 'formato' in nome:
-                    logger.warning(f"[DIAGNOSTICO] ❌ Falha ao ler FORMATO: {nome}")
-                
+                valor = await self.ler_tag_opc(cliente_ativo, tag['node_id'], tag['tipo_dado'], tag.get('fator_conversao', 1.0))
+
                 if valor is not None:
-                    # nome = tag['nome_metrica']
                     medicoes[nome] = valor
                     
-                    # --- DIAGNÓSTICO 2: O VALOR FOI LIDO? ---
-                    if nome == 'cuc':
-                        logger.info(f"[DIAGNOSTICO] 👁️ CUC LIDO do PLC: '{valor}' (Tipo: {type(valor)})")
-                    if 'formato' in nome:
-                        logger.info(f"[DIAGNOSTICO] 👁️ FORMATO LIDO do PLC: '{nome}' = '{valor}'")
-                    # ----------------------------------------
-
                     # Preenchimento de Metadata e Estado (Lógica Padrão)
                     if nome == 'ordem_producao': metadata['op_codigo'] = str(valor)
                     elif nome == 'sku_codigo': metadata['sku_codigo'] = str(valor)
@@ -227,7 +324,6 @@ class ColetorOPC:
                             val = float(valor)
                             metadata['formato'] = val
                             medicoes['formato_gramas'] = val
-                            logger.info(f"[DIAGNOSTICO] Formato lido: {val}")
                         except: pass
                     elif nome == 'planejado_op':
                         try: metadata['meta_producao'] = int(float(valor))
@@ -239,59 +335,35 @@ class ColetorOPC:
                             estado_txt = self.mapear_estado_opc(estado_num)
                         except:
                             medicoes['estado_maquina'] = 0
+            
+            # Enviar Metadata se mudou
+            if metadata['op_codigo'] or metadata['sku_codigo']:
+                 # Hash check simplificado
+                 prev = self.metadata_anteriores.get(codigo)
+                 curr_hash = json.dumps(metadata, sort_keys=True)
+                 if prev != curr_hash:
+                     logger.info(f"📦 Metadata Update {codigo}: {metadata}")
+                     await self.enviar_metadata_django(metadata)
+                     self.metadata_anteriores[codigo] = curr_hash
 
-                if tag.get('formato'):
-                    try: 
-                        val = float(tag['formato'])
-                        if val > 0: formato_gramas = val
-                    except: pass
-                
-                # --- CAPTURA DE VELOCIDADE REAL ---
-                nome_lower = nome.lower()
-                if any(x in nome_lower for x in ['velocidade', 'vel', 'rpm', 'speed']):
-                    try:
-                        medicoes['velocidade_atual'] = float(valor)
-                    except: pass
-                # ----------------------------------
-            
-            if not medicoes: return None
-            
-            # Sincronização Metadata
-            meta_ant = self.metadata_anteriores.get(codigo, {})
-            if (metadata['op_codigo'] != meta_ant.get('op_codigo')) or (metadata['sku_codigo'] != meta_ant.get('sku_codigo')):
-                await self.enviar_metadata_django(metadata)
-                self.metadata_anteriores[codigo] = metadata.copy()
-            
-            if 'formato_gramas' not in medicoes and formato_gramas > 0:
-                medicoes['formato_gramas'] = formato_gramas
-
-            if 'contagem_entrada' in medicoes and 'contagem_saida' in medicoes:
-                medicoes['descarte'] = max(0, int(medicoes['contagem_entrada'] - medicoes['contagem_saida']))
-                if medicoes['contagem_entrada'] > 0:
-                    medicoes['percentual_descarte'] = (medicoes['descarte'] / medicoes['contagem_entrada']) * 100
-
-            if estado_txt:
-                est_ant = self.estados_anteriores.get(codigo)
-                if est_ant != estado_txt:
-                    await self.enviar_evento_estado(codigo, estado_txt)
-                    self.estados_anteriores[codigo] = estado_txt
-            
-            # --- DIAGNÓSTICO 3: O PACOTE CONTÉM CUC? ---
-            if 'cuc' in medicoes:
-                # logger.info(f"[DIAGNOSTICO] 📦 Pacote para Flask contém CUC: {medicoes['cuc']}")
-                pass
-            else:
-                logger.warning(f"[DIAGNOSTICO] ⚠️ Pacote para Flask NÃO contém CUC! (Tags lidas: {list(medicoes.keys())})")
-            # -------------------------------------------
+            # Evento de Estado
+            last_st = self.estados_anteriores.get(codigo)
+            current_st = medicoes.get('estado_maquina')
+            if current_st is not None and current_st != last_st:
+                logger.info(f"🔄 Estado {codigo}: {last_st} -> {current_st}")
+                msg_est = estado_txt if estado_txt else str(current_st)
+                await self.enviar_evento_estado(codigo, msg_est)
+                self.estados_anteriores[codigo] = current_st
 
             return {
-                'equipamento_codigo': codigo,
-                'linha_codigo': equipamento['linha_codigo'],
-                'medicoes': medicoes,
-                'timestamp': datetime.utcnow().isoformat()
+                "equipamento_codigo": codigo,
+                "linha_codigo": linha_codigo,
+                "medicoes": medicoes,
+                "timestamp": datetime.utcnow().isoformat() + 'Z'
             }
+
         except Exception as e:
-            logger.error(f"Erro coleta: {e}")
+            logger.error(f"Erro coleta {equipamento['codigo']}: {e}")
             return None
 
     async def enviar_para_flask(self, dados: Dict) -> bool:
@@ -343,12 +415,15 @@ class ColetorOPC:
 
     async def verificar_comandos(self):
         """Busca comandos pendentes do Flask e reporta resultado."""
+        logger.info("🔍 DEBUG: verificar_comandos() INICIADO")
         try:
-            url = f"{FLASK_API_URL}/golden-state/pending" 
+            url = f"{FLASK_API_URL}/golden-state/pending"
+            logger.info(f"🔍 DEBUG: Buscando comandos em {url}")
             response = requests.get(url, timeout=TIMEOUT_REQUEST)
             if not response.ok: return
             
             batches = response.json()
+            logger.info(f"🔍 DEBUG: Recebidos {len(batches)} batches do Flask")
             if not batches: return
 
             logger.info(f"📩 Recebidos {len(batches)} lotes de comando.")
@@ -369,8 +444,35 @@ class ColetorOPC:
                     self.reportar_status_batch(batch_id, 'ERROR', "Equipamento não configurado no Coletor.")
                     continue
                 
+                # CORREÇÃO CRÍTICA: Buscar URL da conexão OPC do EQUIPAMENTO (não da tag)
+                conn_details = eq_config.get('conexao_detalhes', {})
+                url_server = conn_details.get('url')
+                
+                if not url_server:
+                    error_msg = f"Equipamento {eq_codigo} não possui URL de conexão OPC configurada"
+                    logger.error(f"❌ {error_msg}")
+                    self.reportar_status_batch(batch_id, 'ERROR', error_msg)
+                    continue
+                
+                logger.info(f"🔍 DEBUG: Equipamento {eq_codigo} → URL OPC: {url_server}")
+                logger.info(f"🔍 DEBUG: Clientes OPC disponíveis: {list(self.clientes_opc.keys())}")
+                
+                # Verificar se cliente OPC está conectado ANTES do loop
+                cliente = self.clientes_opc.get(url_server)
+                if not cliente:
+                    error_msg = f"Cliente OPC não conectado para URL '{url_server}' (Equipamento: {eq_codigo})"
+                    logger.error(f"❌ {error_msg}")
+                    logger.error(f"💡 DICA: Verifique se a conexão OPC está ativa")
+                    self.reportar_status_batch(batch_id, 'ERROR', error_msg)
+                    continue
+                
+                logger.info(f"✅ Cliente OPC encontrado para {eq_codigo}")
+                
                 # Report Started
                 self.reportar_status_batch(batch_id, 'PENDING', "Iniciando escrita...", {'current': 0, 'total': len(commands)})
+                
+                success_count = 0
+                error_count = 0
                 
                 for i, cmd in enumerate(commands):
                     tag_name = cmd.get('tag')
@@ -382,22 +484,27 @@ class ColetorOPC:
                     
                     tag_config = next((t for t in eq_config.get('tags_coleta', []) if t['nome_metrica'] == tag_name), None)
                     if not tag_config:
-                        logger.warning(f"Tag {tag_name} não encontrada.")
+                        error_msg = f"Tag '{tag_name}' não encontrada na configuração do equipamento {eq_codigo}"
+                        logger.warning(f"❌ {error_msg}")
+                        self.reportar_status_batch(batch_id, 'PENDING', error_msg, {'current': i, 'total': len(commands)})
                         error_count += 1
                         continue
                     
                     node_id = tag_config['node_id']
                     tipo = tag_config.get('tipo_dado', 'FLOAT')
-                    url_server = tag_config.get('conexao_detalhes', {}).get('url_servidor')
                     
-                    cliente = self.clientes_opc.get(url_server)
-                    if cliente:
-                        ok = await self.escrever_tag_opc(cliente, node_id, valor, tipo)
-                        if ok: success_count += 1
-                        else: error_count += 1
-                    else:
-                        logger.error(f"Cliente OPC não conectado para {tag_name}")
+                    logger.info(f"🔍 DEBUG: Escrevendo '{tag_name}' → NodeID={node_id}, Tipo={tipo}, Valor={valor}")
+                    
+                    # Cliente já foi validado antes do loop
+                    ok = await self.escrever_tag_opc(cliente, node_id, valor, tipo)
+                    if ok: 
+                        success_count += 1
+                        logger.info(f"✅ ESCRITA SUCESSO: {tag_name} = {valor}")
+                    else: 
                         error_count += 1
+                        error_msg = f"Falha ao escrever {tag_name}: Erro na comunicação OPC UA"
+                        logger.error(f"❌ {error_msg}")
+                        self.reportar_status_batch(batch_id, 'PENDING', error_msg, {'current': i, 'total': len(commands)})
 
                 # Report Final Status for Batch
                 final_status = 'SUCCESS' if error_count == 0 else ('PARTIAL_SUCCESS' if success_count > 0 else 'ERROR')
@@ -418,34 +525,90 @@ class ColetorOPC:
             logger.error(f"Falha ao reportar status {batch_id}: {e}")
 
     async def executar(self):
-        logger.info("🚀 Loop de coleta iniciado (c/ Write-Back support)...")
-        ciclo = 0
-        try:
-            while True:
-                ciclo += 1
-                await self.ciclo_coleta()
-                await self.verificar_comandos() # Pull commands every cycle
+        """Loop principal do Coletor Centralizado"""
+        await self.inicializar()
+        
+        while True:
+            try:
+                loop_start = time.time()
+                
+                # 1. Atualizar Config e Conexões
+                await self.atualizar_configuracao()
+                
+                # 2. Agrupar Equipamentos por URL de Conexão
+                equipamentos_por_url = {}
+                todos_equipamentos = self.configuracao.get('equipamentos', [])
+                
+                for eq in todos_equipamentos:
+                    conn = eq.get('conexao_detalhes') or {}
+                    url = conn.get('url')
+                    if url:
+                        if url not in equipamentos_por_url: equipamentos_por_url[url] = []
+                        equipamentos_por_url[url].append(eq)
+                
+                logger.info(f"🔍 DEBUG: Agrupados {len(equipamentos_por_url)} URLs de conexão")
+                
+                tasks = []
+                
+                # 3. Iterar por Grupo de Conexão
+                for url, equipments_list in equipamentos_por_url.items():
+                    logger.info(f"🔍 DEBUG: Processando URL {url} com {len(equipments_list)} equipamentos")
+                    # Check Global Health for this Connection
+                    conexao_ok = await self.verificar_saude_conexao(url)
+                    cliente = self.clientes_opc.get(url)
+                    
+                    logger.info(f"🔍 DEBUG: Conexão OK={conexao_ok}, Cliente={'Existe' if cliente else 'None'}")
+                    
+                    if not conexao_ok:
+                        logger.warning(f"⚠️ Grupo Conexão {url} está OFFLINE/ERRO. Forçando {len(equipments_list)} equipamentos para 999.")
 
-                if ciclo % 15 == 0: # A cada 30 segundos (15 * 2s)
-                    await self.atualizar_configuracao()
-                    await self.conectar_servidores_opc()
-                await asyncio.sleep(INTERVALO_COLETA)
-        except KeyboardInterrupt: pass
-        finally:
-            for c in self.clientes_opc.values():
-                try: await c.disconnect()
-                except: pass
+                    for eq in equipments_list:
+                         tasks.append(self.coletar_dados_equipamento(eq, cliente, conexao_ok))
+                
+                # 4. Executar coletas (Otimização: Gather)
+                if tasks:
+                    logger.info(f"🔍 DEBUG: Executando {len(tasks)} tarefas de coleta")
+                    resultados = await asyncio.gather(*tasks, return_exceptions=True)
+                    
+                    pacote_envio = []
+                    for res in resultados:
+                        if isinstance(res, dict):
+                            pacote_envio.append(res)
+                        elif isinstance(res, Exception):
+                             logger.error(f"Erro em tarefa de coleta: {res}")
+                    
+                    logger.info(f"🔍 DEBUG: Criado pacote com {len(pacote_envio)} registros")
+                    
+                    # 5. Enviar ao Django
+                    if pacote_envio:
+                        try:
+                            logger.info(f"📤 Enviando {len(pacote_envio)} registros para Flask...")
+                            requests.post(f"{DJANGO_API_URL}/leituras/inserir/", json=pacote_envio, timeout=5)
+                            requests.post(f"{FLASK_API_URL}/dados/inserir", json=pacote_envio, timeout=5)
+                            logger.info(f"✅ Envio concluído")
+                        except Exception as e:
+                            logger.error(f"❌ Erro envio API: {e}")
+                else:
+                    logger.warning(f"⚠️ Nenhuma tarefa de coleta criada!")
 
-async def main():
+                # 6. Verificar e Executar Comandos (Write-Back)
+                await self.verificar_comandos()
+
+                # Sleep inteligente
+                elapsed = time.time() - loop_start
+                sleep_time = max(0.1, INTERVALO_COLETA - elapsed)
+                await asyncio.sleep(sleep_time)
+
+            except Exception as e:
+                logger.error(f"💥 Erro fatal no loop: {e}")
+                await asyncio.sleep(5)
+
+if __name__ == "__main__":
+    if sys.platform == 'win32':
+        asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+        
     coletor = ColetorOPC()
-    if await coletor.inicializar():
-        await coletor.executar()
-    else:
-        logger.error("❌ Falha na inicialização")
-
-if __name__ == '__main__':
     try:
-        if sys.platform == 'win32':
-            asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
-        asyncio.run(main())
-    except KeyboardInterrupt: pass
+        asyncio.run(coletor.executar())
+    except KeyboardInterrupt:
+        logger.info("Coletor parado pelo usuário.")

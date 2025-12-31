@@ -39,6 +39,7 @@ def get_equipamento_realtime(equipamento_codigo):
                     clean_key = k.replace('last_', '')
                     medicoes[clean_key] = v
         
+        
         if not medicoes:
             return {}
 

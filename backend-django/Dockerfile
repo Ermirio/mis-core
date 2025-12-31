@@ -15,6 +15,7 @@ RUN apt-get update && apt-get install -y \
     default-mysql-client \
     netcat-openbsd \
     curl \
+    dos2unix \
     && rm -rf /var/lib/apt/lists/*
 
 # Copiar requirements e instalar dependências Python
@@ -30,7 +31,7 @@ RUN mkdir -p /app/staticfiles
 EXPOSE 8000
 
 COPY docker-entrypoint.sh /docker-entrypoint.sh
-RUN chmod +x /docker-entrypoint.sh
+RUN dos2unix /docker-entrypoint.sh && chmod +x /docker-entrypoint.sh
 
 ENTRYPOINT ["/docker-entrypoint.sh"]
 CMD ["gunicorn", "--bind", "0.0.0.0:8000", "--workers", "4", "--timeout", "120", "config.wsgi:application"]

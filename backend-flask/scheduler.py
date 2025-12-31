@@ -57,6 +57,21 @@ def start_scheduler(app):
         # Add job to run every 5 minutes
         scheduler.add_job(job_continuous_optimization, 'interval', minutes=5, id='golden_state_opt')
         
+        # New "The Watcher" Jobs (Auto-Capture Triggers)
+        from services.watcher import check_5min_triggers, check_30min_triggers, check_hourly_master, check_waste_backoff
+        
+        # 1. Performance & Efficiency (Now 1 min for better responsiveness)
+        scheduler.add_job(check_5min_triggers, 'interval', minutes=1, args=[app], id='watcher_5m')
+        
+        # 2. Stability (30 min)
+        scheduler.add_job(check_30min_triggers, 'interval', minutes=30, args=[app], id='watcher_30m')
+        
+        # 3. Golden Master (1 hour)
+        scheduler.add_job(check_hourly_master, 'interval', minutes=60, args=[app], id='watcher_60m')
+        
+        # 4. Waste Backoff (1 min)
+        scheduler.add_job(check_waste_backoff, 'interval', minutes=1, args=[app], id='watcher_waste')
+        
         scheduler.start()
         logger.info("🚀 Scheduler Started (Golden State Optimization: 5 min)")
         

@@ -1,0 +1,14 @@
+{
+    "variables": [
+        {
+            "tag_influx": "temperaturaFaca",
+            "equipamento_code": "E001",
+            "alias": "DEBUG_TEMP",
+            "lsl": 70,
+            "usl": 130,
+            "nominal": 100
+        }
+    ],
+    "start_time": "2025-12-30T10:00:00Z",
+    "end_time": "2025-12-30T18:00:00Z"
+}

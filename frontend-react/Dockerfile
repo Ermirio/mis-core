@@ -41,6 +41,9 @@ FROM nginx:alpine
 # Copiar arquivos buildados
 COPY --from=builder /app/dist/public /usr/share/nginx/html
 
+# Instalar dos2unix
+RUN apk add --no-cache dos2unix
+
 # Copiar configuração customizada do Nginx
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 
@@ -49,7 +52,7 @@ EXPOSE 80
 
 # Script para substituir variáveis de ambiente em runtime
 COPY docker-entrypoint.sh /docker-entrypoint.sh
-RUN chmod +x /docker-entrypoint.sh
+RUN dos2unix /docker-entrypoint.sh && chmod +x /docker-entrypoint.sh
 
 ENTRYPOINT ["/docker-entrypoint.sh"]
 CMD ["nginx", "-g", "daemon off;"]
