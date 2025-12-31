@@ -228,6 +228,11 @@ services:
     environment:
       INFLUXDB_URL: http://influxdb:8086
       INFLUXDB_USERNAME: ${INFLUXDB_ADMIN_USER}
+      KAPACITOR_URL: http://kapacitor:9092
+      KAPACITOR_USERNAME: admin
+      KAPACITOR_PASSWORD: admin123
+      BASE_PATH: /chronograf
+      PUBLIC_URL: /chronograf
       INFLUXDB_PASSWORD: ${INFLUXDB_ADMIN_PASSWORD}
       TZ: ${TZ}
     networks:

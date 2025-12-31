@@ -1,0 +1,224 @@
+version: '3.8'
+
+services:
+  # ===== FRONTEND =====
+  frontend:
+    image: mis-core-frontend:v1.0
+    container_name: mis-core-frontend
+    restart: unless-stopped
+    ports:
+      - "81:80"
+    environment:
+      TZ: America/Sao_Paulo
+    healthcheck:
+      test: [ "CMD", "wget", "-q", "-O", "-", "http://127.0.0.1/health" ]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    networks:
+      - mis-network
+    depends_on:
+      django:
+        condition: service_healthy
+      flask:
+        condition: service_healthy
+
+  # ===== DJANGO =====
+  django:
+    image: mis-core-django:v1.0
+    container_name: mis-core-django
+    restart: unless-stopped
+    ports:
+      - "8001:8000"
+    environment:
+      # Database
+      MYSQL_HOST: mysql
+      MYSQL_PORT: 3306
+      MYSQL_DB: mis_core_db
+      MYSQL_DATABASE: mis_core_db
+      MYSQL_USER: mis
+      MYSQL_PASSWORD: mis123
+
+      # InfluxDB
+      INFLUXDB_HOST: influxdb
+      INFLUXDB_PORT: 8086
+      INFLUXDB_DATABASE: industrial_db
+      INFLUXDB_USER: admin
+      INFLUXDB_PASSWORD: admin123
+
+      # Django Settings
+      DJANGO_SECRET_KEY: django-insecure-dev-key-change-in-production
+      DJANGO_DEBUG: "False"
+      DJANGO_ALLOWED_HOSTS: "*"
+      DJANGO_SUPERUSER_USERNAME: admin
+      DJANGO_SUPERUSER_EMAIL: admin@example.com
+      DJANGO_SUPERUSER_PASSWORD: admin123
+      TZ: America/Sao_Paulo
+    volumes:
+      - django_static:/app/staticfiles
+    networks:
+      - mis-network
+    depends_on:
+      mysql:
+        condition: service_healthy
+      influxdb:
+        condition: service_healthy
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:8000/api/health/" ]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 40s
+
+  # ===== FLASK =====
+  flask:
+    image: mis-core-flask:v1.1
+    container_name: mis-core-flask
+    restart: unless-stopped
+    ports:
+      - "5002:5000"
+    environment:
+      INFLUXDB_HOST: influxdb
+      INFLUXDB_PORT: 8086
+      INFLUXDB_DATABASE: industrial_db
+      INFLUXDB_USER: admin
+      INFLUXDB_PASSWORD: admin123
+      DJANGO_HOST: django
+      DJANGO_PORT: 8000
+      DJANGO_API_URL: http://django:8000/api
+      TZ: America/Sao_Paulo
+    networks:
+      - mis-network
+    depends_on:
+      django:
+        condition: service_healthy
+      influxdb:
+        condition: service_healthy
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:5000/api/health" ]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 20s
+
+  # ===== COLETOR OPC UA =====
+  coletor:
+    image: mis-core-coletor:v1.0
+    container_name: mis-core-coletor
+    restart: unless-stopped
+    environment:
+      DJANGO_API_URL: http://django:8000/api
+      FLASK_API_URL: http://flask:5000/api
+      INTERVALO_COLETA: 2
+      TIMEOUT_REQUEST: 10
+      TZ: America/Sao_Paulo
+    networks:
+      - mis-network
+    depends_on:
+      django:
+        condition: service_healthy
+      flask:
+        condition: service_healthy
+
+  # ===== MYSQL =====
+  mysql:
+    image: mysql:8.0
+    container_name: mis-core-mysql
+    restart: unless-stopped
+    command: --default-authentication-plugin=mysql_native_password
+    ports:
+      - "3308:3306"
+    environment:
+      MYSQL_DATABASE: mis_core_db
+      MYSQL_USER: mis
+      MYSQL_PASSWORD: mis123
+      MYSQL_ROOT_PASSWORD: root123
+      TZ: America/Sao_Paulo
+    volumes:
+      - mysql_data:/var/lib/mysql
+    networks:
+      - mis-network
+    healthcheck:
+      test: [ "CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-proot123" ]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+  # ===== INFLUXDB (TSDB) =====
+  influxdb:
+    image: influxdb:1.8-alpine
+    container_name: mis-core-influxdb
+    restart: unless-stopped
+    ports:
+      - "8087:8086"
+    environment:
+      INFLUXDB_DB: industrial_db
+      INFLUXDB_ADMIN_USER: admin
+      INFLUXDB_ADMIN_PASSWORD: admin123
+      INFLUXDB_HTTP_AUTH_ENABLED: "true"
+      TZ: America/Sao_Paulo
+    volumes:
+      - influxdb_data:/var/lib/influxdb
+    networks:
+      - mis-network
+    healthcheck:
+      test: [ "CMD", "wget", "-q", "-O", "-", "http://localhost:8086/ping" ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # ===== CHRONOGRAF (Admin InfluxDB) =====
+  chronograf:
+    image: chronograf:1.8
+    container_name: mis-core-chronograf
+    restart: unless-stopped
+    ports:
+      - "8889:8888"
+    environment:
+      INFLUXDB_URL: http://influxdb:8086
+      INFLUXDB_USERNAME: admin
+      INFLUXDB_PASSWORD: admin123
+      KAPACITOR_URL: http://kapacitor:9092
+      KAPACITOR_USERNAME: admin
+      KAPACITOR_PASSWORD: admin123
+      BASE_PATH: /chronograf
+      PUBLIC_URL: /chronograf
+    links:
+      - influxdb
+      - kapacitor
+    networks:
+      - mis-network
+    depends_on:
+      influxdb:
+        condition: service_healthy
+
+  # ===== KAPACITOR (Alertas) =====
+  kapacitor:
+    image: kapacitor:1.5
+    container_name: mis-core-kapacitor
+    restart: unless-stopped
+    ports:
+      - "9093:9092"
+    environment:
+      KAPACITOR_INFLUXDB_0_URLS_0: http://influxdb:8086
+      KAPACITOR_INFLUXDB_0_USERNAME: admin
+      KAPACITOR_INFLUXDB_0_PASSWORD: admin123
+      TZ: America/Sao_Paulo
+    volumes:
+      - kapacitor_data:/var/lib/kapacitor
+    networks:
+      - mis-network
+    depends_on:
+      influxdb:
+        condition: service_healthy
+
+networks:
+  mis-network:
+    name: mis-core-network
+    driver: bridge
+
+volumes:
+  mysql_data:
+  influxdb_data:
+  kapacitor_data:
+  django_static:

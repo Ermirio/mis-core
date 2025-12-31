@@ -50,7 +50,7 @@ const Sidebar: React.FC<SidebarProps> = ({ collapsed, onToggle }) => {
         {!collapsed && (
           <Link to="/" className="sidebar-title-link">
             <img
-              src="/mis-core-logo-v2.png"
+              src={`${import.meta.env.BASE_URL}mis-core-logo-v2.png`}
               alt="MIS-CORE"
               className="sidebar-logo"
             />
