@@ -1,0 +1,102 @@
+# Docker Compose - Exemplo de configuração com volumes para models
+# IMPORTANTE: Adicione estas configurações ao seu Docker-Compose.yaml existente
+
+services:
+  predicao-backend:
+    build: ./backend
+    container_name: predicao_backend_container
+    ports:
+      - "5004:5004"
+    environment:
+      - DATABASE_URL=mysql+pymysql://predicao_user:ixvq10A%4010@host.docker.internal:3307/density_db
+      - OPC_SERVER_URL=opc.tcp://192.168.15.189:49320
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - app_network
+    volumes:
+      # CRÍTICO: Volume para persistir modelos treinados
+      - ./backend/models:/app/models
+      # Volume para logs (opcional mas recomendado)
+      - ./backend/logs:/app/logs
+      
+    restart: unless-stopped
+    # COMENTADO: Health check pode causar problemas durante inicialização
+    # healthcheck:
+    #   test: ["CMD", "curl", "-f", "http://localhost:5004/api/health"]
+    #   interval: 30s
+    #   timeout: 10s
+    #   retries: 3
+    #   start_period: 40s
+
+  predicao-frontend:
+    build: ./frontend
+    container_name: predicao_frontend_container
+    ports:
+      - "3007:3007"
+    environment:
+      - NODE_ENV=production
+      - VITE_API_URL=/predicao-api
+    networks:
+      - app_network
+    depends_on:
+      - predicao-backend
+    restart: unless-stopped
+
+networks:
+  app_network:
+    driver: bridge
+
+# ==================== NOTAS IMPORTANTES ====================
+# 
+# 1. VOLUME DE MODELOS:
+#    - ./backend/models:/app/models
+#    - Persiste os modelos treinados no host
+#    - Modelos não são perdidos ao recriar containers
+#    - Permite backup fácil dos modelos
+#
+# 2. VOLUME DE LOGS:
+#    - ./backend/logs:/app/logs
+#    - Facilita debug e monitoramento
+#    - Logs acessíveis diretamente no host
+#
+# 3. WORKERS:
+#    - Configurado no Dockerfile: --workers 1
+#    - Necessário devido ao OPC asyncio
+#
+# 4. NETWORK:
+#    - Bridge network para comunicação entre containers
+#    - extra_hosts para acessar MySQL e OPC no host
+#
+# 5. RESTART POLICY:
+#    - unless-stopped: Reinicia automaticamente
+#    - Exceto quando parado manualmente
+#
+# ==================== COMANDOS ÚTEIS ====================
+#
+# # Criar pastas de volumes no host (execute antes do docker-compose up)
+# mkdir -p backend/models backend/logs
+#
+# # Rebuild e restart
+# docker-compose down
+# docker-compose build --no-cache predicao-backend
+# docker-compose up -d
+#
+# # Ver logs em tempo real
+# docker-compose logs -f predicao-backend
+#
+# # Verificar volumes montados
+# docker inspect predicao_backend_container | grep -A 10 Mounts
+#
+# # Listar modelos salvos no host
+# ls -lh backend/models/
+#
+# ==================== TROUBLESHOOTING ====================
+#
+# Se os modelos não aparecem na pasta:
+# 1. Verifique se a pasta existe: mkdir -p backend/models
+# 2. Verifique permissões: chmod 777 backend/models (temporário para teste)
+# 3. Verifique se o volume está montado: docker inspect predicao_backend_container
+# 4. Teste criar arquivo manualmente: docker exec predicao_backend_container touch /app/models/test.txt
+# 5. Verifique se aparece no host: ls backend/models/test.txt
+

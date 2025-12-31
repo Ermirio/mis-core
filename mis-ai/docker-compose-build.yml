@@ -1,0 +1,87 @@
+# Docker Compose Build - Predição Genérica
+# Usado para fazer build das imagens Docker
+
+version: '3.8'
+
+services:
+  # ==================== BUILD BACKEND ====================
+  predicao-backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    image: predicao-backend:latest
+    container_name: predicao_backend_container
+    
+    environment:
+      - FLASK_APP=app.py
+      - FLASK_ENV=production
+      - FLASK_DEBUG=False
+      - PYTHONUNBUFFERED=1
+      - DATABASE_URL=mysql+pymysql://predicao_user:ixvq10A%4010@host.docker.internal:3307/density_db
+      - OPC_SERVER_URL=opc.tcp://1.0.0.158:49320
+    
+    ports:
+      - "5004:5004"
+    
+    volumes:
+      - ./backend/logs:/app/logs
+      - ./backend/models:/app/models
+      - ./backend/prediction.db:/app/prediction.db
+      
+    
+    networks:
+      - app_network
+      - shared-network
+    
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  # ==================== BUILD FRONTEND ====================
+  predicao-frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    image: predicao-frontend:latest
+    container_name: predicao_frontend_build
+    
+    environment:
+      - NODE_ENV=production
+
+
+    ports:
+      - "3007:3007"
+    
+    networks:
+      - app_network
+      - shared-network
+    
+    depends_on:
+      - predicao-backend
+
+# ==================== NETWORKS ====================
+networks:
+  app_network:
+    driver: bridge
+  
+  shared-network:
+    external: true
+
+# ==================== INSTRUÇÕES DE USO ====================
+#
+# Build das imagens:
+#   docker-compose -f docker-compose-build.yml build
+#
+# Build e iniciar:
+#   docker-compose -f docker-compose-build.yml up -d
+#
+# Build forçado (sem cache):
+#   docker-compose -f docker-compose-build.yml build --no-cache
+#
+# Ver logs:
+#   docker-compose -f docker-compose-build.yml logs -f
+#
+# Parar:
+#   docker-compose -f docker-compose-build.yml down
+#
+# Após o build, use Docker-Compose.yaml para rodar em produção
+

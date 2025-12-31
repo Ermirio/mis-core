@@ -1,0 +1,49 @@
+# Ignorar arquivos desnecessários no build Docker
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+*.egg-info/
+dist/
+build/
+
+# Logs
+logs/*.log
+*.log
+
+# Banco de dados local
+*.db
+*.sqlite
+*.sqlite3
+
+# Testes
+tests/
+*.pytest_cache/
+.coverage
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Git
+.git/
+.gitignore
+
+# Ambiente local
+.env
+.env.local
+
+# Modelos treinados (podem ser grandes)
+# Descomente se quiser excluir
+# models/*.pkl
+# models/*.joblib
+

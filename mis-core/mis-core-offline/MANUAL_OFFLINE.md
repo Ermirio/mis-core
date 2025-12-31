@@ -95,3 +95,19 @@ Para referência da sua equipe de infraestrutura, estas são as portas que o ser
 *   **8087**: InfluxDB (Acesso direto ou ferramentas externas)
 *   **3308**: MySQL (Acesso direto ou ferramentas externas)
 *   **8889**: Chronograf (Redirecionado pelo Proxy `/chronograf/`)
+
+## Versões dos Containers
+Para fins de auditoria e compatibilidade, estas são as versões utilizadas neste pacote:
+
+| Serviço | Imagem | Versão Base |
+| :--- | :--- | :--- |
+| **Frontend** | `mis-core-frontend:v1.0` | Node 20 (Build) / Nginx Alpine (Run) |
+| **Backend Django** | `mis-core-django:v1.0` | Python 3.11-slim |
+| **Backend Flask** | `mis-core-flask:v1.1` | Python 3.11-slim |
+| **Coletor OPC** | `mis-core-coletor:v1.0` | Python 3.11-slim |
+| **Banco de Dados** | `mysql:8.0` | MySQL 8.0 Community |
+| **Time-Series DB** | `influxdb:1.8-alpine` | InfluxDB 1.8 (Legacy support) |
+| **Dashboards TS** | `chronograf:1.8` | Chronograf 1.8 |
+| **Alerting Engine** | `kapacitor:1.5` | Kapacitor 1.5 |
+
+*Gerado automaticamente em: 31/12/2025*

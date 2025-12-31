@@ -1,0 +1,49 @@
+# Ignorar arquivos desnecessários no build Docker
+
+# Dependencies
+node_modules/
+
+
+# Build output
+dist/
+build/
+
+# Development
+.vite/
+.cache/
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Git
+.git/
+.gitignore
+
+# Environment
+.env
+.env.local
+.env.development
+.env.production
+
+# Testing
+coverage/
+.nyc_output/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Misc
+*.md
+!README.md
+

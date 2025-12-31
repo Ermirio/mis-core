@@ -1,12 +1,15 @@
 version: "3.8"
 
 services:
-  # ===== MYSQL =====
+  # ==========================================
+  # SERVIÇOS DO MIS-CORE (Django/Infra)
+  # ==========================================
+
+  # ===== MYSQL (COMPARTILHADO) =====
   mysql:
     image: mysql:8.0
-    container_name: mis-core-mysql
+    container_name: mis-hub-mysql
     command: --default-authentication-plugin=mysql_native_password
-
     environment:
       MYSQL_DATABASE: ${MYSQL_DATABASE}
       MYSQL_USER: ${MYSQL_USER}
@@ -49,40 +52,36 @@ services:
       retries: 10
     restart: unless-stopped
 
-  # ===== DJANGO =====
+  # ===== DJANGO (CORE BACKEND) =====
   django:
     image: mis-core-django:v1.0
     build:
-      context: ./backend-django
+      context: ./mis-core/backend-django
       dockerfile: Dockerfile
     container_name: mis-core-django
     environment:
-      MYSQL_HOST: ${MYSQL_HOST}
-      MYSQL_PORT: ${MYSQL_PORT}
+      MYSQL_HOST: mysql
+      MYSQL_PORT: 3306
       MYSQL_DB: ${MYSQL_DB}
       MYSQL_DATABASE: ${MYSQL_DATABASE}
       MYSQL_USER: ${MYSQL_USER}
       MYSQL_PASSWORD: ${MYSQL_PASSWORD}
-
-      INFLUXDB_HOST: ${INFLUXDB_HOST}
-      INFLUXDB_PORT: ${INFLUXDB_PORT}
+      INFLUXDB_HOST: influxdb
+      INFLUXDB_PORT: 8086
       INFLUXDB_DATABASE: ${INFLUXDB_DATABASE}
       INFLUXDB_USER: ${INFLUXDB_USER}
       INFLUXDB_PASSWORD: ${INFLUXDB_PASSWORD}
-
       DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY}
       DJANGO_DEBUG: ${DJANGO_DEBUG}
       DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS}
-
       DJANGO_SUPERUSER_USERNAME: ${DJANGO_SUPERUSER_USERNAME}
       DJANGO_SUPERUSER_EMAIL: ${DJANGO_SUPERUSER_EMAIL}
       DJANGO_SUPERUSER_PASSWORD: ${DJANGO_SUPERUSER_PASSWORD}
-
       TZ: ${TZ}
     ports:
       - "${DJANGO_HOST_PORT}:8000"
     volumes:
-      - ./backend-django:/app
+      - ./mis-core/backend-django:/app
       - django_static:/app/staticfiles
     networks:
       - mis-network
@@ -96,83 +95,19 @@ services:
       interval: 30s
       timeout: 10s
       retries: 5
-      start_period: 40s
     restart: unless-stopped
 
-  # ===== FLASK =====
-  flask:
-    image: mis-core-flask:v1.1
-    build:
-      context: ./backend-flask
-      dockerfile: Dockerfile
-    container_name: mis-core-flask
-    environment:
-      INFLUXDB_HOST: ${INFLUXDB_HOST}
-      INFLUXDB_PORT: ${INFLUXDB_PORT}
-      INFLUXDB_DATABASE: ${INFLUXDB_DATABASE}
-      INFLUXDB_USER: ${INFLUXDB_USER}
-      INFLUXDB_PASSWORD: ${INFLUXDB_PASSWORD}
-      DJANGO_HOST: django
-      DJANGO_PORT: 8000
-
-      DJANGO_API_URL: ${DJANGO_API_URL}
-      TZ: ${TZ}
-    ports:
-      - "${FLASK_HOST_PORT}:5000"
-    volumes:
-      - ./backend-flask:/app
-    networks:
-      - mis-network
-    depends_on:
-      django:
-        condition: service_healthy
-      influxdb:
-        condition: service_healthy
-    healthcheck:
-      test: [ "CMD", "curl", "-f", "http://localhost:5000/api/health" ]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-      start_period: 20s
-    restart: unless-stopped
-
-  # ===== COLETOR OPC UA =====
-  coletor:
-    image: mis-core-coletor:v1.0
-    build:
-      context: ./coletor
-      dockerfile: Dockerfile
-    container_name: mis-core-coletor
-    environment:
-      DJANGO_API_URL: http://django:8000/api
-      FLASK_API_URL: http://flask:5000/api
-      INTERVALO_COLETA: ${INTERVALO_COLETA:-2}
-      TIMEOUT_REQUEST: ${TIMEOUT_REQUEST:-10}
-      TZ: ${TZ}
-    volumes:
-      - ./coletor:/app
-    networks:
-      - mis-network
-    depends_on:
-      django:
-        condition: service_healthy
-      flask:
-        condition: service_healthy
-    restart: unless-stopped
-
-  # ===== FRONTEND (NGINX) =====
+  # ===== FRONTEND CORE (NGINX) =====
   frontend:
     image: mis-core-frontend:v1.0
     build:
-      context: ./frontend-react
+      context: ./mis-core/frontend-react
       dockerfile: Dockerfile
       args:
         VITE_DJANGO_API_URL: ${VITE_DJANGO_API_URL}
         VITE_FLASK_API_URL: ${VITE_FLASK_API_URL}
         VITE_APP_LOGO: ${VITE_APP_LOGO}
         VITE_APP_TITLE: ${VITE_APP_TITLE}
-        VITE_ANALYTICS_ENDPOINT: ${VITE_ANALYTICS_ENDPOINT}
-        VITE_ANALYTICS_WEBSITE_ID: ${VITE_ANALYTICS_WEBSITE_ID}
     container_name: mis-core-frontend
     environment:
       TZ: ${TZ}
@@ -183,43 +118,110 @@ services:
     depends_on:
       django:
         condition: service_healthy
-      flask:
-        condition: service_healthy
-    healthcheck:
-      test: [ "CMD", "wget", "-q", "-O", "-", "http://127.0.0.1/health" ]
-      interval: 30s
-      timeout: 10s
-      retries: 5
     restart: unless-stopped
 
   # ===== PROXY REVERSO =====
   nginx-proxy:
     image: mis-core-proxy:v1.0
     build:
-      context: ./proxy-reverse
+      context: ./mis-core/proxy-reverse
       dockerfile: Dockerfile
     container_name: mis-core-proxy
-    environment:
-      TZ: ${TZ}
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
     ports:
       - "3000:80"
     networks:
       - mis-network
     depends_on:
       frontend:
-        condition: service_healthy
-      django:
-        condition: service_healthy
-    healthcheck:
-      test: [ "CMD", "wget", "-q", "-O", "-", "http://localhost/" ]
-      interval: 30s
-      timeout: 10s
-      retries: 5
+        condition: service_started
     restart: unless-stopped
 
-  # ===== CHRONOGRAF =====
+  # ==========================================
+  # SERVIÇOS DO MIS-AI (Predict-Generic)
+  # ==========================================
+
+  # ===== AI BACKEND (FLASK) =====
+  mis-ai-backend:
+    build: 
+      context: ./mis-ai/backend
+    container_name: mis-ai-backend
+    ports:
+      - "5004:5004"
+    environment:
+      # Conecta no MySQL Compartilhado (Service: mysql)
+      DATABASE_URL: mysql+pymysql://${MYSQL_USER}:${MYSQL_PASSWORD}@mysql:3306/density_db
+      OPC_SERVER_URL: ${OPC_SERVER_URL}
+    networks:
+      - mis-network
+    volumes:
+      - ./mis-ai/backend/models:/app/models
+      - ./mis-ai/backend/logs:/app/logs
+    depends_on:
+      mysql:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ===== AI FRONTEND (REACT) =====
+  mis-ai-frontend:
+    build: 
+      context: ./mis-ai/frontend
+    container_name: mis-ai-frontend
+    ports:
+      - "3007:3007"
+    environment:
+      NODE_ENV: production
+      VITE_API_URL: /predicao-api
+    networks:
+      - mis-network
+    depends_on:
+      - mis-ai-backend
+    restart: unless-stopped
+
+  # ==========================================
+  # SERVIÇOS AUXILIARES (Legacy Core)
+  # ==========================================
+  
+  # Legado Core Flask (Manter ou Remover? Mantendo por compatibilidade)
+  flask:
+    image: mis-core-flask:v1.1
+    build:
+      context: ./mis-core/backend-flask
+      dockerfile: Dockerfile
+    container_name: mis-core-flask
+    environment:
+      INFLUXDB_HOST: influxdb
+      INFLUXDB_PORT: 8086
+      INFLUXDB_DATABASE: ${INFLUXDB_DATABASE}
+      INFLUXDB_USER: ${INFLUXDB_USER}
+      INFLUXDB_PASSWORD: ${INFLUXDB_PASSWORD}
+      DJANGO_HOST: django
+      DJANGO_PORT: 8000
+    ports:
+      - "${FLASK_HOST_PORT}:5000"
+    volumes:
+      - ./mis-core/backend-flask:/app
+    networks:
+      - mis-network
+    depends_on:
+      django:
+        condition: service_healthy
+    restart: unless-stopped
+
+  coletor:
+    image: mis-core-coletor:v1.0
+    build:
+      context: ./mis-core/coletor
+      dockerfile: Dockerfile
+    container_name: mis-core-coletor
+    environment:
+      DJANGO_API_URL: http://django:8000/api
+      FLASK_API_URL: http://flask:5000/api
+    volumes:
+      - ./mis-core/coletor:/app
+    networks:
+      - mis-network
+    restart: unless-stopped
+
   chronograf:
     image: chronograf:1.8
     container_name: mis-core-chronograf
@@ -227,24 +229,10 @@ services:
       - "8889:8888"
     environment:
       INFLUXDB_URL: http://influxdb:8086
-      INFLUXDB_USERNAME: ${INFLUXDB_ADMIN_USER}
-      KAPACITOR_URL: http://kapacitor:9092
-      KAPACITOR_USERNAME: admin
-      KAPACITOR_PASSWORD: admin123
-      BASE_PATH: /chronograf
-      PUBLIC_URL: /chronograf
-      INFLUXDB_PASSWORD: ${INFLUXDB_ADMIN_PASSWORD}
-      TZ: ${TZ}
     networks:
       - mis-network
-    depends_on:
-      influxdb:
-        condition: service_healthy
-      kapacitor:
-        condition: service_started
     restart: unless-stopped
 
-  # ===== KAPACITOR =====
   kapacitor:
     image: kapacitor:1.5
     container_name: mis-core-kapacitor
@@ -252,16 +240,10 @@ services:
       - "9093:9092"
     environment:
       KAPACITOR_INFLUXDB_0_URLS_0: http://influxdb:8086
-      KAPACITOR_INFLUXDB_0_USERNAME: ${INFLUXDB_ADMIN_USER}
-      KAPACITOR_INFLUXDB_0_PASSWORD: ${INFLUXDB_ADMIN_PASSWORD}
-      TZ: ${TZ}
     volumes:
       - kapacitor_data:/var/lib/kapacitor
     networks:
       - mis-network
-    depends_on:
-      influxdb:
-        condition: service_healthy
     restart: unless-stopped
 
 volumes:
@@ -276,5 +258,5 @@ volumes:
 
 networks:
   mis-network:
-    name: mis-core-network
+    name: mis-hub-network
     driver: bridge
