@@ -6,17 +6,17 @@ import path from 'path'
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react(), tailwindcss()],
-  
+
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
     },
   },
-  
+
   // ==================== CONFIGURAÇÃO PARA PROXY NGINX ====================
   // Base URL para quando a aplicação rodar atrás do proxy
-  base: '/prediction-app/',
-  
+  base: '/mis-ai/',
+
   // Configuração do servidor de desenvolvimento
   server: {
     host: '0.0.0.0',
@@ -31,7 +31,7 @@ export default defineConfig({
       },
     },
   },
-  
+
   // Configuração de build para produção
   build: {
     outDir: 'dist',
@@ -46,7 +46,7 @@ export default defineConfig({
       },
     },
   },
-  
+
   // Preview (para testar build localmente)
   preview: {
     host: '0.0.0.0',

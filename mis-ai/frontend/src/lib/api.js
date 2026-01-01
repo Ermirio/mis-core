@@ -3,7 +3,7 @@
 
 // Detecta automaticamente se está em desenvolvimento ou produção
 const API_BASE_URL = process.env.NODE_ENV === 'production'
-  ? '/predicao-api'  // Em produção, usa o proxy do Nginx
+  ? '/mis-ai-api/api'  // Em produção, usa o proxy do Nginx
   : 'http://localhost:5004/api'  // Em desenvolvimento, acessa diretamente
 
 class ApiClient {
@@ -19,7 +19,7 @@ class ApiClient {
 
     try {
       const response = await fetch(url, config)
-      
+
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}))
         throw new Error(errorData.error || `HTTP error! status: ${response.status}`)
@@ -129,7 +129,7 @@ class ApiClient {
   // ADICIONE ESTE NOVO MÉTODO
   async getLastPrediction(modelId) {
     return this.request(`/models/${modelId}/last_prediction`)
-}
+  }
 
   async predictWithModel(modelId) {
     return this.request(`/models/${modelId}/predict`, {
@@ -168,10 +168,23 @@ class ApiClient {
     const queryParams = new URLSearchParams(params)
     return this.request(`/data?${queryParams.toString()}`)
   }
-  
+
   // ==================== OPC - CORRIGIDO ====================
   // Mudado de /opc-variables para /opc/variables (padrão com barra)
-  
+
+  // --- OPC CONFIG ---
+  async getOPCConfig() {
+    return this.request('/opc/config')
+  }
+
+  async updateOPCConfig(opcUrl) {
+    return this.request('/opc/config', {
+      method: 'POST',
+      body: JSON.stringify({ opc_url: opcUrl }),
+    })
+  }
+
+  // --- OPC VARIABLES ---
   async getOPCVariables(line) {
     return this.request(`/opc/variables?line=${encodeURIComponent(line)}`)
   }
@@ -249,9 +262,9 @@ class ApiClient {
     const queryParams = new URLSearchParams(params)
     return this.request(`/opc/history?${queryParams.toString()}`)
   }
-  
+
   // ==================== FIM OPC ====================
-  
+
   // Compatibility methods (legacy API)
   async saveDensity(data) {
     return this.request('/density', {
@@ -280,7 +293,7 @@ class ApiClient {
 }
 
 
-  
+
 
 export const api = new ApiClient()
 

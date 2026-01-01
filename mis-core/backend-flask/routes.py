@@ -911,7 +911,14 @@ def get_ole_realtime(linha_nome):
              
              # Fallback Influx se dados estiverem faltando ("N/A")
              if line_context['sku_codigo'] == 'N/A':
-                 q_ctx = f"SELECT last(sku_codigo_field) as sku_1, last(sku) as sku_2, last(ordem_producao_field) as op_1, last(order_id) as op_2, last(descricao) as descricao_val, last(produto) as prod, last(cuc) as cuc_val, last(formato_gramas) as fmt FROM production WHERE \"line\" = '{normalize_line_name(linha_nome)}'"
+                 # FIX: Tenta pegar contexto do PRIMEIRO equipamento (Lider) especificamente
+                 # Se buscar pela linha inteira ("line"='...'), pode pegar o ultimo ponto de um equipamento final (ex: Encaixotadora)
+                 # que ainda nao recebeu o SKU e está N/A.
+                 target_clause = f"\"line\" = '{normalize_line_name(linha_nome)}'"
+                 if 'primeiro_eq' in locals() and primeiro_eq:
+                      target_clause = f"\"equipment\" = '{primeiro_eq}'"
+                 
+                 q_ctx = f"SELECT last(sku_codigo_field) as sku_1, last(sku) as sku_2, last(ordem_producao_field) as op_1, last(order_id) as op_2, last(descricao) as descricao_val, last(produto) as prod, last(cuc) as cuc_val, last(formato_gramas) as fmt FROM production WHERE {target_clause}"
                  
                  rs_ctx = influx_client.query(q_ctx)
                  

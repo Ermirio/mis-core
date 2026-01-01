@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MIS HUB - Central de Monitoramento</title>
+    <style>
+        :root {
+            --primary: #3b82f6;
+            --background: #0f172a;
+            --card-bg: #1e293b;
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        }
+
+        body {
+            background-color: var(--background);
+            color: var(--text-main);
+            overflow: hidden;
+            height: 100vh;
+        }
+
+        /* Intro Video Overlay */
+        #intro-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: #000;
+            z-index: 1000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: opacity 1s ease;
+        }
+
+        #intro-overlay video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        #skip-btn {
+            position: absolute;
+            bottom: 30px;
+            right: 30px;
+            padding: 10px 20px;
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(5px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: white;
+            border-radius: 20px;
+            cursor: pointer;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            font-size: 0.8rem;
+            transition: all 0.3s;
+        }
+
+        #skip-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        /* Main Hub Content */
+        #hub-container {
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            opacity: 0;
+            transition: opacity 1.5s ease;
+            background: radial-gradient(circle at center, #1e293b 0%, #0f172a 100%);
+        }
+
+        .header {
+            margin-bottom: 4rem;
+            text-align: center;
+            animation: fadeInDown 1s ease 0.5s forwards;
+            opacity: 0;
+        }
+
+        .header h1 {
+            font-size: 3rem;
+            font-weight: 800;
+            background: linear-gradient(to right, #60a5fa, #a855f7);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 0.5rem;
+        }
+
+        .header p {
+            color: var(--text-muted);
+            font-size: 1.1rem;
+        }
+
+        /* Carousel / Grid */
+        .cards-wrapper {
+            display: flex;
+            gap: 2rem;
+            padding: 2rem;
+            max-width: 1400px;
+            flex-wrap: wrap;
+            justify-content: center;
+            perspective: 1000px;
+        }
+
+        .mis-card {
+            background: var(--card-bg);
+            border-radius: 20px;
+            width: 240px;
+            height: 320px;
+            position: relative;
+            cursor: pointer;
+            overflow: hidden;
+            transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            text-decoration: none;
+        }
+
+        .mis-card:hover {
+            transform: translateY(-15px) scale(1.05);
+            box-shadow: 0 20px 40px rgba(59, 130, 246, 0.2);
+            border-color: rgba(59, 130, 246, 0.3);
+        }
+
+        .card-image {
+            width: 100%;
+            height: 60%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: linear-gradient(to bottom, rgba(255,255,255,0.02), transparent);
+            padding: 20px;
+        }
+
+        .card-image img {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            filter: drop-shadow(0 0 10px rgba(0,0,0,0.5));
+            transition: transform 0.4s;
+        }
+
+        .mis-card:hover .card-image img {
+            transform: scale(1.1);
+        }
+
+        .card-content {
+            padding: 1.5rem;
+            text-align: center;
+            width: 100%;
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }
+
+        .card-title {
+            color: var(--text-main);
+            font-size: 1.25rem;
+            font-weight: 700;
+            margin-bottom: 0.5rem;
+        }
+
+        .card-desc {
+            color: var(--text-muted);
+            font-size: 0.85rem;
+            line-height: 1.4;
+        }
+
+        .status-dot {
+            position: absolute;
+            top: 15px;
+            right: 15px;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background-color: #22c55e;
+            box-shadow: 0 0 10px #22c55e;
+        }
+
+        .status-dot.inactive {
+            background-color: #94a3b8;
+            box-shadow: none;
+        }
+
+        @keyframes fadeInDown {
+            from {
+                opacity: 0;
+                transform: translateY(-20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        /* Loading */
+        .loader {
+            border: 3px solid rgba(255,255,255,0.1);
+            border-radius: 50%;
+            border-top: 3px solid var(--primary);
+            width: 24px;
+            height: 24px;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Intro Video -->
+    <div id="intro-overlay">
+        <video id="intro-video" autoplay muted playsinline>
+            <source src="imagens/mis-hub-animation-video.mp4" type="video/mp4">
+            Seu navegador não suporta HTML5 video.
+        </video>
+        <button id="skip-btn">Pular Introdução</button>
+    </div>
+
+    <!-- Main Hub -->
+    <div id="hub-container">
+        <div class="header">
+            <h1>MIS HUB</h1>
+            <p>Selecione o módulo para acessar</p>
+        </div>
+
+        <div class="cards-wrapper">
+            <!-- MIS Core -->
+            <a href="/mis-core/" class="mis-card">
+                <div class="status-dot"></div>
+                <div class="card-image">
+                    <img src="imagens/mis-core-animation-image.png" alt="MIS Core">
+                </div>
+                <div class="card-content">
+                    <div class="card-title">MIS Core</div>
+                    <div class="card-desc">Gestão Central & Operações</div>
+                </div>
+            </a>
+
+            <!-- MIS Analytics -->
+            <a href="/mis-core/analytics" class="mis-card">
+                <div class="status-dot"></div>
+                <div class="card-image">
+                    <img src="imagens/mis-analytcs-animation-image.png" alt="MIS Analytics">
+                </div>
+                <div class="card-content">
+                    <div class="card-title">Analytics</div>
+                    <div class="card-desc">Análise de Dados Avançada</div>
+                </div>
+            </a>
+
+            <!-- MIS AI -->
+            <a href="/mis-ai/" class="mis-card">
+                <div class="status-dot"></div>
+                <div class="card-image">
+                    <img src="imagens/mis-ai-animation-image.png" alt="MIS AI">
+                </div>
+                <div class="card-content">
+                    <div class="card-title">MIS AI</div>
+                    <div class="card-desc">Predição & Inteligência Artificial</div>
+                </div>
+            </a>
+
+            <!-- MIS Energy -->
+            <a href="/mis-energy/" class="mis-card">
+                <div class="status-dot"></div>
+                <div class="card-image">
+                    <img src="imagens/mis-energy-aniamtion.png" alt="MIS Energy">
+                </div>
+                <div class="card-content">
+                    <div class="card-title">MIS Energy</div>
+                    <div class="card-desc">Monitoramento Energético</div>
+                </div>
+            </a>
+
+            <!-- MIS Change Over -->
+            <a href="#" onclick="alert('Em Breve: Módulo em desenvolvimento')" class="mis-card" style="opacity: 0.7;">
+                <div class="status-dot inactive"></div>
+                <div class="card-image">
+                    <img src="imagens/mis-change-over-aniamtion-image.png" alt="Change Over">
+                </div>
+                <div class="card-content">
+                    <div class="card-title">Change Over</div>
+                    <div class="card-desc">Troca Rápida de Ferramentas</div>
+                </div>
+            </a>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const video = document.getElementById('intro-video');
+            const overlay = document.getElementById('intro-overlay');
+            const hub = document.getElementById('hub-container');
+            const skipBtn = document.getElementById('skip-btn');
+
+            let videoFinished = false;
+
+            function finishIntro() {
+                if (videoFinished) return;
+                videoFinished = true;
+                
+                overlay.style.opacity = '0';
+                setTimeout(() => {
+                    overlay.style.display = 'none';
+                    hub.style.opacity = '1';
+                    video.pause(); // Ensure video stops
+                }, 1000);
+            }
+
+            video.addEventListener('ended', finishIntro);
+            skipBtn.addEventListener('click', finishIntro);
+
+            // Fallback: if video fails to play or load
+            setTimeout(() => {
+                if (video.paused && !videoFinished) {
+                    console.warn("Video autoplay blocked or slow, showing skip button prominently or auto-skipping");
+                    // finishIntro(); // Optional: Auto-skip if autoplay blocked
+                }
+            }, 5000);
+        });
+    </script>
+</body>
+</html>

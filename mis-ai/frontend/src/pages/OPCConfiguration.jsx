@@ -5,14 +5,14 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
-import { 
+import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { 
+import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -21,12 +21,12 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog'
-import { 
-  Settings, 
-  Plus, 
-  Play, 
-  Square, 
-  Activity, 
+import {
+  Settings,
+  Plus,
+  Play,
+  Square,
+  Activity,
   AlertCircle,
   CheckCircle,
   Trash2,
@@ -34,6 +34,67 @@ import {
 } from 'lucide-react'
 import { api } from '@/lib/api'
 import { useToast } from '@/hooks/use-toast'
+
+
+const ConnectionSection = ({ opcConfig, setOpcConfig }) => {
+  const [connectionLoading, setConnectionLoading] = useState(false)
+  const { toast } = useToast()
+
+  const handleUpdateConfig = async (e) => {
+    e.preventDefault()
+    setConnectionLoading(true)
+    try {
+      const result = await api.updateOPCConfig(opcConfig.opc_url)
+      setOpcConfig(prev => ({ ...prev, ...result.config }))
+      toast({
+        title: result.connected ? "Conectado" : "Salvo (Sem Conexão)",
+        description: result.message,
+        variant: result.connected ? "default" : "warning"
+      })
+    } catch (error) {
+      toast({
+        title: "Erro de Conexão",
+        description: error.message || "Falha ao atualizar configuração OPC",
+        variant: "destructive"
+      })
+    } finally {
+      setConnectionLoading(false)
+    }
+  }
+
+  return (
+    <Card className="mb-6 border-blue-200 dark:border-blue-900 bg-blue-50/30 dark:bg-blue-950/10">
+      <CardHeader>
+        <CardTitle className="flex items-center space-x-2">
+          <Activity className="h-5 w-5 text-blue-600" />
+          <span>Conexão com Servidor OPC UA</span>
+        </CardTitle>
+        <CardDescription>Configuração global do servidor OPC (afeta todas as linhas)</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <form onSubmit={handleUpdateConfig} className="flex gap-4 items-end">
+          <div className="flex-1 space-y-2">
+            <Label htmlFor="opc-url">URL do Servidor</Label>
+            <Input
+              id="opc-url"
+              value={opcConfig.opc_url || ''}
+              onChange={(e) => setOpcConfig({ ...opcConfig, opc_url: e.target.value })}
+              placeholder="opc.tcp://192.168.1.10:4840"
+              className="bg-background"
+            />
+          </div>
+          <Button type="submit" disabled={connectionLoading}>
+            {connectionLoading ? (
+              <span className="flex items-center"><Activity className="mr-2 h-4 w-4 animate-spin" /> Conectando...</span>
+            ) : (
+              <span className="flex items-center"><Settings className="mr-2 h-4 w-4" /> Atualizar & Reconectar</span>
+            )}
+          </Button>
+        </form>
+      </CardContent>
+    </Card>
+  )
+}
 
 const OPCConfiguration = ({ selectedLine }) => {
   const [variables, setVariables] = useState([])
@@ -52,73 +113,62 @@ const OPCConfiguration = ({ selectedLine }) => {
   })
   const { toast } = useToast()
 
+  // --- NOVO: Carregar Configuração Global ---
+  const [opcConfig, setOpcConfig] = useState({ opc_url: '', is_active: false })
+  const [connectionLoading, setConnectionLoading] = useState(false)
+
+  useEffect(() => {
+    loadGlobalConfig()
+  }, [])
+
+  const loadGlobalConfig = async () => {
+    try {
+      const data = await api.getOPCConfig()
+      if (data) setOpcConfig(data)
+    } catch (error) {
+      console.error("Erro ao carregar config OPC:", error)
+    }
+  }
+
+  // Load variables when line changes
   useEffect(() => {
     if (selectedLine) {
       loadVariables()
       loadLoggingStatus()
-    } else {
-      setVariables([])
-      setLoggingStatus(null)
     }
   }, [selectedLine])
 
   const loadVariables = async () => {
+    if (!selectedLine) return
+    setLoading(true)
     try {
       const data = await api.getOPCVariables(selectedLine)
-      setVariables(data)
+      setVariables(data || [])
     } catch (error) {
+      console.error("Erro ao carregar variáveis:", error)
       toast({
         title: "Erro",
-        description: "Erro ao carregar variáveis OPC",
+        description: "Falha ao carregar variáveis OPC",
         variant: "destructive"
       })
+    } finally {
+      setLoading(false)
     }
   }
 
   const loadLoggingStatus = async () => {
+    if (!selectedLine) return
     try {
       const data = await api.getOPCLoggingStatus(selectedLine)
       setLoggingStatus(data)
     } catch (error) {
-      console.error('Erro ao carregar status de logging:', error)
-      setLoggingStatus({ is_logging_active: false })
+      console.error("Erro ao carregar status de logging:", error)
     }
   }
 
-  const handleSubmit = async (e) => {
-    e.preventDefault()
-    if (!formData.node_id.trim() || !formData.variable_name.trim()) {
-      toast({
-        title: "Erro",
-        description: "Node ID e nome da variável são obrigatórios",
-        variant: "destructive"
-      })
-      return
-    }
-
-    setLoading(true)
-    try {
-      if (editingVariable) {
-        await api.updateOPCVariable(editingVariable.id, {
-          ...formData,
-          line: selectedLine
-        })
-        toast({
-          title: "Sucesso",
-          description: "Variável OPC atualizada com sucesso"
-        })
-      } else {
-        await api.createOPCVariable({
-          ...formData,
-          line: selectedLine
-        })
-        toast({
-          title: "Sucesso",
-          description: "Variável OPC registrada com sucesso"
-        })
-      }
-      
-      setDialogOpen(false)
+  const handleOpenChange = (open) => {
+    setDialogOpen(open)
+    if (!open) {
       setEditingVariable(null)
       setFormData({
         node_id: '',
@@ -127,51 +177,38 @@ const OPCConfiguration = ({ selectedLine }) => {
         type_category: 'read',
         description: ''
       })
-      loadVariables()
-    } catch (error) {
-      toast({
-        title: "Erro",
-        description: error.message || `Erro ao ${editingVariable ? 'atualizar' : 'registrar'} variável OPC`,
-        variant: "destructive"
-      })
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const handleLogging = async (action) => {
-    setLoading(true)
-    try {
-      if (action === 'start') {
-        await api.startOPCLogging(selectedLine)
-        toast({
-          title: "Sucesso",
-          description: "Logging OPC iniciado"
-        })
-      } else {
-        await api.stopOPCLogging(selectedLine)
-        toast({
-          title: "Sucesso",
-          description: "Logging OPC parado"
-        })
-      }
-      loadLoggingStatus()
-    } catch (error) {
-      toast({
-        title: "Erro",
-        description: error.message || "Erro ao controlar logging OPC",
-        variant: "destructive"
-      })
-    } finally {
-      setLoading(false)
     }
   }
 
   const handleInputChange = (field, value) => {
-    setFormData(prev => ({
-      ...prev,
-      [field]: value
-    }))
+    setFormData(prev => ({ ...prev, [field]: value }))
+  }
+
+  const handleSubmit = async (e) => {
+    e.preventDefault()
+    setLoading(true)
+    try {
+      const payload = { ...formData, line: selectedLine }
+      if (editingVariable) {
+        await api.updateOPCVariable(editingVariable.id, payload)
+        toast({ title: "Sucesso", description: "Variável atualizada" })
+      } else {
+        await api.createOPCVariable(payload)
+        toast({ title: "Sucesso", description: "Variável criada" })
+      }
+      setDialogOpen(false)
+      setEditingVariable(null)
+      setFormData({ node_id: '', variable_name: '', type: 'Float', type_category: 'read', description: '' })
+      loadVariables()
+    } catch (error) {
+      toast({
+        title: "Erro",
+        description: error.message || "Falha ao salvar variável",
+        variant: "destructive"
+      })
+    } finally {
+      setLoading(false)
+    }
   }
 
   const handleEdit = (variable) => {
@@ -193,21 +230,17 @@ const OPCConfiguration = ({ selectedLine }) => {
 
   const handleDeleteConfirm = async () => {
     if (!variableToDelete) return
-    
     setLoading(true)
     try {
       await api.deleteOPCVariable(variableToDelete.id)
-      toast({
-        title: "Sucesso",
-        description: "Variável OPC excluída com sucesso"
-      })
+      toast({ title: "Sucesso", description: "Variável excluída" })
       setDeleteDialogOpen(false)
       setVariableToDelete(null)
       loadVariables()
     } catch (error) {
       toast({
         title: "Erro",
-        description: error.message || "Erro ao excluir variável OPC",
+        description: error.message || "Falha ao excluir variável",
         variant: "destructive"
       })
     } finally {
@@ -215,19 +248,28 @@ const OPCConfiguration = ({ selectedLine }) => {
     }
   }
 
-  const handleOpenChange = (open) => {
-    if (!open) {
-      setEditingVariable(null)
-      setFormData({
-        node_id: '',
-        variable_name: '',
-        type: 'Float',
-        type_category: 'read',
-        description: ''
+  const handleLogging = async (action) => {
+    setLoading(true)
+    try {
+      if (action === 'start') {
+        await api.startOPCLogging(selectedLine)
+        toast({ title: "Sucesso", description: "Logging iniciado" })
+      } else {
+        await api.stopOPCLogging(selectedLine)
+        toast({ title: "Sucesso", description: "Logging parado" })
+      }
+      loadLoggingStatus()
+    } catch (error) {
+      toast({
+        title: "Erro",
+        description: error.message || "Falha ao controlar logging",
+        variant: "destructive"
       })
+    } finally {
+      setLoading(false)
     }
-    setDialogOpen(open)
   }
+
 
   if (!selectedLine) {
     return (
@@ -235,16 +277,19 @@ const OPCConfiguration = ({ selectedLine }) => {
         <div>
           <h1 className="text-3xl font-bold">Configuração OPC</h1>
           <p className="text-muted-foreground">
-            Configure variáveis OPC e controle o logging de dados
+            Configure o servidor OPC UA e as variáveis de coleta.
           </p>
         </div>
-        
+
+        {/* Exibir configuração global mesmo sem linha selecionada */}
+        <ConnectionSection opcConfig={opcConfig} setOpcConfig={setOpcConfig} />
+
         <Card>
           <CardContent className="text-center py-12">
             <AlertCircle className="h-12 w-12 mx-auto mb-4 text-muted-foreground opacity-50" />
             <h3 className="text-lg font-semibold mb-2">Nenhuma linha selecionada</h3>
             <p className="text-muted-foreground">
-              Selecione uma linha na barra de navegação para configurar variáveis OPC
+              Selecione uma linha na barra de navegação para configurar variáveis específicas.
             </p>
           </CardContent>
         </Card>
@@ -254,15 +299,18 @@ const OPCConfiguration = ({ selectedLine }) => {
 
   return (
     <div className="space-y-6">
+      {/* Connection Settings (Global) */}
+      <ConnectionSection opcConfig={opcConfig} setOpcConfig={setOpcConfig} />
+
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold">Configuração OPC</h1>
           <p className="text-muted-foreground">
-            Configurações OPC para a linha <strong>{selectedLine}</strong>
+            Configurações para <strong>{selectedLine}</strong>
           </p>
         </div>
-        
+
         <Dialog open={dialogOpen} onOpenChange={handleOpenChange}>
           <DialogTrigger asChild>
             <Button className="flex items-center space-x-2 bg-blue-600 text-white hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600 transition-all duration-200 hover:scale-105 hover:shadow-lg">
@@ -276,7 +324,7 @@ const OPCConfiguration = ({ selectedLine }) => {
                 {editingVariable ? 'Editar Variável OPC' : 'Registrar Variável OPC'}
               </DialogTitle>
               <DialogDescription>
-                {editingVariable 
+                {editingVariable
                   ? `Edite a variável OPC para a linha ${selectedLine}`
                   : `Adicione uma nova variável OPC para a linha ${selectedLine}`
                 }
@@ -309,8 +357,8 @@ const OPCConfiguration = ({ selectedLine }) => {
                 </div>
                 <div>
                   <Label htmlFor="type_category">Categoria da Variável</Label>
-                  <Select 
-                    value={formData.type_category} 
+                  <Select
+                    value={formData.type_category}
                     onValueChange={(value) => handleInputChange('type_category', value)}
                   >
                     <SelectTrigger>
@@ -322,7 +370,7 @@ const OPCConfiguration = ({ selectedLine }) => {
                     </SelectContent>
                   </Select>
                   <p className="text-xs text-muted-foreground mt-1">
-                    {formData.type_category === 'read' 
+                    {formData.type_category === 'read'
                       ? 'Variável para leitura de dados (sensores, medições)'
                       : 'Variável para escrita de predições (targets, setpoints)'
                     }
@@ -330,8 +378,8 @@ const OPCConfiguration = ({ selectedLine }) => {
                 </div>
                 <div>
                   <Label htmlFor="type">Tipo de Dados</Label>
-                  <Select 
-                    value={formData.type} 
+                  <Select
+                    value={formData.type}
                     onValueChange={(value) => handleInputChange('type', value)}
                   >
                     <SelectTrigger>
@@ -357,16 +405,16 @@ const OPCConfiguration = ({ selectedLine }) => {
                 </div>
               </div>
               <DialogFooter className="mt-6">
-                <Button 
-                  type="button" 
-                  variant="outline" 
+                <Button
+                  type="button"
+                  variant="outline"
                   onClick={() => setDialogOpen(false)}
                 >
                   Cancelar
                 </Button>
                 <Button type="submit" disabled={loading} className="bg-blue-600 text-white hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600 transition-all duration-200 hover:scale-105">
-                  {loading 
-                    ? (editingVariable ? 'Atualizando...' : 'Registrando...') 
+                  {loading
+                    ? (editingVariable ? 'Atualizando...' : 'Registrando...')
                     : (editingVariable ? 'Atualizar Variável' : 'Registrar Variável')
                   }
                 </Button>
@@ -384,7 +432,7 @@ const OPCConfiguration = ({ selectedLine }) => {
               <Activity className="h-5 w-5" />
               <span>Controle de Logging</span>
             </div>
-            <Badge 
+            <Badge
               variant={loggingStatus?.is_logging_active ? 'default' : 'secondary'}
               className="flex items-center space-x-1"
             >
@@ -420,7 +468,7 @@ const OPCConfiguration = ({ selectedLine }) => {
               <span>Parar Logging</span>
             </Button>
           </div>
-          
+
           {loggingStatus?.is_logging_active && (
             <div className="mt-4 p-3 bg-green-50 dark:bg-green-900/20 rounded-md">
               <div className="flex items-center space-x-2">
@@ -475,10 +523,10 @@ const OPCConfiguration = ({ selectedLine }) => {
                           </div>
                         )}
                       </div>
-                      
+
                       <div className="flex space-x-2">
-                        <Button 
-                          variant="outline" 
+                        <Button
+                          variant="outline"
                           size="sm"
                           onClick={() => handleEdit(variable)}
                           className="hover:bg-blue-50 hover:border-blue-300 transition-colors duration-200"
@@ -486,9 +534,9 @@ const OPCConfiguration = ({ selectedLine }) => {
                         >
                           <Edit className="h-4 w-4" />
                         </Button>
-                        <Button 
-                          variant="outline" 
-                          size="sm" 
+                        <Button
+                          variant="outline"
+                          size="sm"
                           onClick={() => handleDeleteClick(variable)}
                           className="text-destructive hover:text-destructive hover:bg-red-50 hover:border-red-300 transition-colors duration-200"
                           title="Excluir variável"
@@ -508,7 +556,7 @@ const OPCConfiguration = ({ selectedLine }) => {
               <p className="text-muted-foreground mb-4">
                 Comece registrando suas primeiras variáveis OPC para a linha {selectedLine}
               </p>
-              <Button 
+              <Button
                 onClick={() => setDialogOpen(true)}
                 className="bg-blue-600 text-white hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600 transition-all duration-200 hover:scale-105 hover:shadow-lg"
               >
@@ -531,15 +579,15 @@ const OPCConfiguration = ({ selectedLine }) => {
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button 
-              variant="outline" 
+            <Button
+              variant="outline"
               onClick={() => setDeleteDialogOpen(false)}
               disabled={loading}
             >
               Cancelar
             </Button>
-            <Button 
-              variant="destructive" 
+            <Button
+              variant="destructive"
               onClick={handleDeleteConfirm}
               disabled={loading}
               className="transition-all duration-200 hover:scale-105"

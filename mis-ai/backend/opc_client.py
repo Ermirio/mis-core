@@ -210,6 +210,33 @@ class OPCClient:
             return True, "Logging parado com sucesso."
         return self.schedule_task_safely(_stop())
 
+    async def disconnect(self):
+        """Desconecta do servidor OPC"""
+        if self._client and self.connected:
+            try:
+                await self._client.disconnect()
+                self.connected = False
+                logger.info("OPCClient desconectado com sucesso.")
+            except Exception as e:
+                logger.error(f"Erro ao desconectar OPCClient: {e}", exc_info=True)
+                # Mesmo com erro, consideramos desconectado para evitar loops
+                self.connected = False 
+
+    async def configure(self, new_url: str):
+        """Atualiza a URL de conexão e força reconexão"""
+        logger.info(f"Reconfigurando OPCClient para nova URL: {new_url}")
+        
+        # 1. Desconectar se estiver conectado
+        if self.connected:
+            await self.disconnect()
+            
+        # 2. Atualizar URL
+        self.url = new_url
+        
+        # 3. Reconectar (a reconexão automática ou manual fará o resto)
+        # O cliente chamador (API) deve chamar .connect() explicitamente após .configure()
+        logger.info("OPCClient reconfigurado. Chame .connect() para estabelecer conexão.")
+
     def get_logging_status_for_line(self, line):
         task = self.logging_tasks.get(line)
         return task is not None and not task.done()

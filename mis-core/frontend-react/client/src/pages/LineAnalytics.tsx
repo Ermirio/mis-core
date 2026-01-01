@@ -439,35 +439,43 @@ const LineAnalytics: React.FC = () => {
                                 <Card key={idx}>
                                     <CardHeader>
                                         <CardTitle>{res.variable}</CardTitle>
-                                        <div className="flex gap-4 text-sm text-gray-500">
-                                            <span>Média: {res.stats.mean.toFixed(2)}</span>
-                                            <span>Std: {res.stats.std.toFixed(2)}</span>
-                                            {res.stats.cpk !== null && (
-                                                <span className={res.stats.cpk < 1.33 ? 'text-red-500 font-bold' : 'text-green-600 font-bold'}>
-                                                    Cpk: {res.stats.cpk.toFixed(2)}
-                                                </span>
-                                            )}
-                                            {res.stats.cp !== null && (
-                                                <span className={res.stats.cp < 1.33 ? 'text-red-500 font-bold ml-4' : 'text-green-600 font-bold ml-4'}>
-                                                    Cp: {res.stats.cp.toFixed(2)}
-                                                </span>
-                                            )}
-                                        </div>
+                                        {res.error ? (
+                                            <div className="text-red-500 text-sm font-medium bg-red-50 p-2 rounded border border-red-200 dark:bg-red-900/20 dark:border-red-800">
+                                                {res.error === 'No data found' ? 'Sem dados para o período selecionado' : res.error}
+                                            </div>
+                                        ) : (
+                                            <div className="flex gap-4 text-sm text-gray-500">
+                                                <span>Média: {res.stats?.mean?.toFixed(2) ?? 'N/A'}</span>
+                                                <span>Std: {res.stats?.std?.toFixed(2) ?? 'N/A'}</span>
+                                                {res.stats?.cpk !== undefined && res.stats.cpk !== null && (
+                                                    <span className={res.stats.cpk < 1.33 ? 'text-red-500 font-bold' : 'text-green-600 font-bold'}>
+                                                        Cpk: {res.stats.cpk.toFixed(2)}
+                                                    </span>
+                                                )}
+                                                {res.stats?.cp !== undefined && res.stats.cp !== null && (
+                                                    <span className={res.stats.cp < 1.33 ? 'text-red-500 font-bold ml-4' : 'text-green-600 font-bold ml-4'}>
+                                                        Cp: {res.stats.cp.toFixed(2)}
+                                                    </span>
+                                                )}
+                                            </div>
+                                        )}
                                     </CardHeader>
                                     <CardContent>
-                                        <Plot
-                                            data={[
-                                                {
-                                                    x: res.histogram.bins,
-                                                    y: res.histogram.counts,
-                                                    type: 'bar',
-                                                    name: 'Distribuição'
-                                                }
-                                            ]}
-                                            layout={{ width: undefined, height: 300, autosize: true, title: 'Histograma' }}
-                                            useResizeHandler={true}
-                                            className="w-full"
-                                        />
+                                        {!res.error && res.histogram && (
+                                            <Plot
+                                                data={[
+                                                    {
+                                                        x: res.histogram.bins,
+                                                        y: res.histogram.counts,
+                                                        type: 'bar',
+                                                        name: 'Distribuição'
+                                                    }
+                                                ]}
+                                                layout={{ width: undefined, height: 300, autosize: true, title: { text: 'Histograma' } }}
+                                                useResizeHandler={true}
+                                                className="w-full"
+                                            />
+                                        )}
                                     </CardContent>
                                 </Card>
                             ))}
@@ -565,11 +573,11 @@ const LineAnalytics: React.FC = () => {
                                                 <Plot
                                                     data={[
                                                         { x: d.timestamps, y: d.values, type: 'scatter', mode: 'lines+markers', name: 'Valor Real' },
-                                                        { x: d.timestamps, y: Array(d.timestamps.length).fill(d.stats.mean), type: 'scatter', mode: 'lines', name: 'Média', line: { color: 'green', dash: 'dash' } },
-                                                        { x: d.timestamps, y: Array(d.timestamps.length).fill(d.stats.ucl), type: 'scatter', mode: 'lines', name: 'UCL (+3σ)', line: { color: 'red' } },
-                                                        { x: d.timestamps, y: Array(d.timestamps.length).fill(d.stats.lcl), type: 'scatter', mode: 'lines', name: 'LCL (-3σ)', line: { color: 'red' } },
+                                                        { x: d.timestamps, y: Array(d.timestamps.length).fill(d.stats?.mean ?? 0), type: 'scatter', mode: 'lines', name: 'Média', line: { color: 'green', dash: 'dash' } },
+                                                        { x: d.timestamps, y: Array(d.timestamps.length).fill(d.stats?.ucl ?? 0), type: 'scatter', mode: 'lines', name: 'UCL (+3σ)', line: { color: 'red' } },
+                                                        { x: d.timestamps, y: Array(d.timestamps.length).fill(d.stats?.lcl ?? 0), type: 'scatter', mode: 'lines', name: 'LCL (-3σ)', line: { color: 'red' } },
                                                     ]}
-                                                    layout={{ title: `Carta de Controle: ${alias}`, autosize: true, height: 400 }}
+                                                    layout={{ title: { text: `Carta de Controle: ${alias}` }, autosize: true, height: 400 }}
                                                     useResizeHandler={true}
                                                     className="w-full"
                                                 />
@@ -594,7 +602,7 @@ const LineAnalytics: React.FC = () => {
                                                 colorscale: 'RdBu',
                                                 zmin: -1, zmax: 1
                                             }]}
-                                            layout={{ width: undefined, height: 600, title: 'Heatmap de Correlação (Pearson)', autosize: true }}
+                                            layout={{ width: undefined, height: 600, title: { text: 'Heatmap de Correlação (Pearson)' }, autosize: true }}
                                             useResizeHandler={true}
                                             className="w-full"
                                         />
@@ -648,7 +656,7 @@ const LineAnalytics: React.FC = () => {
                                                     type: 'scatter',
                                                     marker: { color: 'blue', size: 8, opacity: 0.6 }
                                                 }]}
-                                                layout={{ title: `${scatterX} vs ${scatterY}`, xaxis: { title: scatterX }, yaxis: { title: scatterY }, autosize: true, height: 500 }}
+                                                layout={{ title: { text: `${scatterX} vs ${scatterY}` }, xaxis: { title: { text: scatterX } }, yaxis: { title: { text: scatterY } }, autosize: true, height: 500 }}
                                                 useResizeHandler={true}
                                                 className="w-full"
                                             />

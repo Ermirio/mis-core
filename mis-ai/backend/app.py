@@ -11,8 +11,8 @@ from sqlalchemy import func, exc
 
 from ml_model import generic_predictor
 from models import (Line, PredictionTarget, PredictionModel, PredictionData, 
-                    OPCLogs, OPCVariables, create_default_data, create_tables, get_db)
-from opc_client import opc_client
+                    OPCLogs, OPCVariables, OPCServerConfig, create_default_data, create_tables, get_db)
+from opc_client import opc_client, OPCClient
 
 # ==================== CONFIGURAÇÕES INICIAIS ====================
 load_dotenv()
@@ -56,13 +56,37 @@ def initialize_opc():
         main_loop = asyncio.new_event_loop()
         opc_client.loop = main_loop
         
-        logging.info("🔌 Realizando conexão inicial com o servidor OPC...")
+        # --- LÓGICA DE INICIALIZAÇÃO DINÂMICA ---
+        db = next(get_db())
+        try:
+            config = db.query(OPCServerConfig).first()
+            if config:
+                logging.info(f"⚙️  Usando configuração OPC salva no banco: {config.opc_url}")
+                opc_client.url = config.opc_url
+            else:
+                default_url = os.getenv('OPC_SERVER_URL', 'opc.tcp://host.docker.internal:4840')
+                logging.info(f"⚙️  Nenhuma configuração salva. Usando padrão/env: {default_url}")
+                
+                # Salvar o padrão no banco para ser editável
+                new_config = OPCServerConfig(opc_url=default_url, is_active=True)
+                db.add(new_config)
+                db.commit()
+                opc_client.url = default_url
+        except Exception as db_e:
+            logging.error(f"⚠️ Erro ao carregar config do banco (pode ser a primeira execução): {db_e}")
+            # Fallback para env var sem salvar no banco se der erro de DB
+            opc_client.url = os.getenv('OPC_SERVER_URL', 'opc.tcp://host.docker.internal:4840')
+        finally:
+            db.close()
+        # ----------------------------------------
+
+        logging.info(f"🔌 Tentando conectar ao servidor OPC: {opc_client.url}")
         
         # Conectar ao OPC de forma assíncrona
         is_connected = main_loop.run_until_complete(opc_client.connect())
         
         if not is_connected:
-            logging.warning("⚠️  Falha ao conectar ao servidor OPC. Continuando sem conexão OPC.")
+            logging.warning("⚠️  Falha ao conectar ao servidor OPC. O sistema continuará tentando ou aguardará reconfiguração.")
         else:
             logging.info("✅ Conexão OPC estabelecida com sucesso.")
         
@@ -568,6 +592,70 @@ def disconnect_opc():
     
     asyncio.run_coroutine_threadsafe(opc_client.disconnect(), opc_client.loop).result()
     return jsonify({'message': 'Desconectado do OPC com sucesso'}), 200
+
+# --- ROTAS DE CONFIGURAÇÃO DE SERVIDOR OPC ---
+
+@app.route('/api/opc/config', methods=['GET'])
+def get_opc_config():
+    """Retorna a configuração atual do servidor OPC"""
+    db = next(get_db())
+    try:
+        config = db.query(OPCServerConfig).first()
+        if not config:
+            return jsonify({'opc_url': '', 'is_active': False}), 200
+        return jsonify(config.to_dict()), 200
+    finally:
+        db.close()
+
+@app.route('/api/opc/config', methods=['POST'])
+def update_opc_config():
+    """Atualiza a configuração do servidor OPC e reconecta"""
+    data = request.get_json()
+    if not data or 'opc_url' not in data:
+        return jsonify({'error': 'Campo opc_url é obrigatório'}), 400
+
+    db = next(get_db())
+    try:
+        config = db.query(OPCServerConfig).first()
+        if not config:
+            config = OPCServerConfig(opc_url=data['opc_url'], is_active=True)
+            db.add(config)
+        else:
+            config.opc_url = data['opc_url']
+            config.is_active = True # Reativar ao salvar
+            
+        db.commit()
+        db.refresh(config)
+        
+        # --- APLICAR MUDANÇA (RECONECTAR) ---
+        logging.info(f"🔄 Aplicando nova configuração OPC: {config.opc_url}")
+        
+        # Executa a reconfiguração no loop do OPC client
+        # Isso vai desconectar o atual e atualizar a URL interna
+        asyncio.run_coroutine_threadsafe(
+            opc_client.configure(config.opc_url), 
+            opc_client.loop
+        ).result()
+        
+        # Tentar reconectar imediatamente
+        success = asyncio.run_coroutine_threadsafe(
+            opc_client.connect(), 
+            opc_client.loop
+        ).result()
+
+        status_msg = "Conectado com sucesso" if success else "Configuração salva, mas falha na conexão imediata"
+        return jsonify({
+            'message': status_msg, 
+            'config': config.to_dict(),
+            'connected': success
+        }), 200
+
+    except Exception as e:
+        db.rollback()
+        logging.error(f"❌ Erro ao atualizar configuração OPC: {e}", exc_info=True)
+        return jsonify({'error': str(e)}), 500
+    finally:
+        db.close()
 
 # --- ROTAS CRUD PARA VARIÁVEIS OPC ---
 

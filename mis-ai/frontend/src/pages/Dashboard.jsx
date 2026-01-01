@@ -1,12 +1,13 @@
 import { useState, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Progress } from '@/components/ui/progress'
-import { 
-  TrendingUp, 
-  Activity, 
-  Database, 
+import {
+  TrendingUp,
+  Activity,
+  Database,
   Brain,
   Play,
   RefreshCw,
@@ -21,6 +22,7 @@ import { api } from '@/lib/api'
 import { useToast } from '@/hooks/use-toast'
 
 const Dashboard = ({ selectedLine, selectedTarget, selectedModel }) => {
+  const navigate = useNavigate()
   const [prediction, setPrediction] = useState(null)
   const [modelStatus, setModelStatus] = useState(null)
   const [opcStatus, setOpcStatus] = useState(null)
@@ -58,7 +60,7 @@ const Dashboard = ({ selectedLine, selectedTarget, selectedModel }) => {
 
   const loadModelStatus = async () => {
     if (!selectedModel) return
-    
+
     try {
       const data = await api.getModelStatus(selectedModel.id)
       setModelStatus(data)
@@ -69,7 +71,7 @@ const Dashboard = ({ selectedLine, selectedTarget, selectedModel }) => {
 
   const checkContinuousStatus = async () => {
     if (!selectedModel) return
-    
+
     try {
       const response = await api.getContinuousPredictionsStatus(selectedModel.id)
       setContinuousStatus(response.is_running) // <-- CORREÇÃO
@@ -80,7 +82,7 @@ const Dashboard = ({ selectedLine, selectedTarget, selectedModel }) => {
 
   const loadOPCStatus = async () => {
     if (!selectedLine) return
-    
+
     try {
       const data = await api.getOPCLoggingStatus(selectedLine)
       setOpcStatus(data)
@@ -212,7 +214,7 @@ const Dashboard = ({ selectedLine, selectedTarget, selectedModel }) => {
           </CardHeader>
           <CardContent>
             <div className="flex items-center space-x-2">
-              <Badge 
+              <Badge
                 variant={opcStatus?.is_logging_active ? 'default' : 'secondary'}
                 className={`status-indicator ${getStatusColor(opcStatus?.is_logging_active)}`}
               >
@@ -284,8 +286,8 @@ const Dashboard = ({ selectedLine, selectedTarget, selectedModel }) => {
 
                 {/* Botão de Predição */}
                 <div className="flex justify-center">
-                  <Button 
-                    onClick={handlePredict} 
+                  <Button
+                    onClick={handlePredict}
                     disabled={predicting}
                     size="lg"
                     className="px-8 py-3 text-lg hover-lift"
@@ -375,8 +377,8 @@ const Dashboard = ({ selectedLine, selectedTarget, selectedModel }) => {
                         {(modelStatus.r2_score * 100).toFixed(1)}%
                       </span>
                     </div>
-                    <Progress 
-                      value={Math.max(0, Math.min(100, modelStatus.r2_score * 100))} 
+                    <Progress
+                      value={Math.max(0, Math.min(100, modelStatus.r2_score * 100))}
                       className="h-2"
                     />
                   </div>
@@ -453,28 +455,28 @@ const Dashboard = ({ selectedLine, selectedTarget, selectedModel }) => {
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <Button 
-              variant="outline" 
+            <Button
+              variant="outline"
               className="h-20 flex flex-col items-center justify-center space-y-2 hover-lift"
-              onClick={() => window.location.href = '/models'}
+              onClick={() => navigate('/models')}
             >
               <Brain className="h-6 w-6" />
               <span>Gerenciar Modelos</span>
             </Button>
-            
-            <Button 
-              variant="outline" 
+
+            <Button
+              variant="outline"
               className="h-20 flex flex-col items-center justify-center space-y-2 hover-lift"
-              onClick={() => window.location.href = '/prediction'}
+              onClick={() => navigate('/prediction')}
             >
               <TrendingUp className="h-6 w-6" />
               <span>Ver Predições</span>
             </Button>
-            
-            <Button 
-              variant="outline" 
+
+            <Button
+              variant="outline"
               className="h-20 flex flex-col items-center justify-center space-y-2 hover-lift"
-              onClick={() => window.location.href = '/data'}
+              onClick={() => navigate('/data')}
             >
               <Database className="h-6 w-6" />
               <span>Coletar Dados</span>

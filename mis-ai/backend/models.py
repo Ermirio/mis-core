@@ -177,6 +177,22 @@ class OPCLogs(Base):
             'timestamp': self.timestamp.isoformat() if self.timestamp else None
         }
 
+class OPCServerConfig(Base):
+    """Configuração singleton do servidor OPC"""
+    __tablename__ = 'opc_server_config'
+    id = Column(Integer, primary_key=True)
+    opc_url = Column(String(255), nullable=False)
+    is_active = Column(Boolean, default=True)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'opc_url': self.opc_url,
+            'is_active': self.is_active,
+            'updated_at': self.updated_at.isoformat() if self.updated_at else None
+        }
+
 # Configuração do banco de dados
 DATABASE_URL = os.getenv('DATABASE_URL', 'sqlite:///prediction_app.db')
 

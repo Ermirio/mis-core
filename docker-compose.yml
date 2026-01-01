@@ -20,6 +20,7 @@ services:
       - "${MYSQL_HOST_PORT}:3306"
     volumes:
       - mysql_data:/var/lib/mysql
+      - ./mysql-init:/docker-entrypoint-initdb.d
     networks:
       - mis-network
     healthcheck:
@@ -124,13 +125,16 @@ services:
   nginx-proxy:
     image: mis-core-proxy:v1.0
     build:
-      context: ./mis-core/proxy-reverse
+      context: ./proxy-reverse
       dockerfile: Dockerfile
     container_name: mis-core-proxy
     ports:
       - "3000:80"
     networks:
       - mis-network
+    volumes:
+      - ./proxy-reverse/html:/usr/share/nginx/html/hub
+      - ./proxy-reverse/imagens:/usr/share/nginx/html/imagens
     depends_on:
       frontend:
         condition: service_started
@@ -142,7 +146,7 @@ services:
 
   # ===== AI BACKEND (FLASK) =====
   mis-ai-backend:
-    build: 
+    build:
       context: ./mis-ai/backend
     container_name: mis-ai-backend
     ports:
@@ -163,14 +167,14 @@ services:
 
   # ===== AI FRONTEND (REACT) =====
   mis-ai-frontend:
-    build: 
+    build:
       context: ./mis-ai/frontend
     container_name: mis-ai-frontend
     ports:
       - "3007:3007"
     environment:
       NODE_ENV: production
-      VITE_API_URL: /predicao-api
+      VITE_API_URL: /mis-ai-api
     networks:
       - mis-network
     depends_on:
@@ -178,9 +182,58 @@ services:
     restart: unless-stopped
 
   # ==========================================
+  # SERVIÇOS DO MIS-ENERGY (Energy Monitoring)
+  # ==========================================
+
+  # ===== ENERGY BACKEND (FLASK) =====
+  mis-energy-backend:
+    build:
+      context: ./mis-energy/backend
+    container_name: mis-energy-backend
+    ports:
+      - "5005:5005"
+    environment:
+      FLASK_ENV: production
+      # MySQL configuration (read by src/config.py)
+      MYSQL_HOST: mysql
+      MYSQL_PORT: "3306"
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+      MYSQL_DB: energy_monitor
+      # InfluxDB configuration
+      INFLUXDB_HOST: influxdb
+      INFLUXDB_PORT: "8086"
+      INFLUXDB_DATABASE: industrial_db
+    networks:
+      - mis-network
+    volumes:
+      - ./mis-energy/backend/database:/app/database
+      - ./mis-energy/backend/logs:/app/logs
+    depends_on:
+      mysql:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ===== ENERGY FRONTEND (REACT) =====
+  mis-energy-frontend:
+    build:
+      context: ./mis-energy/frontend
+    container_name: mis-energy-frontend
+    ports:
+      - "3008:3008"
+    environment:
+      NODE_ENV: production
+      VITE_API_URL: /mis-energy-api
+    networks:
+      - mis-network
+    depends_on:
+      - mis-energy-backend
+    restart: unless-stopped
+
+  # ==========================================
   # SERVIÇOS AUXILIARES (Legacy Core)
   # ==========================================
-  
+
   # Legado Core Flask (Manter ou Remover? Mantendo por compatibilidade)
   flask:
     image: mis-core-flask:v1.1
@@ -196,6 +249,7 @@ services:
       INFLUXDB_PASSWORD: ${INFLUXDB_PASSWORD}
       DJANGO_HOST: django
       DJANGO_PORT: 8000
+      DJANGO_API_URL: http://django:8000/api
     ports:
       - "${FLASK_HOST_PORT}:5000"
     volumes:
