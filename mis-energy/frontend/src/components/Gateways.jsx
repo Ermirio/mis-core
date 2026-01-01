@@ -30,6 +30,56 @@ export function Gateways() {
   const [editingGateway, setEditingGateway] = useState(null)
   const { toast } = useToast()
 
+  // Test Connection State
+  const [testDialogOpen, setTestDialogOpen] = useState(false)
+  const [isTesting, setIsTesting] = useState(false)
+  const [testResult, setTestResult] = useState(null)
+
+  const handleTestNewConnection = async () => {
+    // Validar campos mínimos antes de testar
+    if (formData.protocol_type === 'modbus' && !formData.ip_address) {
+      toast({ title: 'Atenção', description: 'Informe o IP para testar.', variant: 'warning' })
+      return
+    }
+    if (formData.protocol_type === 'opc' && !formData.opc_url) {
+      toast({ title: 'Atenção', description: 'Informe a URL OPC para testar.', variant: 'warning' })
+      return
+    }
+
+    setTestDialogOpen(true)
+    setTestResult({ loading: true })
+    setIsTesting(true)
+
+    try {
+      // Timeout de 30s para dar tempo ao backend tentar conectar (que pode ter timeout interno de 5-10s)
+      const response = await api.post('/gateways/validate-connection', formData, { timeout: 30000 })
+
+      if (response.success) {
+        setTestResult({
+          success: true,
+          message: response.data?.message || 'Conexão realizada com sucesso!',
+          data: response
+        })
+      } else {
+        // Caso o backend retorne success: false mas sem throwing error
+        setTestResult({
+          success: false,
+          error: response.error || response.data?.message || 'Falha desconhecida.'
+        })
+      }
+
+    } catch (error) {
+      console.error("Erro no teste:", error)
+      const errorMsg = error.response?.data?.error || error.message || 'Erro ao conectar com o servidor.'
+      setTestResult({
+        success: false,
+        error: errorMsg
+      })
+    } finally {
+      setIsTesting(false)
+    }
+  }
+
   const [formData, setFormData] = useState({
     name: '',
     description: '',
@@ -136,21 +186,30 @@ export function Gateways() {
   }
 
   const testConnection = async (gateway) => {
+    setTestDialogOpen(true)
+    setTestResult({ loading: true })
+
     try {
-      const data = await api.post(`/gateways/${gateway.id}/test`)
+      const data = await api.post(`/gateways/${gateway.id}/test`, {}, { timeout: 30000 })
 
       if (data.success) {
-        toast({
-          title: 'Conexão bem-sucedida',
-          description: data.data.message || 'Gateway respondendo corretamente.',
+        setTestResult({
+          success: true,
+          message: data.data?.message || 'Conexão realizada com sucesso!',
+          data: data
+        })
+      } else {
+        setTestResult({
+          success: false,
+          error: data.data?.error || data.error || 'Falha na conexão.'
         })
       }
     } catch (error) {
-      console.error("Erro ao testar gateway:", error);
-      toast({
-        title: 'Falha na conexão',
-        description: 'Não foi possível conectar ao gateway.',
-        variant: 'destructive',
+      console.error("Erro ao testar gateway:", error)
+      const errorMsg = error.response?.data?.error || error.response?.data?.data?.error || error.message || 'Erro ao conectar com o servidor.'
+      setTestResult({
+        success: false,
+        error: errorMsg
       })
     }
   }
@@ -447,19 +506,90 @@ export function Gateways() {
                 />
               </div>
 
-              <div className="flex justify-end space-x-2 pt-4">
+              <div className="flex justify-between items-center pt-4">
                 <Button
                   type="button"
-                  variant="outline"
-                  onClick={() => setDialogOpen(false)}
+                  variant="secondary"
+                  onClick={handleTestNewConnection}
+                  disabled={isTesting}
                 >
-                  Cancelar
+                  {isTesting ? (
+                    'Testando...'
+                  ) : (
+                    <>
+                      <Wifi className="h-4 w-4 mr-2" />
+                      Testar Conexão
+                    </>
+                  )}
                 </Button>
-                <Button type="submit">
-                  {editingGateway ? 'Atualizar' : 'Criar'}
-                </Button>
+
+                <div className="flex space-x-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setDialogOpen(false)}
+                  >
+                    Cancelar
+                  </Button>
+                  <Button type="submit">
+                    {editingGateway ? 'Atualizar' : 'Criar'}
+                  </Button>
+                </div>
               </div>
             </form>
+          </DialogContent>
+        </Dialog>
+
+        {/* Test Result Dialog */}
+        <Dialog open={testDialogOpen} onOpenChange={setTestDialogOpen}>
+          <DialogContent className="sm:max-w-[500px]">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                {testResult?.success ? (
+                  <CheckCircle className="h-6 w-6 text-green-500" />
+                ) : (
+                  <AlertCircle className="h-6 w-6 text-red-500" />
+                )}
+                Resultado do Teste de Conexão
+              </DialogTitle>
+            </DialogHeader>
+
+            <div className="space-y-4 py-4">
+              {testResult?.loading ? (
+                <div className="flex flex-col items-center justify-center py-8">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+                  <p className="mt-4 text-sm text-muted-foreground">Tentando conectar ao dispositivo...</p>
+                </div>
+              ) : (
+                <div className={`p-4 rounded-md border ${testResult?.success ? 'bg-green-50 border-green-200 dark:bg-green-900/20' : 'bg-red-50 border-red-200 dark:bg-red-900/20'}`}>
+                  <h4 className={`font-medium mb-1 ${testResult?.success ? 'text-green-700 dark:text-green-300' : 'text-red-700 dark:text-red-300'}`}>
+                    {testResult?.success ? 'Conexão Estabelecida!' : 'Falha na Conexão'}
+                  </h4>
+                  <p className="text-sm opacity-90 break-words mb-2">
+                    {testResult?.message || testResult?.error || 'Sem detalhes.'}
+                  </p>
+
+                  {/* Detalhes Técnicos se for erro */}
+                  {!testResult?.success && testResult?.error && (
+                    <div className="mt-2 text-xs font-mono bg-black/5 p-2 rounded overflow-auto max-h-[100px]">
+                      {String(testResult.error)}
+                    </div>
+                  )}
+
+                  {/* Detalhes Técnicos se for sucesso */}
+                  {testResult?.success && testResult?.data?.data && (
+                    <div className="mt-2 text-xs space-y-1">
+                      <p>Tempo de resposta: {testResult.data.data.details?.response_time || testResult.data.data.data?.response_time || 'N/A'}s</p>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+            <div className="flex justify-end">
+              <Button onClick={() => setTestDialogOpen(false)}>
+                Fechar
+              </Button>
+            </div>
           </DialogContent>
         </Dialog>
       </div>
