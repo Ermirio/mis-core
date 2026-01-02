@@ -23,7 +23,8 @@ import {
   Factory,
   Map,
   Layout,
-  Server
+  Server,
+  BarChart2
 } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -38,6 +39,7 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { useToast } from '@/hooks/use-toast'
 import { HierarchyManager } from './HierarchyManager'
 import { HierarchySelector } from './HierarchySelector'
+import { EquipmentMetricsPanel } from './EquipmentMetricsPanel'
 
 export function Equipments() {
   const [equipments, setEquipments] = useState([])
@@ -51,6 +53,9 @@ export function Equipments() {
   // Real-time values state
   const [realTimeValues, setRealTimeValues] = useState({}) // {equipmentId: {value, unit, timestamp}}
   const [refreshingRealTime, setRefreshingRealTime] = useState(false)
+
+  // Metrics panel state
+  const [metricsEquipment, setMetricsEquipment] = useState(null)
 
   // Filter states
   const [hierarchyData, setHierarchyData] = useState([])
@@ -536,6 +541,15 @@ export function Equipments() {
 
         {/* Hover actions overlay */}
         <div className="absolute inset-0 bg-white/95 dark:bg-slate-900/95 opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex items-center justify-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={(e) => { e.stopPropagation(); setMetricsEquipment(equipment); }}
+            className="h-8 px-2 bg-blue-50 hover:bg-blue-100 text-blue-600"
+            title="Ver Métricas"
+          >
+            <BarChart2 className="h-4 w-4" />
+          </Button>
           <Button
             variant="outline"
             size="sm"
@@ -1145,6 +1159,14 @@ export function Equipments() {
             <EquipmentCard key={equipment.id} equipment={equipment} />
           ))}
         </div>
+      )}
+
+      {/* Equipment Metrics Panel */}
+      {metricsEquipment && (
+        <EquipmentMetricsPanel
+          equipment={metricsEquipment}
+          onClose={() => setMetricsEquipment(null)}
+        />
       )}
     </div>
   )

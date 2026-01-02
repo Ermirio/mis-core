@@ -33,10 +33,43 @@ class Equipment(db.Model):
     modbus_address = db.Column(db.Integer, nullable=True)
     register_type = db.Column(db.String(20), default='holding')
     
-    # Configurações OPC UA
+    # Configurações OPC UA - Endereço legado (mantido para compatibilidade)
     opc_node_id = db.Column(db.String(200), nullable=True)  # NodeID do OPC UA (ex: ns=2;s=Machine1.Speed)
     
-    # Configurações Modbus específicas
+    # ===== MULTI-METRIC ADDRESSES (ISA 101/88) =====
+    # Potência Ativa (kW) - Real-time power
+    opc_node_power_kw = db.Column(db.String(200), nullable=True)
+    modbus_register_power_kw = db.Column(db.Integer, nullable=True)
+    
+    # Energia Acumulada (kWh) - Totalizer
+    opc_node_energy_kwh = db.Column(db.String(200), nullable=True)
+    modbus_register_energy_kwh = db.Column(db.Integer, nullable=True)
+    
+    # Demanda Máxima (kW) - Peak demand
+    opc_node_demand_kw = db.Column(db.String(200), nullable=True)
+    modbus_register_demand_kw = db.Column(db.Integer, nullable=True)
+    
+    # Fator de Potência (0-1 ou 0-100)
+    opc_node_power_factor = db.Column(db.String(200), nullable=True)
+    modbus_register_power_factor = db.Column(db.Integer, nullable=True)
+    
+    # ===== POWER QUALITY (opcional) =====
+    # Tensão por fase (V)
+    opc_node_voltage_a = db.Column(db.String(200), nullable=True)
+    opc_node_voltage_b = db.Column(db.String(200), nullable=True)
+    opc_node_voltage_c = db.Column(db.String(200), nullable=True)
+    
+    # Corrente por fase (A)
+    opc_node_current_a = db.Column(db.String(200), nullable=True)
+    opc_node_current_b = db.Column(db.String(200), nullable=True)
+    opc_node_current_c = db.Column(db.String(200), nullable=True)
+    
+    # ===== COST/TARIFF CONFIGURATION =====
+    tariff_kwh = db.Column(db.Float, default=0.5)  # R$/kWh
+    tariff_demand = db.Column(db.Float, nullable=True)  # R$/kW demanda
+    shift_config = db.Column(db.JSON, default={})  # {start: '06:00', end: '18:00', name: 'Turno A'}
+    
+    # Configurações Modbus específicas (legado)
     modbus_register = db.Column(db.Integer, nullable=True)  # Endereço de memória Modbus (ex: 40001)
     data_type = db.Column(db.String(20), default='float32')
     scale_factor = db.Column(db.Float, default=1.0)
@@ -77,6 +110,26 @@ class Equipment(db.Model):
             'gateway_name': self.gateway.name if self.gateway else None,
             'modbus_address': self.modbus_address,
             'opc_node_id': self.opc_node_id,
+            # Multi-metric addresses
+            'opc_node_power_kw': self.opc_node_power_kw,
+            'opc_node_energy_kwh': self.opc_node_energy_kwh,
+            'opc_node_demand_kw': self.opc_node_demand_kw,
+            'opc_node_power_factor': self.opc_node_power_factor,
+            'modbus_register_power_kw': self.modbus_register_power_kw,
+            'modbus_register_energy_kwh': self.modbus_register_energy_kwh,
+            'modbus_register_demand_kw': self.modbus_register_demand_kw,
+            'modbus_register_power_factor': self.modbus_register_power_factor,
+            # Power quality
+            'opc_node_voltage_a': self.opc_node_voltage_a,
+            'opc_node_voltage_b': self.opc_node_voltage_b,
+            'opc_node_voltage_c': self.opc_node_voltage_c,
+            'opc_node_current_a': self.opc_node_current_a,
+            'opc_node_current_b': self.opc_node_current_b,
+            'opc_node_current_c': self.opc_node_current_c,
+            # Cost configuration
+            'tariff_kwh': self.tariff_kwh,
+            'tariff_demand': self.tariff_demand,
+            'shift_config': self.shift_config,
             'modbus_register': self.modbus_register,
             'register_type': self.register_type,
             'data_type': self.data_type,
