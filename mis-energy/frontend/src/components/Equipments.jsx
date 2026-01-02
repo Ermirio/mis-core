@@ -15,7 +15,15 @@ import {
   Network,
   Database,
   ArrowRight,
-  ChevronRight
+  ChevronRight,
+  Gauge,
+  Package,
+  Filter,
+  X,
+  Factory,
+  Map,
+  Layout,
+  Server
 } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -26,6 +34,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Checkbox } from '@/components/ui/checkbox'
 import { useToast } from '@/hooks/use-toast'
 import { HierarchyManager } from './HierarchyManager'
 import { HierarchySelector } from './HierarchySelector'
@@ -39,11 +48,22 @@ export function Equipments() {
   const [activeTab, setActiveTab] = useState('basic')
   const { toast } = useToast()
 
+  // Filter states
+  const [hierarchyData, setHierarchyData] = useState([])
+  const [filters, setFilters] = useState({
+    factory: 'all',
+    area: 'all',
+    line: 'all',
+    machine_group: 'all',
+    search: ''
+  })
+
   const [formData, setFormData] = useState({
     name: '',
     description: '',
     hierarchy_id: null,
     hierarchy_path: '',
+    meter_type: 'energy',
     equipment_type: 'generic',
     parameters: {},
     standard_consumption: '',
@@ -55,12 +75,15 @@ export function Equipments() {
     data_type: 'float32',
     scale_factor: 1.0,
     unit: 'kWh',
+    is_active: true,
+    is_entry_point: false,
     polling_interval: 60
   })
 
   useEffect(() => {
     fetchEquipments()
     fetchGateways()
+    fetchHierarchy()
   }, [])
 
   const fetchEquipments = async () => {
@@ -90,6 +113,65 @@ export function Equipments() {
     } catch (error) {
       console.error('Erro ao carregar gateways:', error)
     }
+  }
+
+  const fetchHierarchy = async () => {
+    try {
+      const data = await api.get('/hierarchy/tree')
+      if (data.success) {
+        setHierarchyData(data.data)
+      }
+    } catch (error) {
+      console.error('Erro ao carregar hierarquia:', error)
+    }
+  }
+
+  // Helper functions to get filter options based on hierarchy
+  const getFactories = () => hierarchyData.filter(h => h.type === 'factory')
+  const getAreas = (factoryId) => {
+    if (!factoryId) return []
+    const factory = hierarchyData.find(h => h.id.toString() === factoryId)
+    return factory?.children?.filter(c => c.type === 'area') || []
+  }
+  const getLines = (areaId) => {
+    if (!areaId) return []
+    for (const factory of hierarchyData) {
+      const area = factory.children?.find(c => c.id.toString() === areaId)
+      if (area) return area.children?.filter(c => c.type === 'line') || []
+    }
+    return []
+  }
+  const getMachineGroups = (lineId) => {
+    if (!lineId) return []
+    for (const factory of hierarchyData) {
+      for (const area of factory.children || []) {
+        const line = area.children?.find(c => c.id.toString() === lineId)
+        if (line) return line.children?.filter(c => c.type === 'machine_group') || []
+      }
+    }
+    return []
+  }
+
+  // Filter equipments based on selected hierarchy
+  const filteredEquipments = equipments.filter(eq => {
+    // Text search filter
+    if (filters.search && !eq.name.toLowerCase().includes(filters.search.toLowerCase())) {
+      return false
+    }
+    // Hierarchy filter - match any selected level (ignore 'all' values)
+    const selectedId =
+      (filters.machine_group && filters.machine_group !== 'all' ? filters.machine_group : null) ||
+      (filters.line && filters.line !== 'all' ? filters.line : null) ||
+      (filters.area && filters.area !== 'all' ? filters.area : null) ||
+      (filters.factory && filters.factory !== 'all' ? filters.factory : null)
+    if (selectedId) {
+      return eq.hierarchy_id?.toString() === selectedId
+    }
+    return true
+  })
+
+  const clearFilters = () => {
+    setFilters({ factory: 'all', area: 'all', line: 'all', machine_group: 'all', search: '' })
   }
 
   const handleSubmit = async (e) => {
@@ -157,6 +239,7 @@ export function Equipments() {
       description: equipment.description || '',
       hierarchy_id: equipment.hierarchy_id,
       hierarchy_path: equipment.hierarchy_path || '',
+      meter_type: equipment.meter_type || 'energy',
       equipment_type: equipment.equipment_type || 'generic',
       parameters: equipment.parameters || {},
       standard_consumption: equipment.standard_consumption || '',
@@ -168,16 +251,24 @@ export function Equipments() {
       data_type: equipment.data_type,
       scale_factor: equipment.scale_factor,
       unit: equipment.unit,
+      is_active: equipment.is_active,
+      is_entry_point: equipment.is_entry_point || false,
       polling_interval: equipment.polling_interval
     })
     setDialogOpen(true)
   }
 
   const handleDelete = async (id) => {
-    if (!confirm('Tem certeza que deseja excluir este equipamento?')) return
+    console.log('[Equipments] Tentando excluir equipamento ID:', id);
+    if (!confirm('Tem certeza que deseja excluir este equipamento?')) {
+      console.log('[Equipments] Exclusão cancelada pelo usuário.');
+      return;
+    }
 
     try {
+      console.log('[Equipments] Enviando requisição DELETE para /equipments/' + id);
       const data = await api.delete(`/equipments/${id}`)
+      console.log('[Equipments] Resposta DELETE:', data);
 
       if (data.success) {
         toast({
@@ -204,11 +295,7 @@ export function Equipments() {
 
   const readEquipmentValue = async (equipment) => {
     try {
-      const response = await fetch(`/api/equipments/${equipment.id}/read`, {
-        method: 'POST',
-      })
-
-      const data = await response.json()
+      const data = await api.post(`/equipments/${equipment.id}/read`, {}, { timeout: 30000 })
 
       if (data.success) {
         toast({
@@ -218,14 +305,16 @@ export function Equipments() {
       } else {
         toast({
           title: 'Erro na leitura',
-          description: data.error || 'Não foi possível ler o valor do equipamento.',
+          description: data.data?.error || data.error || 'Não foi possível ler o valor do equipamento.',
           variant: 'destructive',
         })
       }
     } catch (error) {
+      console.error("Erro ao ler valor:", error)
+      const errorMsg = error.response?.data?.error || error.message || 'Erro ao realizar leitura.'
       toast({
         title: 'Erro',
-        description: 'Erro ao realizar leitura.',
+        description: errorMsg,
         variant: 'destructive',
       })
     }
@@ -237,6 +326,7 @@ export function Equipments() {
       description: '',
       hierarchy_id: null,
       hierarchy_path: '',
+      meter_type: 'energy',
       equipment_type: 'generic',
       parameters: {},
       standard_consumption: '',
@@ -248,6 +338,8 @@ export function Equipments() {
       data_type: 'float32',
       scale_factor: 1.0,
       unit: 'kWh',
+      is_active: true,
+      is_entry_point: false,
       polling_interval: 60
     })
     setEditingEquipment(null)
@@ -264,109 +356,78 @@ export function Equipments() {
     }))
   }
 
+  // Compact Equipment Card for 6-column grid
   const EquipmentCard = ({ equipment }) => (
-    <Card className="hover:shadow-lg transition-shadow duration-200">
-      <CardHeader className="pb-3">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-3">
-            <div className="p-2 bg-green-100 dark:bg-green-900/20 rounded-lg">
-              <Cpu className="h-5 w-5 text-green-600 dark:text-green-400" />
-            </div>
-            <div>
-              <CardTitle className="text-lg">{equipment.name}</CardTitle>
-              <CardDescription>{equipment.hierarchy_path || 'Sem localização'}</CardDescription>
-            </div>
+    <Card className="group hover:shadow-md transition-all duration-200 cursor-pointer relative overflow-hidden">
+      <CardContent className="p-3">
+        {/* Header with icon and status */}
+        <div className="flex items-center justify-between mb-2">
+          <div className={`p-1.5 rounded-md ${equipment.meter_type === 'energy'
+            ? 'bg-blue-100 dark:bg-blue-900/30'
+            : 'bg-green-100 dark:bg-green-900/30'
+            }`}>
+            {equipment.meter_type === 'energy' ? (
+              <Zap className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+            ) : (
+              <Package className="h-4 w-4 text-green-600 dark:text-green-400" />
+            )}
           </div>
-
           <Badge
             variant={equipment.is_active ? 'default' : 'secondary'}
-            className="flex items-center space-x-1"
+            className="text-[10px] px-1.5 py-0.5"
           >
-            {equipment.is_active ? (
-              <CheckCircle className="h-3 w-3" />
-            ) : (
-              <AlertCircle className="h-3 w-3" />
-            )}
-            <span>{equipment.is_active ? 'Ativo' : 'Inativo'}</span>
+            {equipment.is_active ? '●' : '○'}
           </Badge>
         </div>
-      </CardHeader>
 
-      <CardContent className="space-y-4">
-        <div className="grid grid-cols-2 gap-4 text-sm">
-          <div>
-            <span className="text-slate-500 dark:text-slate-400 flex items-center">
-              <Settings className="h-3 w-3 mr-1" />
-              Tipo:
+        {/* Name - truncated */}
+        <h4 className="font-medium text-sm text-slate-900 dark:text-white truncate" title={equipment.name}>
+          {equipment.name}
+        </h4>
+
+        {/* Location - small */}
+        <p className="text-[11px] text-slate-500 truncate mt-0.5" title={equipment.hierarchy_path}>
+          {equipment.hierarchy_path || 'Sem local'}
+        </p>
+
+        {/* Type badge */}
+        <div className="flex items-center justify-between mt-2">
+          <span className="text-[10px] uppercase tracking-wider text-slate-400 font-medium">
+            {equipment.equipment_type?.replace('_', ' ')}
+          </span>
+          {equipment.last_value && (
+            <span className="text-xs font-semibold text-green-600 dark:text-green-400">
+              {equipment.last_value} {equipment.unit}
             </span>
-            <p className="font-medium capitalize">{equipment.equipment_type}</p>
-          </div>
-          <div>
-            <span className="text-slate-500 dark:text-slate-400 flex items-center">
-              <Network className="h-3 w-3 mr-1" />
-              Protocolo:
-            </span>
-            <p className="font-medium uppercase">{equipment.address_type}</p>
-          </div>
-          <div>
-            <span className="text-slate-500 dark:text-slate-400 flex items-center">
-              <Zap className="h-3 w-3 mr-1" />
-              Consumo Padrão:
-            </span>
-            <p className="font-medium">
-              {equipment.standard_consumption ? `${equipment.standard_consumption} ${equipment.unit}` : 'N/A'}
-            </p>
-          </div>
-          <div>
-            <span className="text-slate-500 dark:text-slate-400">Endereço:</span>
-            <p className="font-medium">
-              {equipment.address_type === 'modbus'
-                ? `Modbus: ${equipment.modbus_address}`
-                : `NodeID: ${equipment.opc_node_id}`}
-            </p>
-          </div>
+          )}
         </div>
 
-        {equipment.last_value && (
-          <div className="bg-slate-50 dark:bg-slate-800 rounded-lg p-3">
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-slate-600 dark:text-slate-400">Última Leitura:</span>
-              <span className="font-bold text-lg text-green-600">
-                {equipment.last_value} {equipment.unit}
-              </span>
-            </div>
-            {equipment.last_reading_at && (
-              <p className="text-xs text-slate-500 mt-1">
-                {new Date(equipment.last_reading_at).toLocaleString()}
-              </p>
-            )}
-          </div>
-        )}
-
-        <div className="flex items-center space-x-2 pt-2 border-t">
+        {/* Hover actions overlay */}
+        <div className="absolute inset-0 bg-white/95 dark:bg-slate-900/95 opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex items-center justify-center gap-2">
           <Button
             variant="outline"
             size="sm"
-            onClick={() => readEquipmentValue(equipment)}
-            className="flex-1"
+            onClick={(e) => { e.stopPropagation(); readEquipmentValue(equipment); }}
+            className="h-8 px-2"
+            title="Ler Valor"
           >
-            <Activity className="h-4 w-4 mr-2" />
-            Ler Valor
+            <Activity className="h-4 w-4" />
           </Button>
-
           <Button
             variant="outline"
             size="sm"
-            onClick={() => handleEdit(equipment)}
+            onClick={(e) => { e.stopPropagation(); handleEdit(equipment); }}
+            className="h-8 px-2"
+            title="Editar"
           >
             <Edit className="h-4 w-4" />
           </Button>
-
           <Button
             variant="outline"
             size="sm"
-            onClick={() => handleDelete(equipment)}
-            className="text-red-600 hover:text-red-700"
+            onClick={(e) => { e.stopPropagation(); handleDelete(equipment.id); }}
+            className="h-8 px-2 text-red-600 hover:text-red-700"
+            title="Excluir"
           >
             <Trash2 className="h-4 w-4" />
           </Button>
@@ -381,6 +442,11 @@ export function Equipments() {
 
   return (
     <div className="space-y-6">
+      <style>{`
+        @media (min-width: 768px) { .md\\:grid-cols-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+        @media (min-width: 1024px) { .lg\\:grid-cols-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+        @media (min-width: 1280px) { .xl\\:grid-cols-6 { grid-template-columns: repeat(6, minmax(0, 1fr)); } }
+      `}</style>
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold text-slate-900 dark:text-white">Equipamentos</h1>
@@ -416,6 +482,43 @@ export function Equipments() {
                 </TabsList>
 
                 <TabsContent value="basic" className="space-y-4 py-4">
+                  {/* Meter Type Selector */}
+                  <div className="space-y-2">
+                    <Label>Tipo de Medidor</Label>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div
+                        className={`border-2 rounded-lg p-4 cursor-pointer transition-all ${formData.meter_type === 'energy'
+                          ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
+                          : 'border-slate-200 hover:border-slate-300'
+                          }`}
+                        onClick={() => setFormData({ ...formData, meter_type: 'energy', unit: 'kWh' })}
+                      >
+                        <div className="flex items-center gap-3">
+                          <Zap className={`h-6 w-6 ${formData.meter_type === 'energy' ? 'text-blue-500' : 'text-slate-400'}`} />
+                          <div>
+                            <p className="font-medium">Medidor de Energia</p>
+                            <p className="text-xs text-slate-500">Mede consumo em kWh</p>
+                          </div>
+                        </div>
+                      </div>
+                      <div
+                        className={`border-2 rounded-lg p-4 cursor-pointer transition-all ${formData.meter_type === 'production'
+                          ? 'border-green-500 bg-green-50 dark:bg-green-900/20'
+                          : 'border-slate-200 hover:border-slate-300'
+                          }`}
+                        onClick={() => setFormData({ ...formData, meter_type: 'production', unit: 'ton' })}
+                      >
+                        <div className="flex items-center gap-3">
+                          <Package className={`h-6 w-6 ${formData.meter_type === 'production' ? 'text-green-500' : 'text-slate-400'}`} />
+                          <div>
+                            <p className="font-medium">Medidor de Produção</p>
+                            <p className="text-xs text-slate-500">Mede produção em ton/kg</p>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
                   <div className="space-y-2">
                     <Label>Nome do Equipamento</Label>
                     <Input
@@ -455,6 +558,25 @@ export function Equipments() {
                     )}
                   </div>
 
+                  <div className="flex items-center space-x-2 border p-3 rounded-md bg-slate-50 dark:bg-slate-900/50">
+                    <Checkbox
+                      id="is_entry_point"
+                      checked={formData.is_entry_point}
+                      onCheckedChange={(checked) => setFormData({ ...formData, is_entry_point: checked })}
+                    />
+                    <div className="grid gap-1.5 leading-none">
+                      <label
+                        htmlFor="is_entry_point"
+                        className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                      >
+                        É Medidor de Entrada?
+                      </label>
+                      <p className="text-xs text-slate-500">
+                        Marque se este equipamento é o totalizador principal deste nível hierárquico.
+                      </p>
+                    </div>
+                  </div>
+
                   {/* Gateway Selection moved to Addressing tab */}
                   <p className="text-sm text-slate-500 pt-4 border-t">
                     Selecione o Gateway na aba "Endereçamento" para configurar a comunicação.
@@ -462,53 +584,111 @@ export function Equipments() {
                 </TabsContent>
 
                 <TabsContent value="type" className="space-y-4 py-4">
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label>Tipo de Equipamento</Label>
-                      <Select
-                        value={formData.equipment_type}
-                        onValueChange={(value) => setFormData({ ...formData, equipment_type: value })}
-                      >
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="generic">Genérico</SelectItem>
-                          <SelectItem value="motor">Motor</SelectItem>
-                          <SelectItem value="resistor">Resistência</SelectItem>
-                          <SelectItem value="lighting">Iluminação</SelectItem>
-                          <SelectItem value="compressor">Compressor</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label>Consumo Padrão</Label>
-                      <div className="flex space-x-2">
-                        <Input
-                          type="number"
-                          step="0.01"
-                          value={formData.standard_consumption}
-                          onChange={(e) => setFormData({ ...formData, standard_consumption: e.target.value })}
-                          placeholder="100.5"
-                        />
+                  {/* Tipo de Equipamento - diferente para Energia vs Produção */}
+                  {formData.meter_type === 'energy' ? (
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label>Tipo de Equipamento</Label>
                         <Select
-                          value={formData.unit}
-                          onValueChange={(value) => setFormData({ ...formData, unit: value })}
+                          value={formData.equipment_type}
+                          onValueChange={(value) => setFormData({ ...formData, equipment_type: value })}
                         >
-                          <SelectTrigger className="w-[100px]">
+                          <SelectTrigger>
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="kWh">kWh</SelectItem>
-                            <SelectItem value="kW">kW</SelectItem>
-                            <SelectItem value="A">A</SelectItem>
-                            <SelectItem value="V">V</SelectItem>
+                            <SelectItem value="generic">Genérico</SelectItem>
+                            <SelectItem value="motor">Motor</SelectItem>
+                            <SelectItem value="resistor">Resistência</SelectItem>
+                            <SelectItem value="lighting">Iluminação</SelectItem>
+                            <SelectItem value="compressor">Compressor</SelectItem>
+                            <SelectItem value="energy_meter">Medidor de Energia</SelectItem>
                           </SelectContent>
                         </Select>
                       </div>
+
+                      <div className="space-y-2">
+                        <Label>Consumo Padrão (referência)</Label>
+                        <div className="flex space-x-2">
+                          <Input
+                            type="number"
+                            step="0.01"
+                            value={formData.standard_consumption}
+                            onChange={(e) => setFormData({ ...formData, standard_consumption: e.target.value })}
+                            placeholder="100.5"
+                          />
+                          <Select
+                            value={formData.unit}
+                            onValueChange={(value) => setFormData({ ...formData, unit: value })}
+                          >
+                            <SelectTrigger className="w-[100px]">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="kWh">kWh</SelectItem>
+                              <SelectItem value="kW">kW</SelectItem>
+                              <SelectItem value="A">A</SelectItem>
+                              <SelectItem value="V">V</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <p className="text-xs text-slate-500">
+                          Usado para identificar consumo acima do esperado
+                        </p>
+                      </div>
                     </div>
-                  </div>
+                  ) : (
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label>Tipo de Medidor de Produção</Label>
+                        <Select
+                          value={formData.equipment_type}
+                          onValueChange={(value) => setFormData({ ...formData, equipment_type: value })}
+                        >
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="production_meter">Medidor de Produção</SelectItem>
+                            <SelectItem value="counter">Contador</SelectItem>
+                            <SelectItem value="scale">Balança</SelectItem>
+                            <SelectItem value="flow_meter">Medidor de Vazão</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label>Produção Padrão (meta/referência)</Label>
+                        <div className="flex space-x-2">
+                          <Input
+                            type="number"
+                            step="0.01"
+                            value={formData.standard_consumption}
+                            onChange={(e) => setFormData({ ...formData, standard_consumption: e.target.value })}
+                            placeholder="50.0"
+                          />
+                          <Select
+                            value={formData.unit}
+                            onValueChange={(value) => setFormData({ ...formData, unit: value })}
+                          >
+                            <SelectTrigger className="w-[100px]">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="ton">ton</SelectItem>
+                              <SelectItem value="kg">kg</SelectItem>
+                              <SelectItem value="pieces">peças</SelectItem>
+                              <SelectItem value="m3">m³</SelectItem>
+                              <SelectItem value="L">L</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <p className="text-xs text-slate-500">
+                          Usado para identificar produção abaixo do esperado
+                        </p>
+                      </div>
+                    </div>
+                  )}
 
                   {/* Dynamic Parameters based on Type */}
                   {formData.equipment_type === 'motor' && (
@@ -704,26 +884,132 @@ export function Equipments() {
         </Dialog>
       </div>
 
-      {/* Equipments Grid */}
-      {equipments.length === 0 ? (
+      {/* Filter Bar */}
+      <Card className="p-3">
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="flex items-center gap-2 text-sm font-medium text-slate-600">
+            <Filter className="h-4 w-4" />
+            Filtrar:
+          </div>
+
+          {/* Factory Filter */}
+          <Select
+            value={filters.factory}
+            onValueChange={(value) => setFilters({ ...filters, factory: value, area: 'all', line: 'all', machine_group: 'all' })}
+          >
+            <SelectTrigger className="w-[140px] h-8 text-xs">
+              <Factory className="h-3 w-3 mr-1" />
+              <SelectValue placeholder="Fábrica" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todas</SelectItem>
+              {getFactories().map(f => (
+                <SelectItem key={f.id} value={f.id.toString()}>{f.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          {/* Area Filter */}
+          <Select
+            value={filters.area}
+            onValueChange={(value) => setFilters({ ...filters, area: value, line: 'all', machine_group: 'all' })}
+            disabled={filters.factory === 'all'}
+          >
+            <SelectTrigger className="w-[140px] h-8 text-xs">
+              <Map className="h-3 w-3 mr-1" />
+              <SelectValue placeholder="Área" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todas</SelectItem>
+              {getAreas(filters.factory).map(a => (
+                <SelectItem key={a.id} value={a.id.toString()}>{a.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          {/* Line Filter */}
+          <Select
+            value={filters.line}
+            onValueChange={(value) => setFilters({ ...filters, line: value, machine_group: 'all' })}
+            disabled={filters.area === 'all'}
+          >
+            <SelectTrigger className="w-[140px] h-8 text-xs">
+              <Layout className="h-3 w-3 mr-1" />
+              <SelectValue placeholder="Linha" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todas</SelectItem>
+              {getLines(filters.area).map(l => (
+                <SelectItem key={l.id} value={l.id.toString()}>{l.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          {/* Machine Group Filter */}
+          <Select
+            value={filters.machine_group}
+            onValueChange={(value) => setFilters({ ...filters, machine_group: value })}
+            disabled={filters.line === 'all'}
+          >
+            <SelectTrigger className="w-[140px] h-8 text-xs">
+              <Server className="h-3 w-3 mr-1" />
+              <SelectValue placeholder="Grupo" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todos</SelectItem>
+              {getMachineGroups(filters.line).map(g => (
+                <SelectItem key={g.id} value={g.id.toString()}>{g.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          {/* Search */}
+          <Input
+            placeholder="Buscar..."
+            value={filters.search}
+            onChange={(e) => setFilters({ ...filters, search: e.target.value })}
+            className="w-[150px] h-8 text-xs"
+          />
+
+          {/* Clear Filters */}
+          {(filters.factory !== 'all' || filters.search) && (
+            <Button variant="ghost" size="sm" onClick={clearFilters} className="h-8 px-2">
+              <X className="h-4 w-4 mr-1" />
+              Limpar
+            </Button>
+          )}
+
+          {/* Results count */}
+          <span className="text-xs text-slate-500 ml-auto">
+            {filteredEquipments.length} de {equipments.length} equipamentos
+          </span>
+        </div>
+      </Card>
+
+      {/* Equipments Grid - 6 columns */}
+      {filteredEquipments.length === 0 ? (
         <Card className="text-center py-12">
           <CardContent>
             <Cpu className="h-12 w-12 text-slate-400 mx-auto mb-4" />
             <h3 className="text-lg font-semibold text-slate-900 dark:text-white mb-2">
-              Nenhum equipamento configurado
+              {equipments.length === 0 ? 'Nenhum equipamento configurado' : 'Nenhum equipamento encontrado'}
             </h3>
             <p className="text-slate-600 dark:text-slate-400 mb-4">
-              Adicione seu primeiro equipamento para começar o monitoramento.
+              {equipments.length === 0
+                ? 'Adicione seu primeiro equipamento para começar o monitoramento.'
+                : 'Tente ajustar os filtros para ver mais resultados.'}
             </p>
-            <Button onClick={() => setDialogOpen(true)}>
-              <Plus className="h-4 w-4 mr-2" />
-              Adicionar Equipamento
-            </Button>
+            {equipments.length === 0 && (
+              <Button onClick={() => setDialogOpen(true)}>
+                <Plus className="h-4 w-4 mr-2" />
+                Adicionar Equipamento
+              </Button>
+            )}
           </CardContent>
         </Card>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {equipments.map((equipment) => (
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-3">
+          {filteredEquipments.map((equipment) => (
             <EquipmentCard key={equipment.id} equipment={equipment} />
           ))}
         </div>

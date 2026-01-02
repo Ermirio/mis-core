@@ -10,9 +10,15 @@ equipment_bp = Blueprint('equipment', __name__)
 
 @equipment_bp.route('/equipments', methods=['GET'])
 def get_equipments():
-    """Lista todos os equipamentos"""
+    """Lista todos os equipamentos, opcionalmente filtrado por hierarchy_id"""
     try:
-        equipments = Equipment.query.all()
+        hierarchy_id = request.args.get('hierarchy_id')
+        
+        if hierarchy_id:
+            equipments = Equipment.query.filter_by(hierarchy_id=int(hierarchy_id)).all()
+        else:
+            equipments = Equipment.query.all()
+            
         return jsonify({
             'success': True,
             'data': [equipment.to_dict() for equipment in equipments]
@@ -65,6 +71,13 @@ def create_equipment():
                         data[field] = float(data[field]) if data[field] else None
                 except (ValueError, TypeError):
                     data[field] = None
+        
+        # Boolean fields
+        if 'is_entry_point' in data:
+            if isinstance(data['is_entry_point'], str):
+                 data['is_entry_point'] = data['is_entry_point'].lower() == 'true'
+            else:
+                 data['is_entry_point'] = bool(data['is_entry_point'])
             
         # Validações de endereçamento (apenas se gateway for fornecido)
         gateway_id = data.get('gateway_id')
@@ -100,6 +113,21 @@ def create_equipment():
             # Sem gateway - equipamento ainda não configurado para comunicação
             data['address_type'] = None
         
+        # Validação de medidor de entrada único por hierarquia
+        if data.get('is_entry_point') is True and data.get('hierarchy_id'):
+            from src.models.hierarchy_model import Hierarchy
+            hierarchy = Hierarchy.query.get(data.get('hierarchy_id'))
+            if hierarchy:
+                existing = Equipment.query.filter(
+                    Equipment.hierarchy_id == data.get('hierarchy_id'),
+                    Equipment.is_entry_point == True
+                ).first()
+                if existing:
+                    return jsonify({
+                        'success': False,
+                        'error': f'Já existe um medidor de entrada para a {hierarchy.type} {hierarchy.name}: "{existing.name}". Só é permitido um medidor de entrada por nível.'
+                    }), 400
+        
         # Auto-tagging Logic
         if not data.get('tag') and data.get('hierarchy_id'):
             from src.models.hierarchy_model import Hierarchy
@@ -119,7 +147,12 @@ def create_equipment():
                     'resistor': 'RES',
                     'lighting': 'LGT',
                     'compressor': 'CMP',
-                    'generic': 'EQP'
+                    'generic': 'EQP',
+                    'energy_meter': 'ENM',
+                    'production_meter': 'PRD',
+                    'counter': 'CNT',
+                    'scale': 'SCL',
+                    'flow_meter': 'FLW'
                 }
                 type_code = type_map.get(data.get('equipment_type', 'generic'), 'EQP')
                 codes.append(type_code)
@@ -163,6 +196,45 @@ def update_equipment(equipment_id):
         equipment = Equipment.query.get_or_404(equipment_id)
         data = request.get_json()
         
+        # Sanitizar campos que devem ser numéricos ou null (igual ao POST)
+        for field in ['gateway_id', 'modbus_address', 'modbus_register', 'hierarchy_id', 
+                      'standard_consumption', 'scale_factor', 'polling_interval']:
+            if field in data and data[field] in ['', None, 'null', 'undefined']:
+                data[field] = None
+            elif field in data and data[field] is not None:
+                try:
+                    if field in ['gateway_id', 'modbus_address', 'modbus_register', 'hierarchy_id', 'polling_interval']:
+                        data[field] = int(data[field]) if data[field] else None
+                    else:
+                        data[field] = float(data[field]) if data[field] else None
+                except (ValueError, TypeError):
+                    data[field] = None
+
+        # Boolean fields
+        if 'is_entry_point' in data:
+            if isinstance(data['is_entry_point'], str):
+                 data['is_entry_point'] = data['is_entry_point'].lower() == 'true'
+            else:
+                 data['is_entry_point'] = bool(data['is_entry_point'])
+        
+        # Validação de medidor de entrada único por hierarquia
+        if data.get('is_entry_point') is True and (data.get('hierarchy_id') or equipment.hierarchy_id):
+            target_hierarchy_id = data.get('hierarchy_id') or equipment.hierarchy_id
+            
+            from src.models.hierarchy_model import Hierarchy
+            hierarchy = Hierarchy.query.get(target_hierarchy_id)
+            if hierarchy:
+                existing = Equipment.query.filter(
+                    Equipment.hierarchy_id == target_hierarchy_id,
+                    Equipment.is_entry_point == True,
+                    Equipment.id != equipment_id  # Excluir o próprio equipamento
+                ).first()
+                if existing:
+                    return jsonify({
+                        'success': False,
+                        'error': f'Já existe um medidor de entrada para a {hierarchy.type} {hierarchy.name}: "{existing.name}". Só é permitido um medidor de entrada por nível.'
+                    }), 400
+        
         # Atualizar campos
         if 'name' in data:
             equipment.name = data['name']
@@ -202,6 +274,10 @@ def update_equipment(equipment_id):
             equipment.is_active = data['is_active']
         if 'polling_interval' in data:
             equipment.polling_interval = data['polling_interval']
+        if 'meter_type' in data:
+            equipment.meter_type = data['meter_type']
+        if 'is_entry_point' in data:
+            equipment.is_entry_point = data['is_entry_point']
         
         db.session.commit()
         
@@ -271,17 +347,35 @@ def read_equipment_value(equipment_id):
         # Código original para leitura real
         equipment = Equipment.query.get_or_404(equipment_id)
         # Ler valor
-        if equipment.address_type == 'opc':
-            # Simulação de leitura OPC UA (futuramente implementar cliente real)
-            # Por enquanto, gera um valor aleatório ou usa simulação se disponível
-            import random
-            raw_value = random.uniform(100, 200) # Mock
-            result = {
-                'success': True,
-                'raw_value': raw_value,
-                'converted_value': raw_value,
-                'timestamp': datetime.now().isoformat()
-            }
+        gateway = equipment.gateway
+        
+        if not gateway:
+            return jsonify({
+                'success': False,
+                'error': 'Gateway não encontrado para este equipamento'
+            }), 400
+        
+        if gateway.protocol_type == 'opc':
+            # Leitura OPC UA real
+            from src.services.opc_client import opc_client_service
+            
+            if not equipment.opc_node_id:
+                return jsonify({
+                    'success': False,
+                    'error': 'NodeID OPC não configurado para este equipamento'
+                }), 400
+            
+            result = opc_client_service.read_value(
+                opc_url=gateway.opc_url,
+                node_id=equipment.opc_node_id,
+                timeout=gateway.timeout or 5
+            )
+            
+            if not result['success']:
+                return jsonify({
+                    'success': False,
+                    'error': result['error']
+                }), 500
         else:
             # Leitura Modbus
             gateway = equipment.gateway
