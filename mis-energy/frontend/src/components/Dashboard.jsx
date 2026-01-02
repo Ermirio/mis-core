@@ -116,10 +116,37 @@ export function Dashboard() {
           <CardContent className="flex-1 overflow-y-auto p-2">
             <HierarchyManager
               onSelect={(node) => {
-                setSelectedNode(node);
-                setSelectedEquipment(null); // Clear selection when changing node
+                // If the node is an equipment, select it directly for the detail view
+                if (node.type === 'equipment') {
+                  // For equipment nodes, we need to fetch the full equipment data
+                  api.get(`/equipments/${node.equipment_id || node.id}`).then(response => {
+                    if (response.success) {
+                      setSelectedEquipment(response.data);
+                    } else {
+                      // Fallback: use the node data directly
+                      setSelectedEquipment({
+                        id: node.equipment_id || node.id,
+                        name: node.name,
+                        hierarchy_path: node.hierarchy_path,
+                        ...node
+                      });
+                    }
+                  }).catch(() => {
+                    // Fallback on error
+                    setSelectedEquipment({
+                      id: node.equipment_id || node.id,
+                      name: node.name,
+                      ...node
+                    });
+                  });
+                  setSelectedNode(null); // Don't show equipment list for equipment nodes
+                } else {
+                  // For hierarchy nodes, show equipment list
+                  setSelectedNode(node);
+                  setSelectedEquipment(null);
+                }
               }}
-              selectedId={selectedNode?.id}
+              selectedId={selectedNode?.id || selectedEquipment?.id}
             />
 
             {/* Dynamic Equipment List from API */}
@@ -139,8 +166,8 @@ export function Dashboard() {
                         key={eq.id}
                         onClick={() => setSelectedEquipment(eq)}
                         className={`w-full text-left px-3 py-2 rounded-md text-sm transition-colors ${selectedEquipment?.id === eq.id
-                            ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300'
-                            : 'hover:bg-slate-100 dark:hover:bg-slate-800'
+                          ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300'
+                          : 'hover:bg-slate-100 dark:hover:bg-slate-800'
                           }`}
                       >
                         {eq.name}
