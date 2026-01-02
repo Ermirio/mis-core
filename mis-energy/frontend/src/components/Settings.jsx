@@ -8,7 +8,12 @@ import {
   Save,
   TestTube,
   Eye,
-  EyeOff
+  EyeOff,
+  DollarSign,
+  Zap,
+  ToggleLeft,
+  ToggleRight,
+  RefreshCw
 } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -16,6 +21,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Badge } from '@/components/ui/badge'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { useToast } from '@/hooks/use-toast'
 
 export function Settings() {
@@ -28,16 +34,27 @@ export function Settings() {
   })
 
   const [influxConfig, setInfluxConfig] = useState({
-    url: 'http://localhost:8086',
-    token: '',
-    org: '',
-    bucket: 'energy_measurements'
+    host: 'mis-core-influxdb',
+    port: 8086,
+    database: 'db_energy',
+    username: '',
+    password: ''
+  })
+
+  const [metricsConfig, setMetricsConfig] = useState({
+    kwh_cost_brl: 0.85,
+    usd_brl_rate: 5.0,
+    eur_brl_rate: 5.5,
+    production_unit: 'ton',
+    production_unit_label: 'Toneladas',
+    simulation_enabled: true
   })
 
   const [showMysqlPassword, setShowMysqlPassword] = useState(false)
   const [showInfluxToken, setShowInfluxToken] = useState(false)
   const [loading, setLoading] = useState(true)
   const [testing, setTesting] = useState({ mysql: false, influx: false })
+  const [savingMetrics, setSavingMetrics] = useState(false)
   const { toast } = useToast()
 
   useEffect(() => {
@@ -57,10 +74,53 @@ export function Settings() {
       if (influxData.success && influxData.data) {
         setInfluxConfig({ ...influxConfig, ...influxData.data })
       }
+
+      // Buscar configuração de Métricas
+      const metricsData = await api.get('/config/metrics')
+      if (metricsData.success && metricsData.data) {
+        setMetricsConfig({ ...metricsConfig, ...metricsData.data })
+      }
     } catch (error) {
       console.error('Erro ao carregar configurações:', error)
     } finally {
       setLoading(false)
+    }
+  }
+
+  const saveMetricsConfig = async () => {
+    setSavingMetrics(true)
+    try {
+      const data = await api.put('/config/metrics', metricsConfig)
+      if (data.success) {
+        toast({
+          title: 'Configurações de Métricas salvas',
+          description: 'Configurações foram salvas com sucesso.',
+        })
+      }
+    } catch (error) {
+      console.error('Erro ao salvar config Métricas:', error)
+      toast({
+        title: 'Erro',
+        description: 'Erro ao salvar configurações de métricas.',
+        variant: 'destructive',
+      })
+    } finally {
+      setSavingMetrics(false)
+    }
+  }
+
+  const toggleSimulation = async () => {
+    try {
+      const data = await api.post('/config/simulation/toggle')
+      if (data.success) {
+        setMetricsConfig({ ...metricsConfig, simulation_enabled: data.data.simulation_enabled })
+        toast({
+          title: data.message,
+          description: data.data.simulation_enabled ? 'Dados simulados serão usados.' : 'Dados reais do InfluxDB serão usados.',
+        })
+      }
+    } catch (error) {
+      console.error('Erro ao alternar simulação:', error)
     }
   }
 
@@ -182,8 +242,12 @@ export function Settings() {
         </p>
       </div>
 
-      <Tabs defaultValue="mysql" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-2">
+      <Tabs defaultValue="metrics" className="space-y-6">
+        <TabsList className="grid w-full grid-cols-3">
+          <TabsTrigger value="metrics" className="flex items-center space-x-2">
+            <DollarSign className="h-4 w-4" />
+            <span>Métricas</span>
+          </TabsTrigger>
           <TabsTrigger value="mysql" className="flex items-center space-x-2">
             <Database className="h-4 w-4" />
             <span>MySQL</span>
@@ -193,6 +257,139 @@ export function Settings() {
             <span>InfluxDB</span>
           </TabsTrigger>
         </TabsList>
+
+        {/* Metrics Configuration */}
+        <TabsContent value="metrics">
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle className="flex items-center space-x-2">
+                    <DollarSign className="h-5 w-5" />
+                    <span>Configuração de Métricas</span>
+                  </CardTitle>
+                  <CardDescription>
+                    Configure custos de energia, taxas de câmbio e unidades de produção
+                  </CardDescription>
+                </div>
+                <Button
+                  variant={metricsConfig.simulation_enabled ? "default" : "outline"}
+                  onClick={toggleSimulation}
+                  className="flex items-center space-x-2"
+                >
+                  {metricsConfig.simulation_enabled ? (
+                    <><ToggleRight className="h-4 w-4" /><span>Simulação ATIVA</span></>
+                  ) : (
+                    <><ToggleLeft className="h-4 w-4" /><span>Dados Reais</span></>
+                  )}
+                </Button>
+              </div>
+            </CardHeader>
+
+            <CardContent className="space-y-6">
+              {/* Custo de Energia */}
+              <div className="space-y-4">
+                <h4 className="font-medium flex items-center gap-2">
+                  <Zap className="h-4 w-4 text-yellow-500" />
+                  Custo de Energia
+                </h4>
+                <div className="grid grid-cols-3 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="kwh-cost">Custo por kWh (R$)</Label>
+                    <Input
+                      id="kwh-cost"
+                      type="number"
+                      step="0.01"
+                      value={metricsConfig.kwh_cost_brl}
+                      onChange={(e) => setMetricsConfig({ ...metricsConfig, kwh_cost_brl: parseFloat(e.target.value) })}
+                      placeholder="0.85"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="usd-rate">Cotação USD/BRL</Label>
+                    <Input
+                      id="usd-rate"
+                      type="number"
+                      step="0.01"
+                      value={metricsConfig.usd_brl_rate}
+                      onChange={(e) => setMetricsConfig({ ...metricsConfig, usd_brl_rate: parseFloat(e.target.value) })}
+                      placeholder="5.00"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="eur-rate">Cotação EUR/BRL</Label>
+                    <Input
+                      id="eur-rate"
+                      type="number"
+                      step="0.01"
+                      value={metricsConfig.eur_brl_rate}
+                      onChange={(e) => setMetricsConfig({ ...metricsConfig, eur_brl_rate: parseFloat(e.target.value) })}
+                      placeholder="5.50"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Unidade de Produção */}
+              <div className="space-y-4">
+                <h4 className="font-medium">Unidade de Produção</h4>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>Unidade</Label>
+                    <Select
+                      value={metricsConfig.production_unit}
+                      onValueChange={(value) => {
+                        const labels = { ton: 'Toneladas', kg: 'Quilogramas', pieces: 'Peças' }
+                        setMetricsConfig({
+                          ...metricsConfig,
+                          production_unit: value,
+                          production_unit_label: labels[value] || value
+                        })
+                      }}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="ton">Toneladas (ton)</SelectItem>
+                        <SelectItem value="kg">Quilogramas (kg)</SelectItem>
+                        <SelectItem value="pieces">Peças (pcs)</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="unit-label">Descrição da Unidade</Label>
+                    <Input
+                      id="unit-label"
+                      value={metricsConfig.production_unit_label}
+                      onChange={(e) => setMetricsConfig({ ...metricsConfig, production_unit_label: e.target.value })}
+                      placeholder="Toneladas"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Info Box */}
+              <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg p-4">
+                <h4 className="font-medium text-amber-900 dark:text-amber-100 mb-2">
+                  Sobre o Modo de Simulação
+                </h4>
+                <ul className="text-sm text-amber-800 dark:text-amber-200 space-y-1">
+                  <li>• <strong>Simulação ATIVA:</strong> Usa dados mockados para demonstração</li>
+                  <li>• <strong>Dados Reais:</strong> Busca dados do InfluxDB (requer configuração)</li>
+                  <li>• As métricas kWh/ton e R$/ton são calculadas automaticamente</li>
+                </ul>
+              </div>
+
+              <div className="flex items-center space-x-4 pt-4 border-t">
+                <Button onClick={saveMetricsConfig} disabled={savingMetrics} className="flex items-center space-x-2">
+                  {savingMetrics ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                  <span>{savingMetrics ? 'Salvando...' : 'Salvar Configuração'}</span>
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
 
         {/* MySQL Configuration */}
         <TabsContent value="mysql">
@@ -315,87 +512,101 @@ export function Settings() {
                 <div>
                   <CardTitle className="flex items-center space-x-2">
                     <Server className="h-5 w-5" />
-                    <span>Configuração InfluxDB</span>
+                    <span>Configuração InfluxDB 1.8</span>
                   </CardTitle>
                   <CardDescription>
-                    Configure a conexão com o InfluxDB 2.0 para armazenar dados de medições em tempo real
+                    Configure a conexão com o InfluxDB 1.8 para armazenar dados de medições (database padrão: db_energy)
                   </CardDescription>
                 </div>
                 <Badge variant="outline" className="flex items-center space-x-1">
                   <AlertCircle className="h-3 w-3 text-yellow-500" />
-                  <span>Pendente</span>
+                  <span>1.8</span>
                 </Badge>
               </div>
             </CardHeader>
 
             <CardContent className="space-y-6">
-              <div className="space-y-2">
-                <Label htmlFor="influx-url">URL do Servidor</Label>
-                <Input
-                  id="influx-url"
-                  value={influxConfig.url}
-                  onChange={(e) => setInfluxConfig({ ...influxConfig, url: e.target.value })}
-                  placeholder="http://localhost:8086"
-                />
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="influx-host">Host</Label>
+                  <Input
+                    id="influx-host"
+                    value={influxConfig.host}
+                    onChange={(e) => setInfluxConfig({ ...influxConfig, host: e.target.value })}
+                    placeholder="mis-core-influxdb"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="influx-port">Porta</Label>
+                  <Input
+                    id="influx-port"
+                    type="number"
+                    value={influxConfig.port}
+                    onChange={(e) => setInfluxConfig({ ...influxConfig, port: parseInt(e.target.value) })}
+                    placeholder="8086"
+                  />
+                </div>
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="influx-token">Token de Acesso</Label>
-                <div className="relative">
-                  <Input
-                    id="influx-token"
-                    type={showInfluxToken ? "text" : "password"}
-                    value={influxConfig.token}
-                    onChange={(e) => setInfluxConfig({ ...influxConfig, token: e.target.value })}
-                    placeholder="••••••••••••••••••••••••••••••••••••••••"
-                  />
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
-                    onClick={() => setShowInfluxToken(!showInfluxToken)}
-                  >
-                    {showInfluxToken ? (
-                      <EyeOff className="h-4 w-4" />
-                    ) : (
-                      <Eye className="h-4 w-4" />
-                    )}
-                  </Button>
-                </div>
+                <Label htmlFor="influx-database">Database</Label>
+                <Input
+                  id="influx-database"
+                  value={influxConfig.database}
+                  onChange={(e) => setInfluxConfig({ ...influxConfig, database: e.target.value })}
+                  placeholder="db_energy"
+                />
+                <p className="text-xs text-slate-500">Será criado automaticamente se não existir</p>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="influx-org">Organização</Label>
+                  <Label htmlFor="influx-username">Usuário (opcional)</Label>
                   <Input
-                    id="influx-org"
-                    value={influxConfig.org}
-                    onChange={(e) => setInfluxConfig({ ...influxConfig, org: e.target.value })}
-                    placeholder="my-org"
+                    id="influx-username"
+                    value={influxConfig.username}
+                    onChange={(e) => setInfluxConfig({ ...influxConfig, username: e.target.value })}
+                    placeholder="Deixe vazio se sem autenticação"
                   />
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="influx-bucket">Bucket</Label>
-                  <Input
-                    id="influx-bucket"
-                    value={influxConfig.bucket}
-                    onChange={(e) => setInfluxConfig({ ...influxConfig, bucket: e.target.value })}
-                    placeholder="energy_measurements"
-                  />
+                  <Label htmlFor="influx-password">Senha (opcional)</Label>
+                  <div className="relative">
+                    <Input
+                      id="influx-password"
+                      type={showInfluxToken ? "text" : "password"}
+                      value={influxConfig.password}
+                      onChange={(e) => setInfluxConfig({ ...influxConfig, password: e.target.value })}
+                      placeholder=""
+                    />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
+                      onClick={() => setShowInfluxToken(!showInfluxToken)}
+                    >
+                      {showInfluxToken ? (
+                        <EyeOff className="h-4 w-4" />
+                      ) : (
+                        <Eye className="h-4 w-4" />
+                      )}
+                    </Button>
+                  </div>
                 </div>
               </div>
 
               <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
                 <h4 className="font-medium text-blue-900 dark:text-blue-100 mb-2">
-                  Informações sobre o InfluxDB
+                  Informações sobre o InfluxDB 1.8
                 </h4>
                 <ul className="text-sm text-blue-800 dark:text-blue-200 space-y-1">
                   <li>• O InfluxDB é usado para armazenar dados de medições em tempo real</li>
-                  <li>• Configure um token com permissões de leitura e escrita no bucket</li>
+                  <li>• Para esta aplicação, usamos InfluxDB 1.8 (não requer token/org)</li>
+                  <li>• O database <strong>db_energy</strong> será criado automaticamente</li>
                   <li>• Os dados são organizados por equipamento e timestamp</li>
-                  <li>• Suporte para retenção automática de dados históricos</li>
                 </ul>
               </div>
 

@@ -52,3 +52,5 @@ class Hierarchy(db.Model):
             description=data.get('description'),
             parent_id=data.get('parent_id')
         )
+
+

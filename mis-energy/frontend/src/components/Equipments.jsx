@@ -48,6 +48,10 @@ export function Equipments() {
   const [activeTab, setActiveTab] = useState('basic')
   const { toast } = useToast()
 
+  // Real-time values state
+  const [realTimeValues, setRealTimeValues] = useState({}) // {equipmentId: {value, unit, timestamp}}
+  const [refreshingRealTime, setRefreshingRealTime] = useState(false)
+
   // Filter states
   const [hierarchyData, setHierarchyData] = useState([])
   const [filters, setFilters] = useState({
@@ -104,6 +108,53 @@ export function Equipments() {
     }
   }
 
+  // Fetch real-time values for visible equipment
+  const fetchRealTimeValues = async () => {
+    if (equipments.length === 0) return
+
+    setRefreshingRealTime(true)
+    try {
+      const updates = await Promise.all(
+        equipments.slice(0, 20).map(async (eq) => { // Limit to first 20 to avoid overload
+          try {
+            const data = await api.post(`/equipments/${eq.id}/read`, {}, { timeout: 10000 })
+            if (data.success) {
+              return { id: eq.id, value: data.data.value, unit: data.data.unit, timestamp: new Date(), success: true }
+            }
+            return { id: eq.id, success: false }
+          } catch {
+            return { id: eq.id, success: false }
+          }
+        })
+      )
+
+      const newValues = {}
+      updates.forEach(u => {
+        if (u.success) {
+          newValues[u.id] = { value: u.value, unit: u.unit, timestamp: u.timestamp }
+        }
+      })
+      setRealTimeValues(prev => ({ ...prev, ...newValues }))
+    } catch (error) {
+      console.error("Error fetching real-time values:", error)
+    } finally {
+      setRefreshingRealTime(false)
+    }
+  }
+
+  // Auto-refresh real-time values every 10 seconds
+  useEffect(() => {
+    if (equipments.length > 0) {
+      fetchRealTimeValues() // Initial fetch
+    }
+    const interval = setInterval(() => {
+      if (!loading && equipments.length > 0) {
+        fetchRealTimeValues()
+      }
+    }, 10000)
+    return () => clearInterval(interval)
+  }, [equipments.length])
+
   const fetchGateways = async () => {
     try {
       const data = await api.get('/gateways')
@@ -152,20 +203,64 @@ export function Equipments() {
     return []
   }
 
-  // Filter equipments based on selected hierarchy
+  // Get all child hierarchy IDs recursively
+  const getAllChildIds = (parentId, data) => {
+    const result = [parentId]
+    const findChildren = (nodes, targetId) => {
+      for (const node of nodes) {
+        if (node.parent_id === targetId || node.id === targetId) {
+          result.push(node.id)
+        }
+        if (node.children && node.children.length > 0) {
+          findChildren(node.children, targetId)
+        }
+      }
+    }
+
+    // Flatten hierarchy for easier searching
+    const flattenHierarchy = (nodes) => {
+      let flat = []
+      for (const node of nodes) {
+        flat.push({ id: node.id, parent_id: node.parent_id })
+        if (node.children) {
+          flat = flat.concat(flattenHierarchy(node.children))
+        }
+      }
+      return flat
+    }
+
+    const flat = flattenHierarchy(data)
+    // Find all descendants
+    const findDescendants = (id) => {
+      const children = flat.filter(n => n.parent_id === parseInt(id))
+      for (const child of children) {
+        if (!result.includes(child.id)) {
+          result.push(child.id)
+          findDescendants(child.id)
+        }
+      }
+    }
+    findDescendants(parentId)
+    return result
+  }
+
+  // Filter equipments based on selected hierarchy (with recursive children)
   const filteredEquipments = equipments.filter(eq => {
     // Text search filter
     if (filters.search && !eq.name.toLowerCase().includes(filters.search.toLowerCase())) {
       return false
     }
-    // Hierarchy filter - match any selected level (ignore 'all' values)
+    // Hierarchy filter - get selected ID and include all children recursively
     const selectedId =
       (filters.machine_group && filters.machine_group !== 'all' ? filters.machine_group : null) ||
       (filters.line && filters.line !== 'all' ? filters.line : null) ||
       (filters.area && filters.area !== 'all' ? filters.area : null) ||
       (filters.factory && filters.factory !== 'all' ? filters.factory : null)
+
     if (selectedId) {
-      return eq.hierarchy_id?.toString() === selectedId
+      // Get all child hierarchy IDs recursively and check if equipment belongs to any
+      const childIds = getAllChildIds(parseInt(selectedId), hierarchyData)
+      return childIds.includes(eq.hierarchy_id)
     }
     return true
   })
@@ -356,51 +451,88 @@ export function Equipments() {
     }))
   }
 
-  // Compact Equipment Card for 6-column grid
-  const EquipmentCard = ({ equipment }) => (
-    <Card className="group hover:shadow-md transition-all duration-200 cursor-pointer relative overflow-hidden">
-      <CardContent className="p-3">
-        {/* Header with icon and status */}
-        <div className="flex items-center justify-between mb-2">
-          <div className={`p-1.5 rounded-md ${equipment.meter_type === 'energy'
-            ? 'bg-blue-100 dark:bg-blue-900/30'
-            : 'bg-green-100 dark:bg-green-900/30'
-            }`}>
-            {equipment.meter_type === 'energy' ? (
-              <Zap className="h-4 w-4 text-blue-600 dark:text-blue-400" />
-            ) : (
-              <Package className="h-4 w-4 text-green-600 dark:text-green-400" />
-            )}
+  // Compact Equipment Card for 6-column grid with real-time value
+  const EquipmentCard = ({ equipment }) => {
+    // Get real-time value from state
+    const rtValue = realTimeValues[equipment.id]
+    const currentValue = rtValue?.value ?? equipment.last_value
+    const displayUnit = rtValue?.unit || equipment.unit || 'kWh'
+
+    // Check if above standard consumption
+    const standardConsumption = equipment.standard_consumption
+    const isAboveStandard = standardConsumption && currentValue > standardConsumption
+    const consumptionPercent = standardConsumption ? (currentValue / standardConsumption) * 100 : null
+
+    return (
+      <Card className="group hover:shadow-md transition-all duration-200 cursor-pointer relative overflow-hidden">
+        <CardContent className="p-3">
+          {/* Header with icon and status */}
+          <div className="flex items-center justify-between mb-2">
+            <div className={`p-1.5 rounded-md ${equipment.meter_type === 'energy'
+              ? 'bg-blue-100 dark:bg-blue-900/30'
+              : 'bg-green-100 dark:bg-green-900/30'
+              }`}>
+              {equipment.meter_type === 'energy' ? (
+                <Zap className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+              ) : (
+                <Package className="h-4 w-4 text-green-600 dark:text-green-400" />
+              )}
+            </div>
+            <Badge
+              variant={equipment.is_active ? 'default' : 'secondary'}
+              className={`text-[10px] px-1.5 py-0.5 ${equipment.is_active ? 'bg-green-500' : ''}`}
+            >
+              {equipment.is_active ? 'On' : 'Off'}
+            </Badge>
           </div>
-          <Badge
-            variant={equipment.is_active ? 'default' : 'secondary'}
-            className="text-[10px] px-1.5 py-0.5"
-          >
-            {equipment.is_active ? '●' : '○'}
-          </Badge>
-        </div>
 
-        {/* Name - truncated */}
-        <h4 className="font-medium text-sm text-slate-900 dark:text-white truncate" title={equipment.name}>
-          {equipment.name}
-        </h4>
+          {/* Name - truncated */}
+          <h4 className="font-medium text-sm text-slate-900 dark:text-white truncate" title={equipment.name}>
+            {equipment.name}
+          </h4>
 
-        {/* Location - small */}
-        <p className="text-[11px] text-slate-500 truncate mt-0.5" title={equipment.hierarchy_path}>
-          {equipment.hierarchy_path || 'Sem local'}
-        </p>
+          {/* Location - small */}
+          <p className="text-[11px] text-slate-500 truncate mt-0.5" title={equipment.hierarchy_path}>
+            {equipment.hierarchy_path || 'Sem local'}
+          </p>
 
-        {/* Type badge */}
-        <div className="flex items-center justify-between mt-2">
-          <span className="text-[10px] uppercase tracking-wider text-slate-400 font-medium">
-            {equipment.equipment_type?.replace('_', ' ')}
-          </span>
-          {equipment.last_value && (
-            <span className="text-xs font-semibold text-green-600 dark:text-green-400">
-              {equipment.last_value} {equipment.unit}
-            </span>
+          {/* Real-time Value Display */}
+          <div className={`mt-2 p-2 rounded-md ${isAboveStandard
+            ? 'bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800'
+            : 'bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800'
+            }`}>
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] text-slate-500">Valor Atual</span>
+              {rtValue && (
+                <span className="text-[10px] text-slate-400">
+                  {rtValue.timestamp?.toLocaleTimeString().slice(0, 5)}
+                </span>
+              )}
+            </div>
+            <p className={`text-lg font-bold ${isAboveStandard ? 'text-red-600' : 'text-green-600'}`}>
+              {currentValue != null ? Number(currentValue).toLocaleString('pt-BR', { maximumFractionDigits: 1 }) : '--'}
+              <span className="text-xs font-normal ml-1">{displayUnit}</span>
+            </p>
+          </div>
+
+          {/* Consumption Progress Bar */}
+          {consumptionPercent !== null && (
+            <div className="mt-2">
+              <div className="flex justify-between text-[10px] text-slate-500 mb-0.5">
+                <span>Padrão: {standardConsumption}</span>
+                <span className={isAboveStandard ? 'text-red-500 font-medium' : 'text-green-500'}>
+                  {consumptionPercent.toFixed(0)}%
+                </span>
+              </div>
+              <div className="h-1.5 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
+                <div
+                  className={`h-full transition-all ${consumptionPercent > 100 ? 'bg-red-500' : 'bg-green-500'}`}
+                  style={{ width: `${Math.min(consumptionPercent, 100)}%` }}
+                />
+              </div>
+            </div>
           )}
-        </div>
+        </CardContent>
 
         {/* Hover actions overlay */}
         <div className="absolute inset-0 bg-white/95 dark:bg-slate-900/95 opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex items-center justify-center gap-2">
@@ -432,9 +564,9 @@ export function Equipments() {
             <Trash2 className="h-4 w-4" />
           </Button>
         </div>
-      </CardContent>
-    </Card>
-  )
+      </Card>
+    )
+  }
 
   if (loading) {
     return <div className="p-8 text-center">Carregando equipamentos...</div>

@@ -121,7 +121,10 @@ class ConexaoOPCAdmin(ImportExportModelAdmin):
     ativa_badge.short_description = 'Status'
     
     def num_tags(self, obj):
-        return obj.tags.count()
+        # Fix for AttributeError: 'ConexaoOPC' object has no attribute 'tags'
+        # Counts tags linked to equipments in lines that use this connection
+        # Access via: TagColeta -> Equipamento -> Linha -> ConexaoOPC
+        return TagColeta.objects.filter(equipamento__linha__conexao_padrao=obj).count()
     num_tags.short_description = 'Tags'
 
 

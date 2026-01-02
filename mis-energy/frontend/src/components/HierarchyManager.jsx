@@ -191,9 +191,31 @@ export function HierarchyManager({ onSelect, selectedId, onAddEquipment }) {
   }
 
   const getNextType = (currentType) => {
-    const types = ['factory', 'area', 'line', 'machine_group']
-    const idx = types.indexOf(currentType)
-    return idx < types.length - 1 ? types[idx + 1] : 'machine_group'
+    // Retorna o próximo tipo permitido na hierarquia ISA-95
+    // Fábrica → Área → Linha → Grupo de Máquinas (não pode ter mais filhos estruturais)
+    switch (currentType) {
+      case 'factory': return 'area'
+      case 'area': return 'line'
+      case 'line': return 'machine_group'
+      case 'machine_group': return null // Grupo só pode ter equipamentos, não sublocalizações
+      default: return 'factory'
+    }
+  }
+
+  // Retorna os tipos permitidos para criar como filho de um parent
+  const getAllowedChildTypes = (parentType) => {
+    switch (parentType) {
+      case 'factory': return ['area'] // Fábrica só pode ter áreas
+      case 'area': return ['line'] // Área só pode ter linhas
+      case 'line': return ['machine_group'] // Linha só pode ter grupos de máquinas
+      case 'machine_group': return [] // Grupo só pode ter equipamentos (não locais)
+      default: return ['factory']
+    }
+  }
+
+  // Verifica se pode adicionar sublocalização a um nó
+  const canAddChild = (parentType) => {
+    return getAllowedChildTypes(parentType).length > 0
   }
 
   const getTypeIcon = (type) => {
@@ -303,15 +325,18 @@ export function HierarchyManager({ onSelect, selectedId, onAddEquipment }) {
             {/* Action Buttons - Visible on Hover */}
             {!isEquipment && (
               <div className="flex items-center space-x-1 opacity-0 group-hover:opacity-100 transition-all duration-200">
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-7 w-7 hover:bg-green-100 hover:text-green-600 dark:hover:bg-green-900/30"
-                  onClick={(e) => { e.stopPropagation(); handleAdd(node); }}
-                  title="Adicionar sublocalização"
-                >
-                  <Plus className="h-3.5 w-3.5" />
-                </Button>
+                {/* Botão de sublocalização - oculto para grupos de máquinas (só podem ter equipamentos) */}
+                {canAddChild(node.type) && (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7 hover:bg-green-100 hover:text-green-600 dark:hover:bg-green-900/30"
+                    onClick={(e) => { e.stopPropagation(); handleAdd(node); }}
+                    title={`Adicionar ${getNextType(node.type) === 'area' ? 'Área' : getNextType(node.type) === 'line' ? 'Linha' : 'Grupo de Máquinas'}`}
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                  </Button>
+                )}
                 <Button
                   variant="ghost"
                   size="icon"
@@ -431,20 +456,43 @@ export function HierarchyManager({ onSelect, selectedId, onAddEquipment }) {
             </div>
             <div className="space-y-2">
               <Label>Tipo</Label>
-              <Select
-                value={formData.type}
-                onValueChange={v => setFormData({ ...formData, type: v })}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="factory">Fábrica</SelectItem>
-                  <SelectItem value="area">Área</SelectItem>
-                  <SelectItem value="line">Linha</SelectItem>
-                  <SelectItem value="machine_group">Grupo de Máquinas</SelectItem>
-                </SelectContent>
-              </Select>
+              {/* Quando criando como filho, só mostrar os tipos permitidos */}
+              {parentNode ? (
+                <div className="p-3 bg-slate-50 dark:bg-slate-800 rounded-lg border">
+                  <p className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                    {formData.type === 'area' && '📍 Área'}
+                    {formData.type === 'line' && '📏 Linha'}
+                    {formData.type === 'machine_group' && '📊 Grupo de Máquinas'}
+                  </p>
+                  <p className="text-xs text-slate-500 mt-1">
+                    Será criado dentro de: {parentNode.name}
+                  </p>
+                </div>
+              ) : editingNode ? (
+                <div className="p-3 bg-slate-50 dark:bg-slate-800 rounded-lg border">
+                  <p className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                    {formData.type === 'factory' && '🏭 Fábrica'}
+                    {formData.type === 'area' && '📍 Área'}
+                    {formData.type === 'line' && '📏 Linha'}
+                    {formData.type === 'machine_group' && '📊 Grupo de Máquinas'}
+                  </p>
+                  <p className="text-xs text-slate-500 mt-1">
+                    Tipo não pode ser alterado após criação
+                  </p>
+                </div>
+              ) : (
+                <Select
+                  value={formData.type}
+                  onValueChange={v => setFormData({ ...formData, type: v })}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="factory">🏭 Fábrica</SelectItem>
+                  </SelectContent>
+                </Select>
+              )}
             </div>
             <div className="space-y-2">
               <Label>Descrição</Label>

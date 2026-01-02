@@ -8,7 +8,8 @@ import {
   ChevronLeft,
   Activity,
   Database,
-  Wifi
+  Wifi,
+  BarChart3
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
@@ -19,6 +20,12 @@ const navigation = [
     href: '/',
     icon: LayoutDashboard,
     description: 'Visão geral do sistema'
+  },
+  {
+    name: 'Analytics',
+    href: '/analytics',
+    icon: BarChart3,
+    description: 'Análise de consumo energético'
   },
   {
     name: 'Gateways',

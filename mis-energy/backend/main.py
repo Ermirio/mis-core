@@ -13,6 +13,8 @@ from src.routes.config import config_bp
 from src.routes.analytics import analytics_bp
 from src.routes.simulation import simulation_bp
 from src.routes.hierarchy_routes import hierarchy_bp
+from src.routes.analytics_dashboard import analytics_dashboard_bp
+from src.routes.metrics_routes import metrics_bp
 from src.config import Config
 
 app = Flask(__name__, static_folder=os.path.join(os.path.dirname(__file__), 'static'))
@@ -29,6 +31,8 @@ app.register_blueprint(config_bp, url_prefix='/api')
 app.register_blueprint(analytics_bp, url_prefix='/api')
 app.register_blueprint(simulation_bp, url_prefix='/api')
 app.register_blueprint(hierarchy_bp, url_prefix='/api')
+app.register_blueprint(analytics_dashboard_bp, url_prefix='/api')
+app.register_blueprint(metrics_bp, url_prefix='/api')
 
 # Inicializar banco de dados
 db.init_app(app)
@@ -38,7 +42,14 @@ with app.app_context():
     from src.models.equipment import Equipment
     from src.models.hierarchy_model import Hierarchy
     from src.models.config_model import DatabaseConfig
-    db.create_all()
+    from src.models.metrics_config import MetricsConfig
+    
+    # Only create tables if not in testing mode (prevents import side-effects)
+    if os.environ.get('FLASK_ENV') != 'testing':
+        try:
+            db.create_all()
+        except Exception as e:
+            print(f"Warning: Could not connect to database to create tables: {e}")
 
 @app.route('/', defaults={'path': ''})
 @app.route('/<path:path>')

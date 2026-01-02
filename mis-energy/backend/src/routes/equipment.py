@@ -10,12 +10,35 @@ equipment_bp = Blueprint('equipment', __name__)
 
 @equipment_bp.route('/equipments', methods=['GET'])
 def get_equipments():
-    """Lista todos os equipamentos, opcionalmente filtrado por hierarchy_id"""
+    """Lista todos os equipamentos, opcionalmente filtrado por hierarchy_id
+    
+    Query params:
+        hierarchy_id: ID da hierarquia para filtrar
+        recursive: Se 'true', inclui equipamentos de todas as sub-hierarquias
+    """
     try:
+        from src.models.hierarchy_model import Hierarchy
+        
         hierarchy_id = request.args.get('hierarchy_id')
+        recursive = request.args.get('recursive', 'false').lower() == 'true'
         
         if hierarchy_id:
-            equipments = Equipment.query.filter_by(hierarchy_id=int(hierarchy_id)).all()
+            hierarchy_id = int(hierarchy_id)
+            
+            if recursive:
+                # Buscar todos os IDs de hierarquia recursivamente
+                def get_all_child_ids(parent_id):
+                    """Retorna lista de IDs incluindo parent e todos os filhos recursivamente"""
+                    ids = [parent_id]
+                    children = Hierarchy.query.filter_by(parent_id=parent_id).all()
+                    for child in children:
+                        ids.extend(get_all_child_ids(child.id))
+                    return ids
+                
+                all_hierarchy_ids = get_all_child_ids(hierarchy_id)
+                equipments = Equipment.query.filter(Equipment.hierarchy_id.in_(all_hierarchy_ids)).all()
+            else:
+                equipments = Equipment.query.filter_by(hierarchy_id=hierarchy_id).all()
         else:
             equipments = Equipment.query.all()
             
@@ -24,6 +47,7 @@ def get_equipments():
             'data': [equipment.to_dict() for equipment in equipments]
         })
     except Exception as e:
+        logger.error(f"Erro ao buscar equipamentos: {e}")
         return jsonify({
             'success': False,
             'error': str(e)

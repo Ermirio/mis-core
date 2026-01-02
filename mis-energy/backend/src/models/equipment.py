@@ -15,6 +15,9 @@ class Equipment(db.Model):
     area = db.Column(db.String(100))  # Área/setor
     standard_consumption = db.Column(db.Float)  # Consumo padrão em kWh
     
+    # Tipo de Medidor: 'energy' (energia) ou 'production' (produção)
+    meter_type = db.Column(db.String(20), default='energy', nullable=False)
+    
     # Configurações Modbus
     hierarchy_id = db.Column(db.Integer, db.ForeignKey('hierarchies.id'), nullable=True)
     
@@ -41,6 +44,7 @@ class Equipment(db.Model):
     
     # Configurações de monitoramento
     is_active = db.Column(db.Boolean, default=True)
+    is_entry_point = db.Column(db.Boolean, default=False)  # Se é o medidor de entrada da hierarquia (totalizador)
     polling_interval = db.Column(db.Integer, default=60)
     
     # Metadados
@@ -63,6 +67,8 @@ class Equipment(db.Model):
             'area': self.area, # Mantido para compatibilidade
             'hierarchy_id': self.hierarchy_id,
             'hierarchy_path': self._get_hierarchy_path() if self.hierarchy_id else None,
+            'hierarchy_level': self._get_hierarchy_level() if self.hierarchy_id else None,
+            'meter_type': self.meter_type,
             'equipment_type': self.equipment_type,
             'parameters': self.parameters,
             'standard_consumption': self.standard_consumption,
@@ -77,12 +83,19 @@ class Equipment(db.Model):
             'scale_factor': self.scale_factor,
             'unit': self.unit,
             'is_active': self.is_active,
+            'is_entry_point': self.is_entry_point,
             'polling_interval': self.polling_interval,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None,
             'last_reading_at': self.last_reading_at.isoformat() if self.last_reading_at else None,
             'last_value': self.last_value
         }
+    
+    def _get_hierarchy_level(self):
+        """Retorna o tipo de nível hierárquico (factory, area, line, machine_group)"""
+        if not self.hierarchy:
+            return None
+        return self.hierarchy.type
     
     def _get_hierarchy_path(self):
         """Retorna o caminho da hierarquia como string"""
@@ -95,6 +108,7 @@ class Equipment(db.Model):
             current = current.parent
             path.insert(0, current.name)
         return " > ".join(path)
+
     
     @classmethod
     def from_dict(cls, data):
@@ -106,6 +120,7 @@ class Equipment(db.Model):
             location=data.get('location'),
             area=data.get('area'),
             hierarchy_id=data.get('hierarchy_id'),
+            meter_type=data.get('meter_type', 'energy'),
             equipment_type=data.get('equipment_type', 'generic'),
             parameters=data.get('parameters', {}),
             standard_consumption=data.get('standard_consumption'),
@@ -119,5 +134,7 @@ class Equipment(db.Model):
             scale_factor=data.get('scale_factor', 1.0),
             unit=data.get('unit', 'kWh'),
             is_active=data.get('is_active', True),
+            is_entry_point=data.get('is_entry_point', False),
             polling_interval=data.get('polling_interval', 60)
         )
+

@@ -1,14 +1,20 @@
 import logging
 from typing import Optional, Dict, List
 from datetime import datetime
-from influxdb_client import InfluxDBClient, Point, WritePrecision
-from influxdb_client.client.write_api import SYNCHRONOUS
-from src.config import Config as DatabaseConfig
+import requests
 
 logger = logging.getLogger(__name__)
 
+# Tentar usar cliente v2, se não funcionar usa requests diretamente
+try:
+    from influxdb_client import InfluxDBClient, Point, WritePrecision
+    from influxdb_client.client.write_api import SYNCHRONOUS
+    HAS_INFLUX_CLIENT = True
+except ImportError:
+    HAS_INFLUX_CLIENT = False
+
 class InfluxDBService:
-    """Serviço para comunicação com InfluxDB 2.0"""
+    """Serviço para comunicação com InfluxDB 1.8"""
     
     def __init__(self):
         self.client = None
@@ -20,169 +26,163 @@ class InfluxDBService:
         """Inicializa cliente InfluxDB com configuração"""
         try:
             if config is None:
-                # Converter objeto config para dict se necessário
+                # Carregar config padrão
+                from src.config import Config as DatabaseConfig
                 conf_obj = DatabaseConfig.influxdb_config
                 if conf_obj:
                     config = {
                         'host': conf_obj.host,
                         'port': conf_obj.port,
                         'database': conf_obj.database,
-                        'username': conf_obj.username,
-                        'password': conf_obj.password
+                        'username': getattr(conf_obj, 'username', ''),
+                        'password': getattr(conf_obj, 'password', '')
                     }
             
             if not config:
-                logger.warning("Configuração InfluxDB não encontrada")
-                return False
+                # Valores padrão para InfluxDB 1.8
+                config = {
+                    'host': 'mis-core-influxdb',
+                    'port': 8086,
+                    'database': 'db_energy',
+                    'username': '',
+                    'password': ''
+                }
             
             self.config = config
             
-            # Adaptação para InfluxDB 1.8 usando client v2
-            url = f"http://{config.get('host', 'localhost')}:{config.get('port', 8086)}"
-            token = f"{config.get('username', '')}:{config.get('password', '')}"
+            # Criar database se não existir
+            self._create_database_if_not_exists()
             
-            self.client = InfluxDBClient(
-                url=url,
-                token=token,
-                org='-'  # InfluxDB 1.8 compatibility
-            )
-            
-            self.write_api = self.client.write_api(write_options=SYNCHRONOUS)
-            self.query_api = self.client.query_api()
+            if HAS_INFLUX_CLIENT:
+                # Adaptação para InfluxDB 1.8 usando client v2
+                url = f"http://{config.get('host', 'localhost')}:{config.get('port', 8086)}"
+                token = f"{config.get('username', '')}:{config.get('password', '')}"
+                
+                self.client = InfluxDBClient(
+                    url=url,
+                    token=token,
+                    org='-'  # InfluxDB 1.8 compatibility
+                )
+                
+                self.write_api = self.client.write_api(write_options=SYNCHRONOUS)
+                self.query_api = self.client.query_api()
             
             return True
             
         except Exception as e:
             logger.error(f"Erro ao inicializar cliente InfluxDB: {e}")
             return False
+    
+    def _create_database_if_not_exists(self):
+        """Cria database db_energy se não existir (InfluxDB 1.8)"""
+        try:
+            host = self.config.get('host', 'mis-core-influxdb')
+            port = self.config.get('port', 8086)
+            database = self.config.get('database', 'db_energy')
             
+            url = f"http://{host}:{port}/query"
+            
+            # Criar database
+            response = requests.post(url, params={
+                'q': f'CREATE DATABASE IF NOT EXISTS "{database}"'
+            }, timeout=5)
+            
+            if response.status_code == 200:
+                logger.info(f"Database '{database}' verificado/criado com sucesso")
+                return True
+            else:
+                logger.warning(f"Resposta ao criar database: {response.text}")
+                return False
+                
+        except Exception as e:
+            logger.warning(f"Não foi possível verificar/criar database: {e}")
+            return False
+    
+    def test_connection(self, config: Dict = None) -> Dict:
+        """Testa conexão com InfluxDB 1.8"""
+        try:
+            if config is None:
+                config = self.config or {
+                    'host': 'mis-core-influxdb',
+                    'port': 8086,
+                    'database': 'db_energy'
+                }
+            
+            host = config.get('host', 'mis-core-influxdb')
+            port = config.get('port', 8086)
+            database = config.get('database', config.get('bucket', 'db_energy'))
+            
+            url = f"http://{host}:{port}/ping"
+            
+            response = requests.get(url, timeout=5)
+            
+            if response.status_code == 204:
+                # Verificar/criar database
+                query_url = f"http://{host}:{port}/query"
+                db_response = requests.get(query_url, params={
+                    'q': 'SHOW DATABASES'
+                }, timeout=5)
+                
+                return {
+                    'connected': True,
+                    'message': f'Conexão InfluxDB 1.8 bem-sucedida. Database: {database}',
+                    'version': response.headers.get('X-Influxdb-Version', '1.8')
+                }
+            else:
+                return {
+                    'connected': False,
+                    'message': f'InfluxDB retornou status {response.status_code}'
+                }
+                
+        except requests.exceptions.ConnectionError as e:
+            return {
+                'connected': False,
+                'message': f'Não foi possível conectar ao InfluxDB: {str(e)}'
+            }
+        except Exception as e:
+            return {
+                'connected': False,
+                'message': f'Erro ao testar conexão: {str(e)}'
+            }
+    
     def write_measurement(self, equipment_id: int, equipment_name: str, 
                          value: float, unit: str, location: str = None, 
                          area: str = None, hierarchy_path: str = None,
                          equipment_type: str = None, timestamp: datetime = None) -> bool:
         """Escreve medição no InfluxDB"""
         try:
-            if not self.client or not self.write_api:
+            if not self.config:
                 if not self.initialize_client():
                     return False
             
             if timestamp is None:
                 timestamp = datetime.now()
             
-            # Criar ponto de dados
-            point = Point("energy_consumption") \
-                .tag("equipment_id", str(equipment_id)) \
-                .tag("equipment_name", equipment_name) \
-                .tag("unit", unit)
+            host = self.config.get('host', 'mis-core-influxdb')
+            port = self.config.get('port', 8086)
+            database = self.config.get('database', 'db_energy')
             
+            # Line Protocol para InfluxDB 1.8
+            tags = f'equipment_id={equipment_id},equipment_name={equipment_name.replace(" ", "_")},unit={unit}'
             if location:
-                point = point.tag("location", location)
+                tags += f',location={location.replace(" ", "_")}'
             if area:
-                point = point.tag("area", area)
-            if hierarchy_path:
-                point = point.tag("hierarchy_path", hierarchy_path)
+                tags += f',area={area.replace(" ", "_")}'
             if equipment_type:
-                point = point.tag("equipment_type", equipment_type)
+                tags += f',equipment_type={equipment_type}'
             
-            point = point.field("value", float(value)) \
-                .time(timestamp, WritePrecision.S)
+            line = f'energy_consumption,{tags} value={float(value)} {int(timestamp.timestamp() * 1e9)}'
             
-            # Escrever no bucket (database/retention_policy)
-            bucket = self.config.get('database', 'industrial_db')
+            url = f"http://{host}:{port}/write"
+            response = requests.post(url, params={
+                'db': database
+            }, data=line, timeout=5)
             
-            self.write_api.write(
-                bucket=bucket,
-                org='-',
-                record=point
-            )
-            
-            return True
+            return response.status_code == 204
             
         except Exception as e:
             logger.error(f"Erro ao escrever medição no InfluxDB: {e}")
             return False
-    
-    def get_latest_measurements(self, equipment_id: int = None, 
-                              limit: int = 100) -> List[Dict]:
-        """Obtém últimas medições do InfluxDB"""
-        try:
-            if not self.client or not self.query_api:
-                if not self.initialize_client():
-                    return []
-            
-            # Construir query
-            query = f'''
-                from(bucket: "{self.config['bucket']}")
-                |> range(start: -24h)
-                |> filter(fn: (r) => r._measurement == "energy_consumption")
-            '''
-            
-            if equipment_id:
-                query += f'|> filter(fn: (r) => r.equipment_id == "{equipment_id}")'
-            
-            query += f'''
-                |> sort(columns: ["_time"], desc: true)
-                |> limit(n: {limit})
-            '''
-            
-            result = self.query_api.query(query)
-            
-            measurements = []
-            for table in result:
-                for record in table.records:
-                    measurements.append({
-                        'equipment_id': record.values.get('equipment_id'),
-                        'equipment_name': record.values.get('equipment_name'),
-                        'value': record.values.get('_value'),
-                        'unit': record.values.get('unit'),
-                        'location': record.values.get('location'),
-                        'area': record.values.get('area'),
-                        'timestamp': record.values.get('_time').isoformat()
-                    })
-            
-            return measurements
-            
-        except Exception as e:
-            logger.error(f"Erro ao consultar medições no InfluxDB: {e}")
-            return []
-    
-    def get_equipment_statistics(self, equipment_id: int, 
-                               hours: int = 24) -> Dict:
-        """Obtém estatísticas de um equipamento"""
-        try:
-            if not self.client or not self.query_api:
-                if not self.initialize_client():
-                    return {}
-            
-            query = f'''
-                from(bucket: "{self.config['bucket']}")
-                |> range(start: -{hours}h)
-                |> filter(fn: (r) => r._measurement == "energy_consumption")
-                |> filter(fn: (r) => r.equipment_id == "{equipment_id}")
-                |> aggregateWindow(every: 1h, fn: mean, createEmpty: false)
-            '''
-            
-            result = self.query_api.query(query)
-            
-            values = []
-            for table in result:
-                for record in table.records:
-                    values.append(record.values.get('_value', 0))
-            
-            if not values:
-                return {}
-            
-            return {
-                'count': len(values),
-                'average': sum(values) / len(values),
-                'minimum': min(values),
-                'maximum': max(values),
-                'total': sum(values)
-            }
-            
-        except Exception as e:
-            logger.error(f"Erro ao obter estatísticas do InfluxDB: {e}")
-            return {}
     
     def close(self):
         """Fecha conexão com InfluxDB"""
@@ -194,4 +194,5 @@ class InfluxDBService:
 
 # Instância global do serviço
 influxdb_service = InfluxDBService()
+
 

@@ -315,6 +315,41 @@ export function HierarchySelector({ onSelect, selectedId }) {
                 </div>
             </div>
 
+            {/* Hierarchy Level Indicator */}
+            {selectedFactory && (
+                <div className={`p-3 rounded-lg border-2 ${selectedMachineGroup ? 'bg-purple-50 border-purple-200 dark:bg-purple-900/20 dark:border-purple-800' :
+                        selectedLine ? 'bg-orange-50 border-orange-200 dark:bg-orange-900/20 dark:border-orange-800' :
+                            selectedArea ? 'bg-blue-50 border-blue-200 dark:bg-blue-900/20 dark:border-blue-800' :
+                                'bg-green-50 border-green-200 dark:bg-green-900/20 dark:border-green-800'
+                    }`}>
+                    <p className="text-sm font-medium">
+                        {selectedMachineGroup ? (
+                            <span className="text-purple-700 dark:text-purple-300">
+                                📊 Medidor de <strong>Grupo de Máquinas</strong>
+                            </span>
+                        ) : selectedLine ? (
+                            <span className="text-orange-700 dark:text-orange-300">
+                                📏 Medidor de <strong>Linha</strong>
+                            </span>
+                        ) : selectedArea ? (
+                            <span className="text-blue-700 dark:text-blue-300">
+                                📍 Medidor <strong>Setorial</strong> (Área)
+                            </span>
+                        ) : (
+                            <span className="text-green-700 dark:text-green-300">
+                                🏭 Medidor de <strong>Entrada</strong> (Fábrica)
+                            </span>
+                        )}
+                    </p>
+                    <p className="text-xs text-slate-500 mt-1">
+                        {selectedMachineGroup ? selectedFactory.name + ' > ' + selectedArea.name + ' > ' + selectedLine.name + ' > ' + selectedMachineGroup.name :
+                            selectedLine ? selectedFactory.name + ' > ' + selectedArea.name + ' > ' + selectedLine.name :
+                                selectedArea ? selectedFactory.name + ' > ' + selectedArea.name :
+                                    selectedFactory.name}
+                    </p>
+                </div>
+            )}
+
             {/* Inline Create Dialog */}
             <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
                 <DialogContent className="sm:max-w-[400px]">
