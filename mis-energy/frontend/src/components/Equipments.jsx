@@ -79,6 +79,20 @@ export function Equipments() {
     gateway_id: '',
     modbus_address: '',
     opc_node_id: '',
+    // Multi-metric OPC addresses
+    opc_node_power_kw: '',
+    opc_node_energy_kwh: '',
+    opc_node_demand_kw: '',
+    opc_node_power_factor: '',
+    opc_node_voltage_a: '',
+    opc_node_voltage_b: '',
+    opc_node_voltage_c: '',
+    opc_node_current_a: '',
+    opc_node_current_b: '',
+    opc_node_current_c: '',
+    // Cost configuration
+    tariff_kwh: 0.5,
+    tariff_demand: '',
     modbus_register: '',
     register_type: 'holding',
     data_type: 'float32',
@@ -346,6 +360,20 @@ export function Equipments() {
       gateway_id: equipment.gateway_id ? equipment.gateway_id.toString() : '',
       modbus_address: equipment.modbus_address ? equipment.modbus_address.toString() : '',
       opc_node_id: equipment.opc_node_id || '',
+      // Multi-metric OPC addresses
+      opc_node_power_kw: equipment.opc_node_power_kw || '',
+      opc_node_energy_kwh: equipment.opc_node_energy_kwh || '',
+      opc_node_demand_kw: equipment.opc_node_demand_kw || '',
+      opc_node_power_factor: equipment.opc_node_power_factor || '',
+      opc_node_voltage_a: equipment.opc_node_voltage_a || '',
+      opc_node_voltage_b: equipment.opc_node_voltage_b || '',
+      opc_node_voltage_c: equipment.opc_node_voltage_c || '',
+      opc_node_current_a: equipment.opc_node_current_a || '',
+      opc_node_current_b: equipment.opc_node_current_b || '',
+      opc_node_current_c: equipment.opc_node_current_c || '',
+      // Cost configuration
+      tariff_kwh: equipment.tariff_kwh || 0.5,
+      tariff_demand: equipment.tariff_demand || '',
       modbus_register: equipment.modbus_register ? equipment.modbus_register.toString() : '',
       register_type: equipment.register_type,
       data_type: equipment.data_type,
@@ -915,17 +943,162 @@ export function Equipments() {
                     if (selectedGateway.protocol_type === 'opc') {
                       return (
                         <div className="space-y-4 border rounded-md p-4 bg-purple-50/50 dark:bg-purple-900/10">
-                          <p className="text-sm text-purple-700 dark:text-purple-300 font-medium">Configuração OPC UA</p>
-                          <div className="space-y-2">
-                            <Label>NodeID (OPC UA)</Label>
+                          <p className="text-sm text-purple-700 dark:text-purple-300 font-medium">Configuração OPC UA - Multi-Métricas</p>
+
+                          {/* Métricas Principais */}
+                          <div className="space-y-3">
+                            <p className="text-xs font-semibold text-slate-600 uppercase tracking-wide">Métricas de Energia</p>
+                            <div className="grid grid-cols-1 gap-3">
+                              <div className="space-y-1.5">
+                                <Label className="flex items-center gap-2 text-sm">
+                                  <span className="text-lg">⚡</span> Potência Ativa (kW)
+                                </Label>
+                                <Input
+                                  value={formData.opc_node_power_kw}
+                                  onChange={(e) => setFormData({ ...formData, opc_node_power_kw: e.target.value })}
+                                  placeholder="ns=2;s=Meter.Power_kW"
+                                  className="font-mono text-sm"
+                                />
+                              </div>
+                              <div className="space-y-1.5">
+                                <Label className="flex items-center gap-2 text-sm">
+                                  <span className="text-lg">📊</span> Energia Acumulada (kWh)
+                                </Label>
+                                <Input
+                                  value={formData.opc_node_energy_kwh}
+                                  onChange={(e) => setFormData({ ...formData, opc_node_energy_kwh: e.target.value })}
+                                  placeholder="ns=2;s=Meter.Energy_kWh"
+                                  className="font-mono text-sm"
+                                />
+                              </div>
+                              <div className="space-y-1.5">
+                                <Label className="flex items-center gap-2 text-sm">
+                                  <span className="text-lg">📈</span> Demanda Máxima (kW)
+                                </Label>
+                                <Input
+                                  value={formData.opc_node_demand_kw}
+                                  onChange={(e) => setFormData({ ...formData, opc_node_demand_kw: e.target.value })}
+                                  placeholder="ns=2;s=Meter.Demand_kW"
+                                  className="font-mono text-sm"
+                                />
+                              </div>
+                              <div className="space-y-1.5">
+                                <Label className="flex items-center gap-2 text-sm">
+                                  <span className="text-lg">🎯</span> Fator de Potência
+                                </Label>
+                                <Input
+                                  value={formData.opc_node_power_factor}
+                                  onChange={(e) => setFormData({ ...formData, opc_node_power_factor: e.target.value })}
+                                  placeholder="ns=2;s=Meter.PowerFactor"
+                                  className="font-mono text-sm"
+                                />
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Qualidade de Energia */}
+                          <div className="space-y-3 pt-3 border-t border-purple-200">
+                            <p className="text-xs font-semibold text-slate-600 uppercase tracking-wide">Qualidade de Energia (Opcional)</p>
+
+                            {/* Tensão por Fase */}
+                            <div className="space-y-2">
+                              <Label className="text-xs text-slate-500">Tensão por Fase (V)</Label>
+                              <div className="grid grid-cols-3 gap-2">
+                                <div>
+                                  <Input
+                                    value={formData.opc_node_voltage_a}
+                                    onChange={(e) => setFormData({ ...formData, opc_node_voltage_a: e.target.value })}
+                                    placeholder="Fase A"
+                                    className="font-mono text-xs"
+                                  />
+                                </div>
+                                <div>
+                                  <Input
+                                    value={formData.opc_node_voltage_b}
+                                    onChange={(e) => setFormData({ ...formData, opc_node_voltage_b: e.target.value })}
+                                    placeholder="Fase B"
+                                    className="font-mono text-xs"
+                                  />
+                                </div>
+                                <div>
+                                  <Input
+                                    value={formData.opc_node_voltage_c}
+                                    onChange={(e) => setFormData({ ...formData, opc_node_voltage_c: e.target.value })}
+                                    placeholder="Fase C"
+                                    className="font-mono text-xs"
+                                  />
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Corrente por Fase */}
+                            <div className="space-y-2">
+                              <Label className="text-xs text-slate-500">Corrente por Fase (A)</Label>
+                              <div className="grid grid-cols-3 gap-2">
+                                <div>
+                                  <Input
+                                    value={formData.opc_node_current_a}
+                                    onChange={(e) => setFormData({ ...formData, opc_node_current_a: e.target.value })}
+                                    placeholder="Fase A"
+                                    className="font-mono text-xs"
+                                  />
+                                </div>
+                                <div>
+                                  <Input
+                                    value={formData.opc_node_current_b}
+                                    onChange={(e) => setFormData({ ...formData, opc_node_current_b: e.target.value })}
+                                    placeholder="Fase B"
+                                    className="font-mono text-xs"
+                                  />
+                                </div>
+                                <div>
+                                  <Input
+                                    value={formData.opc_node_current_c}
+                                    onChange={(e) => setFormData({ ...formData, opc_node_current_c: e.target.value })}
+                                    placeholder="Fase C"
+                                    className="font-mono text-xs"
+                                  />
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Configuração de Custo */}
+                          <div className="space-y-3 pt-3 border-t border-purple-200">
+                            <p className="text-xs font-semibold text-slate-600 uppercase tracking-wide">Configuração de Custo</p>
+                            <div className="grid grid-cols-2 gap-3">
+                              <div className="space-y-1.5">
+                                <Label className="text-sm">Tarifa (R$/kWh)</Label>
+                                <Input
+                                  type="number"
+                                  step="0.01"
+                                  value={formData.tariff_kwh}
+                                  onChange={(e) => setFormData({ ...formData, tariff_kwh: e.target.value })}
+                                  placeholder="0.50"
+                                />
+                              </div>
+                              <div className="space-y-1.5">
+                                <Label className="text-sm">Tarifa Demanda (R$/kW)</Label>
+                                <Input
+                                  type="number"
+                                  step="0.01"
+                                  value={formData.tariff_demand}
+                                  onChange={(e) => setFormData({ ...formData, tariff_demand: e.target.value })}
+                                  placeholder="25.00"
+                                />
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Legacy NodeID (compatibilidade) */}
+                          <div className="space-y-2 pt-3 border-t border-dashed border-slate-300">
+                            <Label className="text-xs text-slate-400">NodeID Legado (compatibilidade)</Label>
                             <Input
                               value={formData.opc_node_id}
                               onChange={(e) => setFormData({ ...formData, opc_node_id: e.target.value })}
                               placeholder="ns=2;s=Machine1.Power"
+                              className="font-mono text-xs opacity-60"
                             />
-                            <p className="text-xs text-slate-500">
-                              Formato: ns=namespace;s=string_id ou ns=namespace;i=numeric_id
-                            </p>
                           </div>
                         </div>
                       )

@@ -53,6 +53,48 @@ def get_equipments():
             'error': str(e)
         }), 500
 
+
+@equipment_bp.route('/equipments/collector-config', methods=['GET'])
+def get_collector_config():
+    """Configuração para o Coletor Dedicado (OPC)"""
+    try:
+        equipments = Equipment.query.filter_by(address_type='opc', is_active=True).all()
+        config = []
+        for eq in equipments:
+            if eq.gateway:
+                config.append({
+                    'id': eq.id,
+                    'tag': eq.tag or eq.name,
+                    'type': 'opc',
+                    'gateway': {
+                        'ip_address': eq.gateway.ip_address,
+                        'port': eq.gateway.port,
+                        'opc_url': eq.gateway.opc_url  # URL completa OPC
+                    },
+                    'nodes': {
+                        'voltage_a': eq.opc_node_voltage_a,
+                        'voltage_b': eq.opc_node_voltage_b,
+                        'voltage_c': eq.opc_node_voltage_c,
+                        'current_a': eq.opc_node_current_a,
+                        'current_b': eq.opc_node_current_b,
+                        'current_c': eq.opc_node_current_c,
+                        'power_kw': eq.opc_node_power_kw,
+                        'energy_kwh': eq.opc_node_energy_kwh,
+                        'demand_kw': eq.opc_node_demand_kw,
+                        'power_factor': eq.opc_node_power_factor
+                    }
+                })
+        return jsonify({
+            'success': True,
+            'data': config
+        })
+    except Exception as e:
+        logger.error(f"Erro config coletor: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
 @equipment_bp.route('/equipments/<int:equipment_id>', methods=['GET'])
 def get_equipment(equipment_id):
     """Obtém um equipamento específico"""
@@ -284,6 +326,33 @@ def update_equipment(equipment_id):
             equipment.modbus_address = data['modbus_address']
         if 'opc_node_id' in data:
             equipment.opc_node_id = data['opc_node_id']
+        # Multi-metric OPC addresses
+        if 'opc_node_power_kw' in data:
+            equipment.opc_node_power_kw = data['opc_node_power_kw'] or None
+        if 'opc_node_energy_kwh' in data:
+            equipment.opc_node_energy_kwh = data['opc_node_energy_kwh'] or None
+        if 'opc_node_demand_kw' in data:
+            equipment.opc_node_demand_kw = data['opc_node_demand_kw'] or None
+        if 'opc_node_power_factor' in data:
+            equipment.opc_node_power_factor = data['opc_node_power_factor'] or None
+        # Power quality fields
+        if 'opc_node_voltage_a' in data:
+            equipment.opc_node_voltage_a = data['opc_node_voltage_a'] or None
+        if 'opc_node_voltage_b' in data:
+            equipment.opc_node_voltage_b = data['opc_node_voltage_b'] or None
+        if 'opc_node_voltage_c' in data:
+            equipment.opc_node_voltage_c = data['opc_node_voltage_c'] or None
+        if 'opc_node_current_a' in data:
+            equipment.opc_node_current_a = data['opc_node_current_a'] or None
+        if 'opc_node_current_b' in data:
+            equipment.opc_node_current_b = data['opc_node_current_b'] or None
+        if 'opc_node_current_c' in data:
+            equipment.opc_node_current_c = data['opc_node_current_c'] or None
+        # Cost configuration
+        if 'tariff_kwh' in data:
+            equipment.tariff_kwh = float(data['tariff_kwh']) if data['tariff_kwh'] else None
+        if 'tariff_demand' in data:
+            equipment.tariff_demand = float(data['tariff_demand']) if data['tariff_demand'] else None
         if 'modbus_register' in data:
             equipment.modbus_register = data['modbus_register']
         if 'register_type' in data:
@@ -362,13 +431,16 @@ def read_equipment_value(equipment_id):
         from src.services.simulation_service import simulation_service
         from datetime import datetime
         
-        # Verificar se modo simulação está ativo
-        if simulation_service.is_simulation_active():
+        # Verificar se modo simulação está ativo via HEADER (Cliente específico)
+        is_mock_mode = request.headers.get('X-Mock-Mode') == 'true'
+        
+        if is_mock_mode:
+            # Se mock mode ativo, força simulação
             simulated_result = simulation_service.simulate_modbus_read(equipment_id)
             if simulated_result:
                 return jsonify(simulated_result)
         
-        # Código original para leitura real
+        # Código para leitura real (se mock mode não estiver ativo)
         equipment = Equipment.query.get_or_404(equipment_id)
         # Ler valor
         gateway = equipment.gateway
@@ -482,8 +554,13 @@ def get_equipment_metrics(equipment_id):
     """
     try:
         from src.services.opc_client import opc_client_service
+
         from datetime import datetime
         
+
+        # SE NÃO ESTÁ EM MOCK MODE, TENTA LEITURA REAL
+
+        # SE NÃO ESTÁ EM MOCK MODE, TENTA LEITURA REAL
         equipment = Equipment.query.get_or_404(equipment_id)
         gateway = equipment.gateway
         
@@ -494,97 +571,55 @@ def get_equipment_metrics(equipment_id):
             'power_factor': None
         }
         
-        # Ler cada métrica via OPC/Modbus
+        # Ler cada métrica via OPC/Modbus REAL
         if gateway and gateway.protocol_type == 'opc':
             opc_config = {
                 'url': gateway.opc_url,
                 'timeout': gateway.timeout or 5
             }
             
-            # Potência kW
-            if equipment.opc_node_power_kw:
+            # Helper para leitura segura
+            def safe_read(node_id, scale=1.0):
+                if not node_id: return None
                 try:
-                    result = opc_client_service.read_value(
-                        opc_config['url'], 
-                        equipment.opc_node_power_kw, 
-                        opc_config['timeout']
-                    )
-                    if result.get('success'):
-                        metrics['power_kw'] = result.get('value', 0) * equipment.scale_factor
+                    res = opc_client_service.read_value(opc_config['url'], node_id, opc_config['timeout'])
+                    return res.get('converted_value') * scale if res.get('success') and res.get('converted_value') is not None else None
                 except:
-                    pass
-            
-            # Energia kWh
-            if equipment.opc_node_energy_kwh:
-                try:
-                    result = opc_client_service.read_value(
-                        opc_config['url'], 
-                        equipment.opc_node_energy_kwh, 
-                        opc_config['timeout']
-                    )
-                    if result.get('success'):
-                        metrics['energy_kwh'] = result.get('value', 0) * equipment.scale_factor
-                except:
-                    pass
-            
-            # Demanda kW
-            if equipment.opc_node_demand_kw:
-                try:
-                    result = opc_client_service.read_value(
-                        opc_config['url'], 
-                        equipment.opc_node_demand_kw, 
-                        opc_config['timeout']
-                    )
-                    if result.get('success'):
-                        metrics['demand_kw'] = result.get('value', 0) * equipment.scale_factor
-                except:
-                    pass
-            
-            # Fator de Potência
-            if equipment.opc_node_power_factor:
-                try:
-                    result = opc_client_service.read_value(
-                        opc_config['url'], 
-                        equipment.opc_node_power_factor, 
-                        opc_config['timeout']
-                    )
-                    if result.get('success'):
-                        metrics['power_factor'] = result.get('value', 0)
-                except:
-                    pass
+                    return None
+
+            metrics['power_kw'] = safe_read(equipment.opc_node_power_kw, equipment.scale_factor)
+            metrics['energy_kwh'] = safe_read(equipment.opc_node_energy_kwh, equipment.scale_factor)
+            metrics['demand_kw'] = safe_read(equipment.opc_node_demand_kw, equipment.scale_factor)
+            metrics['power_factor'] = safe_read(equipment.opc_node_power_factor)
+
+        # Se leitura real falhou, retornamos None
+        # ZERO SIMULATION
+
+
+        # Se leitura real falhou e NÃO estamos em mock mode, retornamos o que temos (mesmo que seja None)
+        # Garantia de NÃO usar dados fakes se o usuário pediu dados reais.
         
-        # Fallback: usar último valor salvo ou simular
-        if all(v is None for v in metrics.values()):
-            import random
-            metrics = {
-                'power_kw': equipment.last_value or round(random.uniform(50, 150), 2),
-                'energy_kwh': round(random.uniform(100, 500), 2),
-                'demand_kw': round(random.uniform(80, 200), 2),
-                'power_factor': round(random.uniform(0.85, 0.98), 3)
-            }
-        
-        # Calcular custos
+        # Calcular custos reais baseados nos dados lidos (se disponíveis)
         tariff = equipment.tariff_kwh or 0.5
         cost_per_hour = (metrics['power_kw'] or 0) * tariff
         
         return jsonify({
             'success': True,
             'data': {
-                'equipment_id': equipment_id,
-                'equipment_name': equipment.name,
-                'timestamp': datetime.now().isoformat(),
                 'metrics': metrics,
                 'cost': {
-                    'per_hour': round(cost_per_hour, 2),
-                    'per_day': round(cost_per_hour * 24, 2),
+                    'per_hour': cost_per_hour,
+                    'per_day': cost_per_hour * 24, # Projeção simples baseada no instantâneo
                     'tariff_kwh': tariff
                 },
+                'timestamp': datetime.now().isoformat(),
                 'alerts': {
-                    'low_power_factor': metrics['power_factor'] is not None and metrics['power_factor'] < 0.92,
-                    'high_demand': metrics['demand_kw'] is not None and equipment.standard_consumption and metrics['demand_kw'] > equipment.standard_consumption
+                    'high_demand': (metrics['demand_kw'] or 0) > 100, # Lógica simples
+                    'low_power_factor': (metrics['power_factor'] or 0) < 0.92
                 }
             }
         })
+
         
     except Exception as e:
         logger.error(f"Erro ao obter métricas: {e}")
@@ -628,11 +663,17 @@ def get_equipment_history(equipment_id):
         influx_host = 'mis-core-influxdb'
         influx_port = 8086
         database = 'db_energy'
+        username = 'admin'
+        password = 'admin123'
+        
+        # tag corresponde ao equipamento_codigo (F001-A001-L001-ENM-001)
+        eq_tag = equipment.tag or equipment.name
         
         query = f'''
             SELECT mean("value") as value 
             FROM "energy_consumption" 
-            WHERE equipment_id = '{equipment_id}' 
+            WHERE "tag" = '{eq_tag}'
+            AND "metric" = '{metric}'
             AND time > '{start_time.isoformat()}Z'
             GROUP BY time(5m) fill(none)
         '''
@@ -640,7 +681,7 @@ def get_equipment_history(equipment_id):
         try:
             response = requests.get(
                 f'http://{influx_host}:{influx_port}/query',
-                params={'db': database, 'q': query},
+                params={'db': database, 'q': query, 'u': username, 'p': password},
                 timeout=5
             )
             
@@ -656,16 +697,9 @@ def get_equipment_history(equipment_id):
             else:
                 history = []
         except:
-            # Fallback: gerar dados simulados
-            import random
+            # Fallback: ZERO SIMULATION
             history = []
-            current = start_time
-            while current < datetime.now():
-                history.append({
-                    'timestamp': current.isoformat(),
-                    'value': round(random.uniform(80, 150), 2)
-                })
-                current += timedelta(minutes=5)
+
         
         # Calcular estatísticas
         if history:
@@ -709,7 +743,7 @@ def get_equipment_cost_analysis(equipment_id):
     """
     try:
         from datetime import datetime, timedelta
-        import random
+
         
         equipment = Equipment.query.get_or_404(equipment_id)
         
@@ -729,23 +763,9 @@ def get_equipment_cost_analysis(equipment_id):
         total_energy = 0
         
         now = datetime.now()
-        for i in range(count):
-            if unit == 'hour':
-                timestamp = now - timedelta(hours=count - i)
-                energy = round(random.uniform(50, 150), 2)
-            else:
-                timestamp = now - timedelta(days=count - i)
-                energy = round(random.uniform(500, 1500), 2)
-            
-            cost = round(energy * tariff, 2)
-            total_cost += cost
-            total_energy += energy
-            
-            timeline.append({
-                'timestamp': timestamp.isoformat(),
-                'energy_kwh': energy,
-                'cost_brl': cost
-            })
+        # ZERO SIMULATION fallback
+        timeline = []
+
         
         # Identificar picos (top 3 custos)
         sorted_timeline = sorted(timeline, key=lambda x: x['cost_brl'], reverse=True)
@@ -818,24 +838,52 @@ def get_equipment_power_quality(equipment_id):
                 }
             })
         
-        # Simular valores (em produção, leria do OPC)
-        power_quality = {
-            'voltage': {
-                'a': round(random.uniform(218, 222), 1),
-                'b': round(random.uniform(218, 222), 1),
-                'c': round(random.uniform(218, 222), 1)
-            },
-            'current': {
-                'a': round(random.uniform(50, 100), 1),
-                'b': round(random.uniform(50, 100), 1),
-                'c': round(random.uniform(50, 100), 1)
+        # Tentar leitura REAL do OPC
+        if gateway and gateway.protocol_type == 'opc':
+            # Usar opc_url se disponível, senão construir a partir de ip:port
+            opc_url = gateway.opc_url or f"opc.tcp://{gateway.ip_address}:{gateway.port or 4840}"
+            
+            def safe_opc_read(node_id):
+                if not node_id:
+                    return None
+                try:
+                    result = opc_client_service.read_value(opc_url, node_id, gateway.timeout or 5)
+                    return result.get('converted_value') if result.get('success') else None
+                except Exception as e:
+                    logger.warning(f"Erro OPC read {node_id}: {e}")
+                    return None
+            
+            power_quality = {
+                'voltage': {
+                    'a': safe_opc_read(equipment.opc_node_voltage_a),
+                    'b': safe_opc_read(equipment.opc_node_voltage_b),
+                    'c': safe_opc_read(equipment.opc_node_voltage_c)
+                },
+                'current': {
+                    'a': safe_opc_read(equipment.opc_node_current_a),
+                    'b': safe_opc_read(equipment.opc_node_current_b),
+                    'c': safe_opc_read(equipment.opc_node_current_c)
+                }
             }
-        }
+        else:
+            # Gateway não configurado ou não é OPC - retorna None (ZERO SIMULATION)
+            power_quality = {
+                'voltage': {'a': None, 'b': None, 'c': None},
+                'current': {'a': None, 'b': None, 'c': None}
+            }
         
-        # Calcular desequilíbrio
-        voltages = [power_quality['voltage'][p] for p in ['a', 'b', 'c']]
-        avg_voltage = sum(voltages) / 3
-        voltage_imbalance = max(abs(v - avg_voltage) / avg_voltage * 100 for v in voltages)
+        # Calcular desequilíbrio (somente se tiver dados válidos)
+        voltages = [power_quality['voltage'][p] for p in ['a', 'b', 'c'] if power_quality['voltage'][p] is not None]
+        currents = [power_quality['current'][p] for p in ['a', 'b', 'c'] if power_quality['current'][p] is not None]
+        
+        if voltages:
+            avg_voltage = sum(voltages) / len(voltages)
+            voltage_imbalance = max(abs(v - avg_voltage) / avg_voltage * 100 for v in voltages) if avg_voltage > 0 else 0
+        else:
+            avg_voltage = None
+            voltage_imbalance = None
+        
+        total_current = round(sum(currents), 1) if currents else None
         
         return jsonify({
             'success': True,
@@ -843,17 +891,17 @@ def get_equipment_power_quality(equipment_id):
                 'equipment_id': equipment_id,
                 'equipment_name': equipment.name,
                 'timestamp': datetime.now().isoformat(),
-                'available': True,
+                'available': bool(voltages or currents),
                 'power_quality': power_quality,
                 'analysis': {
-                    'avg_voltage': round(avg_voltage, 1),
-                    'voltage_imbalance_pct': round(voltage_imbalance, 2),
-                    'total_current': round(sum(power_quality['current'].values()), 1)
+                    'avg_voltage': round(avg_voltage, 1) if avg_voltage else None,
+                    'voltage_imbalance_pct': round(voltage_imbalance, 2) if voltage_imbalance else None,
+                    'total_current': total_current
                 },
                 'alerts': {
-                    'voltage_imbalance': voltage_imbalance > 2.0,
-                    'low_voltage': any(v < 210 for v in voltages),
-                    'high_voltage': any(v > 230 for v in voltages)
+                    'voltage_imbalance': voltage_imbalance > 2.0 if voltage_imbalance else False,
+                    'low_voltage': any(v < 210 for v in voltages) if voltages else False,
+                    'high_voltage': any(v > 230 for v in voltages) if voltages else False
                 }
             }
         })

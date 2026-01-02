@@ -60,12 +60,17 @@ export function EnergyDashboard() {
     const fetchDashboardData = async () => {
         setLoading(true);
         try {
+            // Format dates for API
+            const startParam = startDate.toISOString();
+            const endParam = endDate.toISOString();
+            const dateParams = `start_time=${startParam}&end_time=${endParam}`;
+
             const [summaryRes, timeSeriesRes, breakdownRes, heatmapRes, insightsRes] = await Promise.all([
-                api.get('/analytics/dashboard-summary'),
-                api.get(`/analytics/time-series?period=${period}`),
-                api.get('/analytics/energy-breakdown'),
-                api.get('/analytics/heatmap'),
-                api.get('/analytics/insights')
+                api.get(`/analytics/dashboard-summary?${dateParams}`),
+                api.get(`/analytics/time-series?period=${period}&${dateParams}`),
+                api.get(`/analytics/energy-breakdown?${dateParams}`),
+                api.get(`/analytics/heatmap?${dateParams}`),
+                api.get(`/analytics/insights?${dateParams}`)
             ]);
 
             if (summaryRes.success) setSummary(summaryRes.data);
@@ -84,7 +89,7 @@ export function EnergyDashboard() {
         fetchDashboardData();
         const interval = setInterval(fetchDashboardData, 60000); // Atualizar a cada minuto
         return () => clearInterval(interval);
-    }, [period]);
+    }, [period, startDate, endDate]);
 
     // Export to CSV
     const handleExportCSV = async () => {

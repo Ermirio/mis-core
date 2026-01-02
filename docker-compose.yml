@@ -138,6 +138,14 @@ services:
     depends_on:
       frontend:
         condition: service_started
+      mis-energy-backend:
+        condition: service_started
+      mis-energy-frontend:
+        condition: service_started
+      mis-ai-backend:
+        condition: service_started
+      mis-ai-frontend:
+        condition: service_started
     restart: unless-stopped
 
   # ==========================================
@@ -224,6 +232,20 @@ services:
     environment:
       NODE_ENV: production
       VITE_API_URL: /mis-energy-api
+    networks:
+      - mis-network
+    depends_on:
+      - mis-energy-backend
+    restart: unless-stopped
+
+  # ===== ENERGY COLLECTOR (PYTHON) =====
+  mis-energy-collector:
+    build:
+      context: ./mis-energy/collector
+    container_name: mis-energy-collector
+    environment:
+      BACKEND_URL: http://mis-energy-backend:5005/api
+      POLL_INTERVAL: 10
     networks:
       - mis-network
     depends_on:

@@ -6,80 +6,49 @@ import { Badge } from '@/components/ui/badge'
 import { useToast } from '@/hooks/use-toast'
 
 export function Header({ sidebarOpen, setSidebarOpen }) {
-  const [simulationActive, setSimulationActive] = useState(false)
-  const [loading, setLoading] = useState(false)
   const { toast } = useToast()
 
-  useEffect(() => {
-    checkSimulationStatus()
-  }, [])
+  // Initialize from localStorage
+  const [simulationActive, setSimulationActive] = useState(() => {
+    return localStorage.getItem('mockMode') === 'true';
+  });
 
-  const checkSimulationStatus = async () => {
-    try {
-      const data = await api.get('/simulation/status')
+  const toggleSimulation = () => {
+    const newState = !simulationActive;
+    setSimulationActive(newState);
+    localStorage.setItem('mockMode', newState);
 
-      if (data.success) {
-        setSimulationActive(data.data.simulation_active)
-      }
-    } catch (error) {
-      console.error('Erro ao verificar status da simulação:', error)
-    }
-  }
+    toast({
+      title: newState ? "Modo Mock Ativado" : "Modo Real Ativado",
+      description: newState
+        ? "Visualizando dados simulados/fakes. Use apenas para validação."
+        : "Visualizando dados reais do chão de fábrica.",
+      variant: newState ? "secondary" : "default"
+    });
 
-  const toggleSimulation = async () => {
-    try {
-      setLoading(true)
-      const data = await api.post('/simulation/toggle')
-
-      if (data.success) {
-        setSimulationActive(data.data.simulation_active)
-        toast({
-          title: "Modo Simulação",
-          description: data.data.message,
-          variant: data.data.simulation_active ? "default" : "destructive"
-        })
-      } else {
-        toast({
-          title: "Erro",
-          description: data.error || "Erro ao alternar modo simulação",
-          variant: "destructive"
-        })
-      }
-    } catch (error) {
-      toast({
-        title: "Erro",
-        description: "Erro de conexão ao alternar simulação",
-        variant: "destructive"
-      })
-    } finally {
-      setLoading(false)
-    }
+    // Optional: Reload to refresh all components with new mode immediately
+    // or rely on next fetch. A reload is safer to ensure all stale data is cleared.
+    setTimeout(() => window.location.reload(), 500);
   }
 
   const regenerateData = async () => {
     try {
       setLoading(true)
+      // Keep this for regenerating backend fake data if needed
       const data = await api.post('/simulation/regenerate')
 
       if (data.success) {
         toast({
           title: "Dados Regenerados",
-          description: "Dados simulados foram regenerados com sucesso",
+          description: "Novos dados aleatórios gerados.",
           variant: "default"
         })
-        // Recarregar a página para atualizar os dados
         window.location.reload()
-      } else {
-        toast({
-          title: "Erro",
-          description: data.error || "Erro ao regenerar dados",
-          variant: "destructive"
-        })
       }
     } catch (error) {
       toast({
         title: "Erro",
-        description: "Erro de conexão ao regenerar dados",
+        description: "Erro ao regenerar dados",
         variant: "destructive"
       })
     } finally {

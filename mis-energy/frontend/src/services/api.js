@@ -1,8 +1,9 @@
 import axios from 'axios';
 
 // Create an Axios instance with the base URL from environment variables
-// If VITE_API_URL is not defined, it falls back to a relative path which might be handled by proxy in dev
-const baseURL = import.meta.env.VITE_API_URL || '/api';
+// Create an Axios instance with the base URL from environment variables
+// If VITE_API_URL is not defined, use the proxy path '/mis-energy/api'
+const baseURL = import.meta.env.VITE_API_URL || '/mis-energy/api';
 
 const api = axios.create({
     baseURL: baseURL,
@@ -10,6 +11,17 @@ const api = axios.create({
         'Content-Type': 'application/json',
     },
     timeout: 10000, // 10 seconds timeout
+});
+
+// Request interceptor to add Mock Mode header
+api.interceptors.request.use((config) => {
+    const mockMode = localStorage.getItem('mockMode') === 'true';
+    if (mockMode) {
+        config.headers['X-Mock-Mode'] = 'true';
+    }
+    return config;
+}, (error) => {
+    return Promise.reject(error);
 });
 
 // Response interceptor for generic error handling (optional but recommended)

@@ -256,35 +256,63 @@ export function EquipmentMetricsPanel({ equipment, onClose }) {
 
                                 {/* Cost Analysis */}
                                 <TabsContent value="cost" className="mt-4">
-                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-                                        <Card className="bg-green-50 dark:bg-green-900/20">
-                                            <CardContent className="p-4 text-center">
-                                                <DollarSign className="h-8 w-8 mx-auto text-green-600 mb-2" />
-                                                <p className="text-xs text-slate-500">Custo por Hora</p>
-                                                <p className="text-xl font-bold text-green-600">
-                                                    R$ {metrics?.cost?.per_hour?.toFixed(2) || '0.00'}
-                                                </p>
-                                            </CardContent>
-                                        </Card>
-                                        <Card className="bg-blue-50 dark:bg-blue-900/20">
-                                            <CardContent className="p-4 text-center">
-                                                <Clock className="h-8 w-8 mx-auto text-blue-600 mb-2" />
-                                                <p className="text-xs text-slate-500">Custo por Dia</p>
-                                                <p className="text-xl font-bold text-blue-600">
-                                                    R$ {metrics?.cost?.per_day?.toFixed(2) || '0.00'}
-                                                </p>
-                                            </CardContent>
-                                        </Card>
-                                        <Card className="bg-purple-50 dark:bg-purple-900/20">
-                                            <CardContent className="p-4 text-center">
-                                                <TrendingUp className="h-8 w-8 mx-auto text-purple-600 mb-2" />
-                                                <p className="text-xs text-slate-500">Projeção Mensal</p>
-                                                <p className="text-xl font-bold text-purple-600">
-                                                    R$ {costAnalysis?.projection?.month?.toFixed(2) || '0.00'}
-                                                </p>
-                                            </CardContent>
-                                        </Card>
-                                    </div>
+                                    {/* Helper to get context-aware label */}
+                                    {(() => {
+                                        const getPeriodLabel = () => {
+                                            if (selectedPeriod === '1h') return 'Última Hora';
+                                            if (selectedPeriod === '24h') return 'Últimas 24h';
+                                            if (selectedPeriod === '7d') return 'Últimos 7 dias';
+                                            if (selectedPeriod === '30d') return 'Últimos 30 dias';
+                                            return 'Período';
+                                        };
+
+                                        const getHoursInPeriod = () => {
+                                            if (selectedPeriod === '1h') return 1;
+                                            if (selectedPeriod === '6h') return 6;
+                                            if (selectedPeriod === '12h') return 12;
+                                            if (selectedPeriod === '24h') return 24;
+                                            if (selectedPeriod === '7d') return 168;
+                                            if (selectedPeriod === '30d') return 720;
+                                            return 24;
+                                        };
+
+                                        const hours = getHoursInPeriod();
+                                        // Calculate total cost from timeline if available, or use backend projection
+                                        const totalCost = costAnalysis?.timeline?.reduce((acc, curr) => acc + (curr.cost_brl || 0), 0) || 0;
+                                        const avgPerHour = totalCost / (hours || 1);
+
+                                        return (
+                                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                                                <Card className="bg-green-50 dark:bg-green-900/20">
+                                                    <CardContent className="p-4 text-center">
+                                                        <DollarSign className="h-8 w-8 mx-auto text-green-600 mb-2" />
+                                                        <p className="text-xs text-slate-500">Custo Total ({getPeriodLabel()})</p>
+                                                        <p className="text-xl font-bold text-green-600">
+                                                            R$ {totalCost.toFixed(2)}
+                                                        </p>
+                                                    </CardContent>
+                                                </Card>
+                                                <Card className="bg-blue-50 dark:bg-blue-900/20">
+                                                    <CardContent className="p-4 text-center">
+                                                        <Clock className="h-8 w-8 mx-auto text-blue-600 mb-2" />
+                                                        <p className="text-xs text-slate-500">Custo Médio / Hora</p>
+                                                        <p className="text-xl font-bold text-blue-600">
+                                                            R$ {avgPerHour.toFixed(2)}
+                                                        </p>
+                                                    </CardContent>
+                                                </Card>
+                                                <Card className="bg-purple-50 dark:bg-purple-900/20">
+                                                    <CardContent className="p-4 text-center">
+                                                        <TrendingUp className="h-8 w-8 mx-auto text-purple-600 mb-2" />
+                                                        <p className="text-xs text-slate-500">Projeção Mensal (Baseada no Período)</p>
+                                                        <p className="text-xl font-bold text-purple-600">
+                                                            R$ {(avgPerHour * 720).toFixed(2)}
+                                                        </p>
+                                                    </CardContent>
+                                                </Card>
+                                            </div>
+                                        );
+                                    })()}
 
                                     <Card>
                                         <CardHeader className="pb-2">

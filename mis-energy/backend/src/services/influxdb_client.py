@@ -44,8 +44,8 @@ class InfluxDBService:
                     'host': 'mis-core-influxdb',
                     'port': 8086,
                     'database': 'db_energy',
-                    'username': '',
-                    'password': ''
+                    'username': 'admin',
+                    'password': 'admin123'
                 }
             
             self.config = config
@@ -178,12 +178,69 @@ class InfluxDBService:
                 'db': database
             }, data=line, timeout=5)
             
+            
             return response.status_code == 204
             
         except Exception as e:
             logger.error(f"Erro ao escrever medição no InfluxDB: {e}")
             return False
-    
+
+    def write_batch_data(self, data: List[Dict]) -> bool:
+        """Escreve lote de dados no InfluxDB (Compatível com Ingestão)"""
+        try:
+            if not self.config:
+                if not self.initialize_client():
+                    return False
+            
+            host = self.config.get('host', 'mis-core-influxdb')
+            port = self.config.get('port', 8086)
+            database = self.config.get('database', 'db_energy')
+            
+            lines = []
+            for item in data:
+                # { "equipamento_codigo": "...", "medicoes": {...}, "timestamp": "..." }
+                eq_code = item.get('equipamento_codigo')
+                if not eq_code: continue
+                
+                timestamp_str = item.get('timestamp') # ISO format expected
+                if timestamp_str:
+                    try:
+                        ts = datetime.fromisoformat(timestamp_str.replace('Z', '+00:00'))
+                        ts_nano = int(ts.timestamp() * 1e9)
+                    except:
+                        ts_nano = int(datetime.now().timestamp() * 1e9)
+                else:
+                    ts_nano = int(datetime.now().timestamp() * 1e9)
+                
+                measurements = item.get('medicoes', {})
+                for metric, value in measurements.items():
+                    if value is None: continue
+                    # Line Protocol
+                    # energy_consumption,tag=CODE field=value ts
+                    line = f'energy_consumption,tag={eq_code},metric={metric} value={float(value)} {ts_nano}'
+                    lines.append(line)
+            
+            if not lines:
+                return True
+
+            # Batch write (InfluxDB 1.8 API)
+            url = f"http://{host}:{port}/write"
+            body = '\n'.join(lines)
+            
+            params = {
+                'db': database,
+                'u': self.config.get('username', ''),
+                'p': self.config.get('password', '')
+            }
+            
+            response = requests.post(url, params=params, data=body, timeout=10)
+            
+            return response.status_code == 204
+            
+        except Exception as e:
+            logger.error(f"Erro batch write: {e}")
+            return False
+
     def close(self):
         """Fecha conexão com InfluxDB"""
         if self.client:
