@@ -272,6 +272,39 @@ class InfluxDBService:
             logger.error(f"Erro batch write: {e}")
             return False
 
+    def execute_query(self, query: str, database: str = None) -> Optional[Dict]:
+        """Executes a raw InfluxQL query against InfluxDB 1.8 with HTTP Basic Auth"""
+        try:
+            if not self.config:
+                if not self.initialize_client():
+                    return None
+            
+            host = self.config.get('host', 'mis-core-influxdb')
+            port = self.config.get('port', 8086)
+            db_name = database or self.config.get('database', 'db_energy')
+            username = self.config.get('username', '')
+            password = self.config.get('password', '')
+            
+            url = f"http://{host}:{port}/query"
+            
+            # Use HTTP Basic Auth for robustness
+            response = requests.get(
+                url, 
+                params={'db': db_name, 'q': query},
+                auth=(username, password),
+                timeout=10
+            )
+            
+            if response.status_code == 200:
+                return response.json()
+            else:
+                logger.error(f"InfluxDB Query Error {response.status_code}: {response.text}")
+                return None
+                
+        except Exception as e:
+            logger.error(f"Error executing InfluxDB query: {e}")
+            return None
+
     def close(self):
         """Fecha conexão com InfluxDB"""
         if self.client:

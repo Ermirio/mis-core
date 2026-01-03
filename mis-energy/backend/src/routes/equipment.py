@@ -81,7 +81,12 @@ def get_collector_config():
                         'power_kw': eq.opc_node_power_kw,
                         'energy_kwh': eq.opc_node_energy_kwh,
                         'demand_kw': eq.opc_node_demand_kw,
-                        'power_factor': eq.opc_node_power_factor
+                        'power_factor': eq.opc_node_power_factor,
+                        # Production Nodes (loaded from parameters)
+                        'production_total': eq.parameters.get('production_total_node'),
+                        'production_rate': eq.parameters.get('production_rate_node'),
+                        'production_sku': eq.parameters.get('production_sku_node'),
+                        'production_format': eq.parameters.get('production_format_node')
                     }
                 })
         return jsonify({
@@ -125,7 +130,8 @@ def create_equipment():
         
         # Sanitizar campos que devem ser numéricos ou null
         for field in ['gateway_id', 'modbus_address', 'modbus_register', 'hierarchy_id', 
-                      'standard_consumption', 'scale_factor', 'polling_interval']:
+                      'standard_consumption', 'scale_factor', 'polling_interval',
+                      'tariff_kwh', 'tariff_demand']:
             if field in data and data[field] in ['', None, 'null', 'undefined']:
                 data[field] = None
             elif field in data and data[field] is not None:
@@ -577,6 +583,13 @@ def get_equipment_metrics(equipment_id):
             'power_factor': None
         }
         
+        if equipment.meter_type == 'production':
+            metrics.update({
+                'production_total': None,
+                'production_rate': None,
+                'efficiency_kwh_ton': None
+            })
+        
         # Ler cada métrica via OPC/Modbus REAL
         if gateway and gateway.protocol_type == 'opc':
             opc_config = {
@@ -598,6 +611,26 @@ def get_equipment_metrics(equipment_id):
             metrics['demand_kw'] = safe_read(equipment.opc_node_demand_kw, equipment.scale_factor)
             metrics['power_factor'] = safe_read(equipment.opc_node_power_factor)
 
+            # --- PRODUCTION MODE Logic ---
+            if equipment.meter_type == 'production':
+                # Production specific nodes from parameters
+                prod_total_node = equipment.parameters.get('production_total_node')
+                prod_rate_node = equipment.parameters.get('production_rate_node')
+                prod_format_node = equipment.parameters.get('production_format_node') # Not used for metric but maybe needed?
+                
+                metrics['production_total'] = safe_read(prod_total_node, 1.0) # Assume scale 1.0 or need param?
+                metrics['production_rate'] = safe_read(prod_rate_node, 1.0) 
+                
+                # Real-time Efficiency (kWh / Ton) calculation
+                # eff = Power (kW) / Rate (Ton/h) -> kWh/Ton
+                pwr = metrics.get('power_kw')
+                rate = metrics.get('production_rate')
+                
+                if pwr and rate and rate > 0:
+                    metrics['efficiency_kwh_ton'] = round(pwr / rate, 2)
+                else:
+                    metrics['efficiency_kwh_ton'] = 0.0 if (pwr is not None and rate is not None) else None
+
         # Se leitura real falhou, retornamos None
         # ZERO SIMULATION
 
@@ -609,19 +642,25 @@ def get_equipment_metrics(equipment_id):
         tariff = equipment.tariff_kwh or 0.5
         cost_per_hour = (metrics['power_kw'] or 0) * tariff
         
+        # Specific cost for production (R$/Ton)
+        cost_per_ton = None
+        if metrics.get('efficiency_kwh_ton'):
+             cost_per_ton = metrics['efficiency_kwh_ton'] * tariff
+
         return jsonify({
             'success': True,
             'data': {
                 'metrics': metrics,
                 'cost': {
                     'per_hour': cost_per_hour,
-                    'per_day': cost_per_hour * 24, # Projeção simples baseada no instantâneo
+                    'per_day': cost_per_hour * 24, # Projeção simples
+                    'per_ton': cost_per_ton,
                     'tariff_kwh': tariff
                 },
                 'timestamp': datetime.now().isoformat(),
                 'alerts': {
                     'high_demand': (metrics['demand_kw'] or 0) > 100, # Lógica simples
-                    'low_power_factor': (metrics['power_factor'] or 0) < 0.92
+                    'low_power_factor': (metrics.get('power_factor') or 0) < 0.92
                 }
             }
         })

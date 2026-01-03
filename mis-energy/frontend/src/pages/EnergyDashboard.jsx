@@ -1,13 +1,14 @@
 import { useState, useEffect, useRef } from 'react';
 import api from '../services/api';
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { DateRangePicker } from "@/components/ui/DateRangePicker";
+import { Label } from "@/components/ui/label";
 import {
     TrendingUp, TrendingDown, Minus, Zap, DollarSign, Activity, Clock,
-    Download, RefreshCw, AlertTriangle, CheckCircle, Info, Loader2
+    Download, RefreshCw, AlertTriangle, CheckCircle, Info, Loader2, Filter
 } from 'lucide-react';
 import {
     LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
@@ -16,18 +17,17 @@ import {
 import { format, subDays } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
-// Paleta de cores
+// Paleta de cores ISA-101 (Cores neutras para base, fortes para desvios)
 const COLORS = {
-    primary: '#3B82F6',
-    secondary: '#10B981',
-    warning: '#F59E0B',
-    danger: '#EF4444',
-    purple: '#8B5CF6',
-    cyan: '#06B6D4',
-    pink: '#EC4899'
+    primary: '#3B82F6',   // Information
+    secondary: '#10B981', // Good/Safe
+    warning: '#F59E0B',   // Warning
+    danger: '#EF4444',    // Critical
+    neutral: '#64748B',   // Context
+    purple: '#8B5CF6'     // Special
 };
 
-const ENERGY_COLORS = ['#3B82F6', '#F59E0B', '#10B981', '#8B5CF6'];
+const ENERGY_COLORS = ['#3B82F6', '#F59E0B', '#10B981', '#8B5CF6', '#EC4899'];
 
 export function EnergyDashboard() {
     const [loading, setLoading] = useState(true);
@@ -37,24 +37,65 @@ export function EnergyDashboard() {
     const [heatmapData, setHeatmapData] = useState([]);
     const [insights, setInsights] = useState([]);
     const [period, setPeriod] = useState('hourly');
-    const [unit, setUnit] = useState('kwh');
+
+    // View Mode: 'consumption' (kWh) or 'cost' (R$)
+    const [viewMode, setViewMode] = useState('consumption');
+
     const chartRef = useRef(null);
+
+    // Filters
+    const [hierarchyTree, setHierarchyTree] = useState([]);
+    const [selectedFactoryId, setSelectedFactoryId] = useState('all');
+    const [selectedAreaId, setSelectedAreaId] = useState('all');
+    const [selectedLineId, setSelectedLineId] = useState('all');
 
     // Date range state
     const [startDate, setStartDate] = useState(() => {
         const d = new Date();
-        d.setHours(d.getHours() - 12);
+        d.setDate(d.getDate() - 7); // Default last 7 days
         return d;
     });
     const [endDate, setEndDate] = useState(new Date());
+
+    // Fetch Hierarchy on Mount
+    useEffect(() => {
+        const fetchHierarchy = async () => {
+            try {
+                const res = await api.get('/hierarchy/tree');
+                if (res.success) setHierarchyTree(res.data || []);
+            } catch (e) {
+                console.error("Failed to load hierarchy", e);
+            }
+        };
+        fetchHierarchy();
+    }, []);
+
+    // Derived Hierarchy Options
+    const factories = hierarchyTree.filter(n => n.type === 'factory');
+    const selectedFactory = factories.find(f => f.id.toString() === selectedFactoryId);
+    const areas = selectedFactory?.children || [];
+    const selectedArea = areas.find(a => a.id.toString() === selectedAreaId);
+    const lines = selectedArea?.children || [];
+
+    // Determine effective hierarchy_id for API
+    const getActiveHierarchyId = () => {
+        if (selectedLineId !== 'all') return selectedLineId;
+        if (selectedAreaId !== 'all') return selectedAreaId;
+        if (selectedFactoryId !== 'all') return selectedFactoryId;
+        return null; // Global
+    };
 
     // Handle date range change
     const handleDateRangeChange = (start, end) => {
         setStartDate(start);
         setEndDate(end);
-        // Re-fetch data with new date range (if API supports it)
-        fetchDashboardData();
     };
+
+    useEffect(() => {
+        fetchDashboardData();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [startDate, endDate, period, selectedFactoryId, selectedAreaId, selectedLineId]);
+
 
     // Fetch all dashboard data
     const fetchDashboardData = async () => {
@@ -63,14 +104,20 @@ export function EnergyDashboard() {
             // Format dates for API
             const startParam = startDate.toISOString();
             const endParam = endDate.toISOString();
-            const dateParams = `start_time=${startParam}&end_time=${endParam}`;
+            const hierarchyId = getActiveHierarchyId();
+
+            let queryParams = `start_date=${startParam}&end_date=${endParam}`;
+            if (hierarchyId) queryParams += `&hierarchy_id=${hierarchyId}`;
+
+            // Add period param to time-series call
+            const timeSeriesUrl = `/analytics/time-series?period=${period}&start_time=${startParam}&end_time=${endParam}${hierarchyId ? `&hierarchy_id=${hierarchyId}` : ''}`;
 
             const [summaryRes, timeSeriesRes, breakdownRes, heatmapRes, insightsRes] = await Promise.all([
-                api.get(`/analytics/dashboard-summary?${dateParams}`),
-                api.get(`/analytics/time-series?period=${period}&${dateParams}`),
-                api.get(`/analytics/energy-breakdown?${dateParams}`),
-                api.get(`/analytics/heatmap?${dateParams}`),
-                api.get(`/analytics/insights?${dateParams}`)
+                api.get(`/analytics/dashboard-summary?${queryParams}`),
+                api.get(timeSeriesUrl),
+                api.get(`/analytics/energy-breakdown?${queryParams}`),
+                api.get(`/analytics/heatmap?${queryParams}`),
+                api.get(`/analytics/insights?${queryParams}`)
             ]);
 
             if (summaryRes.success) setSummary(summaryRes.data);
@@ -78,6 +125,7 @@ export function EnergyDashboard() {
             if (breakdownRes.success) setBreakdown(breakdownRes.data);
             if (heatmapRes.success) setHeatmapData(heatmapRes);
             if (insightsRes.success) setInsights(insightsRes.data);
+
         } catch (error) {
             console.error('Erro ao carregar dashboard:', error);
         } finally {
@@ -85,54 +133,55 @@ export function EnergyDashboard() {
         }
     };
 
-    useEffect(() => {
-        fetchDashboardData();
-        const interval = setInterval(fetchDashboardData, 60000); // Atualizar a cada minuto
-        return () => clearInterval(interval);
-    }, [period, startDate, endDate]);
-
-    // Export to CSV
-    const handleExportCSV = async () => {
-        try {
-            const response = await fetch('/mis-energy-api/api/analytics/export-csv?type=time-series');
-            const blob = await response.blob();
-            const url = window.URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `energy_data_${format(new Date(), 'yyyyMMdd_HHmmss')}.csv`;
-            a.click();
-        } catch (error) {
-            console.error('Erro ao exportar CSV:', error);
-        }
+    // Helper for cost vs consumption formatting
+    const formatValue = (val, mode = viewMode) => {
+        if (mode === 'cost') return `R$ ${val?.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
+        return `${val?.toLocaleString('pt-BR', { maximumFractionDigits: 1 })} kWh`;
     };
 
     // Trend Icon Component
-    const TrendIcon = ({ value }) => {
-        if (value > 0) return <TrendingUp className="h-4 w-4 text-red-500" />;
-        if (value < 0) return <TrendingDown className="h-4 w-4 text-green-500" />;
-        return <Minus className="h-4 w-4 text-gray-500" />;
+    const TrendIcon = ({ value, invert = false }) => {
+        if (!value) return <Minus className="h-4 w-4 text-slate-400" />;
+
+        // For cost/consumption: Up is bad (Red), Down is good (Green). 
+        // Unless inverted (Efficiency: Up is Good).
+        const isPositive = value > 0;
+        const isGood = invert ? isPositive : !isPositive;
+
+        const ColorClass = isGood ? "text-emerald-500" : "text-rose-500";
+        const Icon = isPositive ? TrendingUp : TrendingDown;
+
+        return (
+            <div className={`flex items-center text-xs font-medium ${ColorClass}`}>
+                <Icon className="h-3 w-3 mr-1" />
+                {Math.abs(value).toFixed(1)}%
+            </div>
+        );
     };
 
-    // Summary Card Component - COMPACT VERSION
-    const SummaryCard = ({ title, value, unit: cardUnit, delta, icon: Icon, color }) => (
-        <Card className="relative overflow-hidden">
-            <CardContent className="p-3 flex items-center gap-3">
-                <div className={`p-2 rounded-lg flex-shrink-0`} style={{ backgroundColor: `${color}20` }}>
-                    <Icon className="h-5 w-5" style={{ color }} />
+    // Summary Card Component (ISA-101 Style: Simple, Clean, Context)
+    const SummaryCard = ({ title, value, subValue, icon: Icon, trend, invertTrend, loading }) => (
+        <Card className="border-slate-200 dark:border-slate-800 shadow-sm relative overflow-hidden">
+            <CardContent className="p-4">
+                <div className="flex justify-between items-start mb-2">
+                    <p className="text-sm font-medium text-slate-500 dark:text-slate-400">{title}</p>
+                    <Icon className="h-4 w-4 text-slate-400" />
                 </div>
-                <div className="flex-1 min-w-0">
-                    <p className="text-xs font-medium text-slate-500 truncate">{title}</p>
-                    <div className="flex items-baseline gap-1">
-                        <p className="text-lg font-bold text-slate-900 dark:text-white truncate">
-                            {typeof value === 'number' ? value.toLocaleString('pt-BR') : value}
-                        </p>
-                        {cardUnit && <span className="text-xs text-slate-500">{cardUnit}</span>}
+
+                {loading ? (
+                    <div className="space-y-2 animate-pulse">
+                        <div className="h-8 bg-slate-200 dark:bg-slate-700 rounded w-24"></div>
+                        <div className="h-4 bg-slate-100 dark:bg-slate-800 rounded w-16"></div>
                     </div>
-                </div>
-                {delta !== undefined && (
-                    <div className={`flex items-center text-xs flex-shrink-0 ${delta > 0 ? 'text-red-600' : delta < 0 ? 'text-green-600' : 'text-gray-500'}`}>
-                        <TrendIcon value={delta} />
-                        <span className="ml-0.5">{Math.abs(delta).toFixed(1)}%</span>
+                ) : (
+                    <div>
+                        <div className="text-2xl font-bold text-slate-900 dark:text-white tracking-tight">
+                            {value}
+                        </div>
+                        <div className="flex items-center justify-between mt-2">
+                            {subValue && <span className="text-xs text-slate-500">{subValue}</span>}
+                            <TrendIcon value={trend} invert={invertTrend} />
+                        </div>
                     </div>
                 )}
             </CardContent>
@@ -141,7 +190,12 @@ export function EnergyDashboard() {
 
     // Heatmap Component
     const Heatmap = ({ data }) => {
-        if (!data?.data) return null;
+        if (!data?.data || data.data.length === 0) return (
+            <div className="flex flex-col items-center justify-center h-[200px] text-slate-400 text-sm">
+                <Info className="h-6 w-6 mb-2 opacity-50" />
+                Sem dados suficientes para mapa de calor
+            </div>
+        );
 
         const days = data.days || [];
         const range = data.range || { min: 0, max: 1500 };
@@ -155,11 +209,11 @@ export function EnergyDashboard() {
 
         return (
             <div className="overflow-x-auto">
-                <div className="grid gap-1" style={{ gridTemplateColumns: `60px repeat(24, 1fr)` }}>
+                <div className="grid gap-1 min-w-[600px]" style={{ gridTemplateColumns: `60px repeat(24, 1fr)` }}>
                     {/* Header */}
                     <div></div>
                     {Array.from({ length: 24 }, (_, i) => (
-                        <div key={i} className="text-xs text-center text-slate-500 py-1">
+                        <div key={i} className="text-[10px] text-center text-slate-500 py-1">
                             {i}h
                         </div>
                     ))}
@@ -167,7 +221,7 @@ export function EnergyDashboard() {
                     {/* Rows */}
                     {days.map((day, dayIdx) => (
                         <>
-                            <div key={`day-${dayIdx}`} className="text-xs text-right pr-2 py-2 text-slate-600 font-medium">
+                            <div key={`day-${dayIdx}`} className="text-[10px] text-right pr-2 py-1 text-slate-600 font-medium self-center">
                                 {day}
                             </div>
                             {Array.from({ length: 24 }, (_, hour) => {
@@ -176,7 +230,7 @@ export function EnergyDashboard() {
                                 return (
                                     <div
                                         key={`${dayIdx}-${hour}`}
-                                        className="h-8 rounded-sm cursor-pointer transition-transform hover:scale-110 hover:z-10"
+                                        className="h-6 rounded-sm cursor-pointer transition-opacity hover:opacity-80"
                                         style={{ backgroundColor: getColor(value) }}
                                         title={`${day} ${hour}:00 - ${value} kWh`}
                                     />
@@ -184,22 +238,6 @@ export function EnergyDashboard() {
                             })}
                         </>
                     ))}
-                </div>
-
-                {/* Legend */}
-                <div className="flex items-center justify-center gap-4 mt-4 text-xs">
-                    <div className="flex items-center gap-1">
-                        <div className="w-4 h-4 rounded" style={{ backgroundColor: '#10B981' }} />
-                        <span>Baixo</span>
-                    </div>
-                    <div className="flex items-center gap-1">
-                        <div className="w-4 h-4 rounded" style={{ backgroundColor: '#F59E0B' }} />
-                        <span>Médio</span>
-                    </div>
-                    <div className="flex items-center gap-1">
-                        <div className="w-4 h-4 rounded" style={{ backgroundColor: '#EF4444' }} />
-                        <span>Alto</span>
-                    </div>
                 </div>
             </div>
         );
@@ -228,268 +266,223 @@ export function EnergyDashboard() {
                 <div className="flex items-start gap-3">
                     <Icon className="h-5 w-5 mt-0.5 flex-shrink-0" />
                     <div>
-                        <p className="font-medium">{insight.title}</p>
-                        <p className="text-sm mt-1 opacity-80">{insight.description}</p>
-                        {insight.recommendation && (
-                            <p className="text-xs mt-2 italic opacity-70">
-                                💡 {insight.recommendation}
-                            </p>
-                        )}
+                        <p className="font-medium text-sm">{insight.title}</p>
+                        <p className="text-xs mt-1 opacity-80">{insight.description}</p>
                     </div>
                 </div>
             </div>
         );
     };
 
-    if (loading && !summary) {
-        return (
-            <div className="flex items-center justify-center h-screen">
-                <Loader2 className="h-8 w-8 animate-spin text-blue-500" />
-            </div>
-        );
-    }
-
     return (
-        <div className="p-6 space-y-6 bg-slate-50/50 dark:bg-slate-950/50 min-h-screen">
-            {/* Header */}
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div className="p-6 space-y-6 bg-slate-50/50 dark:bg-slate-950/50 min-h-screen font-sans">
+            {/* Header & Controls */}
+            <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-6">
                 <div>
-                    <h1 className="text-3xl font-bold text-slate-900 dark:text-white tracking-tight">
+                    <h1 className="text-2xl font-bold text-slate-900 dark:text-white tracking-tight">
                         Analytics de Energia
                     </h1>
-                    <p className="text-slate-500 mt-1">
-                        Monitoramento e análise de consumo energético
+                    <p className="text-slate-500 text-sm mt-1">
+                        Monitoramento de alta performance e custos operacionais
                     </p>
                 </div>
 
-                <div className="flex items-center gap-3">
+                <div className="flex flex-col md:flex-row gap-3">
+                    {/* Hierarchy Filters */}
+                    <div className="flex gap-2">
+                        <Select value={selectedFactoryId} onValueChange={(v) => {
+                            setSelectedFactoryId(v); setSelectedAreaId('all'); setSelectedLineId('all');
+                        }}>
+                            <SelectTrigger className="w-[140px] h-9 text-xs">
+                                <SelectValue placeholder="Todas Fábricas" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="all">Todas Fábricas</SelectItem>
+                                {factories.map(f => <SelectItem key={f.id} value={String(f.id)}>{f.name}</SelectItem>)}
+                            </SelectContent>
+                        </Select>
+
+                        <Select value={selectedAreaId} onValueChange={(v) => {
+                            setSelectedAreaId(v); setSelectedLineId('all');
+                        }} disabled={selectedFactoryId === 'all'}>
+                            <SelectTrigger className="w-[140px] h-9 text-xs">
+                                <SelectValue placeholder="Todas Áreas" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="all">Todas Áreas</SelectItem>
+                                {areas.map(a => <SelectItem key={a.id} value={String(a.id)}>{a.name}</SelectItem>)}
+                            </SelectContent>
+                        </Select>
+                    </div>
+
+                    {/* View Mode Toggle (Tabs style) */}
+                    <div className="flex items-center border rounded-md p-1 bg-white dark:bg-slate-900 h-9">
+                        <Tabs value={viewMode} onValueChange={setViewMode}>
+                            <TabsList className="h-7 w-auto bg-transparent p-0">
+                                <TabsTrigger value="consumption" className="text-xs h-7 px-3 data-[state=active]:bg-slate-100 dark:data-[state=active]:bg-slate-800">kWh</TabsTrigger>
+                                <TabsTrigger value="cost" className="text-xs h-7 px-3 data-[state=active]:bg-slate-100 dark:data-[state=active]:bg-slate-800">R$</TabsTrigger>
+                            </TabsList>
+                        </Tabs>
+                    </div>
+
                     <DateRangePicker
                         startDate={startDate}
                         endDate={endDate}
                         onRangeChange={handleDateRangeChange}
+                        className="h-9"
                     />
 
-                    <Select value={unit} onValueChange={setUnit}>
-                        <SelectTrigger className="w-32">
-                            <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                            <SelectItem value="kwh">kWh</SelectItem>
-                            <SelectItem value="cost">R$</SelectItem>
-                            <SelectItem value="intensity">kWh/ton</SelectItem>
-                        </SelectContent>
-                    </Select>
-
-                    <Button variant="outline" size="icon" onClick={fetchDashboardData}>
-                        <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
-                    </Button>
-
-                    <Button variant="outline" onClick={handleExportCSV}>
-                        <Download className="h-4 w-4 mr-2" />
-                        Exportar CSV
+                    <Button variant="outline" size="sm" onClick={fetchDashboardData} disabled={loading}>
+                        <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
                     </Button>
                 </div>
             </div>
 
-            {/* Summary Cards */}
+            {/* Summary Row */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                 <SummaryCard
-                    title="Consumo Total"
-                    value={summary?.current?.consumption_kwh || 0}
-                    unit="kWh"
-                    delta={summary?.delta?.consumption_percent}
-                    icon={Zap}
-                    color={COLORS.primary}
+                    title={viewMode === 'cost' ? "Custo Total" : "Consumo Total"}
+                    value={viewMode === 'cost'
+                        ? `R$ ${summary?.current?.cost_brl?.toLocaleString('pt-BR', { maximumFractionDigits: 0 }) || '0'}`
+                        : `${summary?.current?.consumption_kwh?.toLocaleString('pt-BR', { maximumFractionDigits: 0 }) || '0'} kWh`}
+                    subValue={viewMode === 'cost' ? `${(summary?.current?.consumption_kwh || 0).toFixed(0)} kWh` : null}
+                    icon={viewMode === 'cost' ? DollarSign : Zap}
+                    trend={viewMode === 'cost' ? summary?.delta?.cost_percent : summary?.delta?.consumption_percent}
+                    loading={loading}
                 />
                 <SummaryCard
-                    title="Custo Total"
-                    value={`R$ ${(summary?.current?.cost_brl || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`}
-                    unit=""
-                    delta={summary?.delta?.cost_percent}
-                    icon={DollarSign}
-                    color={COLORS.secondary}
+                    title="Demanda Média"
+                    value={`${(summary?.current?.consumption_kwh / (summary?.period?.days * 24 || 1) || 0).toFixed(1)} kW`}
+                    subValue="Potência Média"
+                    icon={Activity}
+                    trend={summary?.delta?.consumption_percent} // Proxied by consumption
+                    loading={loading}
                 />
                 <SummaryCard
                     title="Eficiência"
-                    value={summary?.current?.efficiency_kwh_ton || 0}
-                    unit="kWh/ton"
-                    delta={summary?.delta?.efficiency_percent}
-                    icon={Activity}
-                    color={COLORS.purple}
+                    value={`${summary?.current?.efficiency_kwh_ton || 0}`}
+                    subValue="kWh / Ton"
+                    icon={TrendingDown}
+                    trend={summary?.delta?.efficiency_percent}
+                    invertTrend={false} // Lower is better for kWh/Ton? Usually yes.
+                    loading={loading}
                 />
                 <SummaryCard
-                    title="Dias no Período"
-                    value={summary?.period?.days || 7}
-                    unit="dias"
+                    title="Projeção Mensal"
+                    value={viewMode === 'cost'
+                        ? `R$ ${(summary?.current?.cost_brl / (summary?.period?.days || 1) * 30 || 0).toLocaleString('pt-BR', { maximumFractionDigits: 0 })}`
+                        : `${(summary?.current?.consumption_kwh / (summary?.period?.days || 1) * 30 || 0).toLocaleString('pt-BR', { maximumFractionDigits: 0 })} kWh`
+                    }
+                    subValue="Baseado na média atual"
                     icon={Clock}
-                    color={COLORS.warning}
+                    loading={loading}
+                    trend={0}
                 />
             </div>
 
-            {/* Charts Row */}
+            {/* Charts Section */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                {/* Time Series Chart */}
-                <Card className="lg:col-span-2">
-                    <CardHeader className="pb-2">
-                        <div className="flex items-center justify-between">
-                            <CardTitle className="text-lg">Consumo ao Longo do Tempo</CardTitle>
-                            <Tabs value={period} onValueChange={setPeriod}>
-                                <TabsList className="h-8">
-                                    <TabsTrigger value="hourly" className="text-xs px-3">Horário</TabsTrigger>
-                                    <TabsTrigger value="daily" className="text-xs px-3">Diário</TabsTrigger>
-                                    <TabsTrigger value="weekly" className="text-xs px-3">Semanal</TabsTrigger>
-                                </TabsList>
-                            </Tabs>
-                        </div>
-                    </CardHeader>
-                    <CardContent>
-                        <div ref={chartRef} className="h-[300px]">
-                            <ResponsiveContainer width="100%" height="100%">
-                                <LineChart data={timeSeries}>
-                                    <CartesianGrid strokeDasharray="3 3" stroke="#E2E8F0" />
-                                    <XAxis
-                                        dataKey="label"
-                                        tick={{ fontSize: 12 }}
-                                        stroke="#94A3B8"
-                                    />
-                                    <YAxis
-                                        yAxisId="left"
-                                        tick={{ fontSize: 12 }}
-                                        stroke="#94A3B8"
-                                        tickFormatter={(v) => `${v}`}
-                                    />
-                                    <YAxis
-                                        yAxisId="right"
-                                        orientation="right"
-                                        tick={{ fontSize: 12 }}
-                                        stroke="#94A3B8"
-                                        tickFormatter={(v) => `R$${v}`}
-                                    />
-                                    <Tooltip
-                                        contentStyle={{
-                                            backgroundColor: '#1E293B',
-                                            border: 'none',
-                                            borderRadius: '8px',
-                                            color: '#fff'
-                                        }}
-                                        formatter={(value, name) => [
-                                            name === 'consumption_kwh'
-                                                ? `${value.toLocaleString('pt-BR')} kWh`
-                                                : `R$ ${value.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`,
-                                            name === 'consumption_kwh' ? 'Consumo' : 'Custo'
-                                        ]}
-                                    />
-                                    <Legend />
-                                    <Line
-                                        yAxisId="left"
-                                        type="monotone"
-                                        dataKey="consumption_kwh"
-                                        name="Consumo (kWh)"
-                                        stroke={COLORS.primary}
-                                        strokeWidth={2}
-                                        dot={false}
-                                        activeDot={{ r: 6 }}
-                                    />
-                                    <Line
-                                        yAxisId="right"
-                                        type="monotone"
-                                        dataKey="cost_brl"
-                                        name="Custo (R$)"
-                                        stroke={COLORS.secondary}
-                                        strokeWidth={2}
-                                        dot={false}
-                                        activeDot={{ r: 6 }}
-                                    />
-                                </LineChart>
-                            </ResponsiveContainer>
-                        </div>
-                    </CardContent>
-                </Card>
 
-                {/* Breakdown Chart */}
-                <Card>
-                    <CardHeader className="pb-2">
-                        <CardTitle className="text-lg">Consumo por Tipo</CardTitle>
+                {/* Main Trend Line */}
+                <Card className="lg:col-span-2 border-slate-200 dark:border-slate-800 shadow-sm">
+                    <CardHeader className="pb-2 flex flex-row items-center justify-between">
+                        <div>
+                            <CardTitle className="text-base font-medium">
+                                {viewMode === 'cost' ? 'Evolução de Custos' : 'Perfil de Consumo'}
+                            </CardTitle>
+                            <CardDescription>
+                                Comparativo histórico e tendências
+                            </CardDescription>
+                        </div>
+                        <Tabs value={period} onValueChange={setPeriod} className="w-auto">
+                            <TabsList className="h-7 bg-slate-100 dark:bg-slate-800 p-0.5">
+                                <TabsTrigger value="hourly" className="text-xs px-2.5 h-6 data-[state=active]:bg-white">Hora</TabsTrigger>
+                                <TabsTrigger value="daily" className="text-xs px-2.5 h-6 data-[state=active]:bg-white">Dia</TabsTrigger>
+                            </TabsList>
+                        </Tabs>
                     </CardHeader>
                     <CardContent>
-                        <div className="h-[300px]">
-                            <ResponsiveContainer width="100%" height="100%">
-                                <PieChart>
-                                    <Pie
-                                        data={breakdown}
-                                        dataKey="value_kwh"
-                                        nameKey="name"
-                                        cx="50%"
-                                        cy="50%"
-                                        outerRadius={80}
-                                        innerRadius={50}
-                                        paddingAngle={2}
-                                        label={({ name, percentage }) => `${name} (${percentage}%)`}
-                                        labelLine={false}
-                                    >
-                                        {breakdown.map((entry, index) => (
-                                            <Cell key={`cell-${index}`} fill={entry.color || ENERGY_COLORS[index % ENERGY_COLORS.length]} />
-                                        ))}
-                                    </Pie>
-                                    <Tooltip
-                                        formatter={(value, name) => [`${value.toLocaleString('pt-BR')} kWh`, name]}
-                                    />
-                                </PieChart>
-                            </ResponsiveContainer>
-                        </div>
-                        {/* Legend below chart */}
-                        <div className="grid grid-cols-2 gap-2 mt-4">
-                            {breakdown.map((item, index) => (
-                                <div key={index} className="flex items-center gap-2 text-sm">
-                                    <div
-                                        className="w-3 h-3 rounded-full"
-                                        style={{ backgroundColor: item.color || ENERGY_COLORS[index % ENERGY_COLORS.length] }}
-                                    />
-                                    <span className="text-slate-600 dark:text-slate-400">{item.name}</span>
+                        <div className="h-[320px] w-full">
+                            {loading && !timeSeries.length ? (
+                                <div className="h-full flex items-center justify-center text-slate-400">
+                                    <Loader2 className="h-6 w-6 animate-spin mr-2" /> Carregando dados...
                                 </div>
-                            ))}
-                        </div>
-                    </CardContent>
-                </Card>
-            </div>
-
-            {/* Bottom Row */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                {/* Heatmap */}
-                <Card>
-                    <CardHeader className="pb-2">
-                        <CardTitle className="text-lg">Consumo por Dia/Hora</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                        <Heatmap data={heatmapData} />
-                    </CardContent>
-                </Card>
-
-                {/* Insights Panel */}
-                <Card>
-                    <CardHeader className="pb-2">
-                        <CardTitle className="text-lg">Insights e Recomendações</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                        <div className="space-y-3">
-                            {insights.length > 0 ? (
-                                insights.map((insight, index) => (
-                                    <InsightCard key={index} insight={insight} />
-                                ))
                             ) : (
-                                <div className="text-center text-slate-500 py-8">
-                                    <Info className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                                    <p>Nenhum insight disponível no momento</p>
-                                </div>
+                                <ResponsiveContainer width="100%" height="100%">
+                                    <LineChart data={timeSeries} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
+                                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" />
+                                        <XAxis
+                                            dataKey="label"
+                                            tick={{ fontSize: 11, fill: '#64748B' }}
+                                            axisLine={false}
+                                            tickLine={false}
+                                            dy={10}
+                                        />
+                                        <YAxis
+                                            tick={{ fontSize: 11, fill: '#64748B' }}
+                                            axisLine={false}
+                                            tickLine={false}
+                                            tickFormatter={(val) => val >= 1000 ? `${(val / 1000).toFixed(1)}k` : val}
+                                        />
+                                        <Tooltip
+                                            contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
+                                            formatter={(val) => viewMode === 'cost'
+                                                ? [`R$ ${val}`, 'Custo']
+                                                : [`${val} kWh`, 'Consumo']}
+                                            labelStyle={{ color: '#64748B' }}
+                                        />
+                                        <Line
+                                            type="monotone"
+                                            dataKey={viewMode === 'cost' ? 'cost_brl' : 'consumption_kwh'}
+                                            stroke={COLORS.primary}
+                                            strokeWidth={2}
+                                            dot={false}
+                                            activeDot={{ r: 4, strokeWidth: 0 }}
+                                        />
+                                    </LineChart>
+                                </ResponsiveContainer>
+                            )}
+                        </div>
+                    </CardContent>
+                </Card>
+
+                {/* Secondary: Breakdown or Distribution */}
+                <Card className="border-slate-200 dark:border-slate-800 shadow-sm">
+                    <CardHeader className="pb-2">
+                        <CardTitle className="text-base font-medium">Distribuição</CardTitle>
+                        <CardDescription>Por tipo de energia</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                        <div className="h-[250px] flex items-center justify-center">
+                            {breakdown.length > 0 ? (
+                                <ResponsiveContainer width="100%" height="100%">
+                                    <PieChart>
+                                        <Pie
+                                            data={breakdown}
+                                            innerRadius={60}
+                                            outerRadius={90}
+                                            paddingAngle={2}
+                                            dataKey={viewMode === 'cost' ? 'cost_brl' : 'value_kwh'}
+                                        >
+                                            {breakdown.map((entry, index) => (
+                                                <Cell key={`cell-${index}`} fill={ENERGY_COLORS[index % ENERGY_COLORS.length]} />
+                                            ))}
+                                        </Pie>
+                                        <Tooltip formatter={(val) => viewMode === 'cost' ? `R$ ${val}` : `${val} kWh`} />
+                                        <Legend verticalAlign="bottom" height={36} iconType="circle" iconSize={8} wrapperStyle={{ fontSize: '12px' }} />
+                                    </PieChart>
+                                </ResponsiveContainer>
+                            ) : (
+                                <p className="text-sm text-slate-400">Sem dados disponíveis</p>
                             )}
                         </div>
                     </CardContent>
                 </Card>
             </div>
 
-            {/* Footer */}
-            <div className="text-center text-sm text-slate-400 pt-4 border-t">
-                Última atualização: {format(new Date(), "dd 'de' MMMM 'de' yyyy 'às' HH:mm", { locale: ptBR })}
+            {/* Disclaimer / Footer */}
+            <div className="text-xs text-center text-slate-400 mt-8">
+                MIS-Energy Enterprise • Dados em tempo real
             </div>
         </div>
     );

@@ -80,6 +80,58 @@ export function EquipmentMetricsPanel({ equipment, onClose }) {
         fetchData();
     }, [selectedPeriod, selectedMetric]);
 
+    // --- Dynamic Config Strategy ---
+    const getLayoutConfig = () => {
+        const type = equipment.meter_type || 'energy';
+
+        if (type === 'production') {
+            return {
+                cards: [
+                    { title: "Taxa de Produção", key: 'production_rate', unit: 'Ton/h', icon: Gauge, color: "#3B82F6", subtitle: "Velocidade atual" },
+                    { title: "Produção Acumulada", key: 'production_total', unit: 'Ton', icon: Activity, color: "#10B981", subtitle: `Período: ${selectedPeriod}` },
+                    { title: "Eficiência Energética", key: 'efficiency_kwh_ton', unit: 'kWh/Ton', icon: TrendingDown, color: "#F59E0B", subtitle: "Quanto menor, melhor" },
+                    { title: "Custo Específico", key: 'cost_per_ton', unit: 'R$/Ton', icon: DollarSign, color: "#8B5CF6", isCost: true }
+                ],
+                tabs: [
+                    { value: "overview", label: "Tendência" },
+                    { value: "cost", label: "Custo" }
+                    // Hide Quality for production
+                ],
+                trendOptions: [
+                    { value: "production_rate", label: "Taxa (Ton/h)" },
+                    { value: "production_total", label: "Produção (Ton)" },
+                    { value: "efficiency_kwh_ton", label: "Eficiência (kWh/Ton)" },
+                    { value: "power_kw", label: "Potência (kW)" }
+                ],
+                defaultMetric: 'production_rate'
+            };
+        }
+
+        // Default: Energy
+        return {
+            cards: [
+                { title: "Potência Ativa", key: 'power_kw', unit: 'kW', icon: Zap, color: "#3B82F6", subtitle: "Em tempo real" },
+                { title: "Energia Acumulada", key: 'energy_kwh', unit: 'kWh', icon: Activity, color: "#10B981", subtitle: `Período: ${selectedPeriod}` },
+                { title: "Demanda Máxima", key: 'demand_kw', unit: 'kW', icon: TrendingUp, color: "#F59E0B", alertKey: 'high_demand', subtitle: "Pico registrado" },
+                { title: "Fator de Potência", key: 'power_factor', unit: '', icon: Gauge, color: "#8B5CF6", alertKey: 'low_power_factor', subtitle: "Eficiência" }
+            ],
+            tabs: [
+                { value: "overview", label: "Tendência" },
+                { value: "cost", label: "Custo" },
+                { value: "quality", label: "Qualidade" }
+            ],
+            trendOptions: [
+                { value: "power_kw", label: "Potência (kW)" },
+                { value: "energy_kwh", label: "Energia (kWh)" },
+                { value: "demand_kw", label: "Demanda (kW)" },
+                { value: "power_factor", label: "Fator de Potência" }
+            ],
+            defaultMetric: 'power_kw'
+        };
+    };
+
+    const layout = getLayoutConfig();
+
     if (!equipment) return null;
 
     const MetricCard = ({ title, value, unit, icon: Icon, color, alert, subtitle }) => (
@@ -118,6 +170,7 @@ export function EquipmentMetricsPanel({ equipment, onClose }) {
                         <h2 className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
                             <Zap className="h-5 w-5 text-blue-500" />
                             {equipment.name}
+                            <Badge variant="outline" className="ml-2 capitalize">{equipment.meter_type === 'production' ? 'Produção' : 'Energia'}</Badge>
                         </h2>
                         <p className="text-sm text-slate-500">{equipment.hierarchy_path}</p>
                     </div>
@@ -152,50 +205,38 @@ export function EquipmentMetricsPanel({ equipment, onClose }) {
                         </div>
                     ) : (
                         <>
-                            {/* KPI Cards */}
+                            {/* Dynamic KPI Cards */}
                             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                                <MetricCard
-                                    title="Potência Ativa"
-                                    value={metrics?.metrics?.power_kw}
-                                    unit="kW"
-                                    icon={Zap}
-                                    color="#3B82F6"
-                                    subtitle="Em tempo real"
-                                />
-                                <MetricCard
-                                    title="Energia Acumulada"
-                                    value={metrics?.metrics?.energy_kwh}
-                                    unit="kWh"
-                                    icon={Activity}
-                                    color="#10B981"
-                                    subtitle={`Período: ${selectedPeriod}`}
-                                />
-                                <MetricCard
-                                    title="Demanda Máxima"
-                                    value={metrics?.metrics?.demand_kw}
-                                    unit="kW"
-                                    icon={TrendingUp}
-                                    color="#F59E0B"
-                                    alert={metrics?.alerts?.high_demand}
-                                    subtitle="Pico registrado"
-                                />
-                                <MetricCard
-                                    title="Fator de Potência"
-                                    value={metrics?.metrics?.power_factor}
-                                    unit=""
-                                    icon={Gauge}
-                                    color="#8B5CF6"
-                                    alert={metrics?.alerts?.low_power_factor}
-                                    subtitle={metrics?.metrics?.power_factor && metrics.metrics.power_factor < 0.92 ? '⚠️ Abaixo de 0.92' : 'Normal'}
-                                />
+                                {layout.cards.map((card, idx) => {
+                                    // Resolve value dynamically
+                                    let val;
+                                    if (card.isCost) {
+                                        val = metrics?.cost?.per_ton; // Special case
+                                    } else {
+                                        val = metrics?.metrics?.[card.key];
+                                    }
+
+                                    return (
+                                        <MetricCard
+                                            key={idx}
+                                            title={card.title}
+                                            value={val}
+                                            unit={card.unit}
+                                            icon={card.icon}
+                                            color={card.color}
+                                            subtitle={card.subtitle}
+                                            alert={card.alertKey ? metrics?.alerts?.[card.alertKey] : false}
+                                        />
+                                    );
+                                })}
                             </div>
 
                             {/* Tabs */}
                             <Tabs value={activeTab} onValueChange={setActiveTab}>
-                                <TabsList className="grid grid-cols-3 w-full max-w-md">
-                                    <TabsTrigger value="overview">Tendência</TabsTrigger>
-                                    <TabsTrigger value="cost">Custo</TabsTrigger>
-                                    <TabsTrigger value="quality">Qualidade</TabsTrigger>
+                                <TabsList className="grid w-full max-w-md" style={{ gridTemplateColumns: `repeat(${layout.tabs.length}, minmax(0, 1fr))` }}>
+                                    {layout.tabs.map(tab => (
+                                        <TabsTrigger key={tab.value} value={tab.value}>{tab.label}</TabsTrigger>
+                                    ))}
                                 </TabsList>
 
                                 {/* Trend Chart */}
@@ -204,17 +245,16 @@ export function EquipmentMetricsPanel({ equipment, onClose }) {
                                         <CardHeader className="pb-2">
                                             <div className="flex items-center justify-between">
                                                 <CardTitle className="text-lg">
-                                                    Histórico: {METRIC_LABELS[selectedMetric] || 'Potência'}
+                                                    Histórico: {layout.trendOptions.find(o => o.value === selectedMetric)?.label || 'Métrica'}
                                                 </CardTitle>
                                                 <Select value={selectedMetric} onValueChange={setSelectedMetric}>
-                                                    <SelectTrigger className="w-40">
+                                                    <SelectTrigger className="w-56">
                                                         <SelectValue />
                                                     </SelectTrigger>
                                                     <SelectContent>
-                                                        <SelectItem value="power_kw">Potência (kW)</SelectItem>
-                                                        <SelectItem value="energy_kwh">Energia (kWh)</SelectItem>
-                                                        <SelectItem value="demand_kw">Demanda (kW)</SelectItem>
-                                                        <SelectItem value="power_factor">Fator de Potência</SelectItem>
+                                                        {layout.trendOptions.map(opt => (
+                                                            <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                                                        ))}
                                                     </SelectContent>
                                                 </Select>
                                             </div>
@@ -265,7 +305,7 @@ export function EquipmentMetricsPanel({ equipment, onClose }) {
 
                                 {/* Cost Analysis */}
                                 <TabsContent value="cost" className="mt-4">
-                                    {/* Helper to get context-aware label */}
+                                    {/* Keep existing logic */}
                                     {(() => {
                                         const getPeriodLabel = () => {
                                             if (selectedPeriod === '1h') return 'Última Hora';
@@ -286,7 +326,6 @@ export function EquipmentMetricsPanel({ equipment, onClose }) {
                                         };
 
                                         const hours = getHoursInPeriod();
-                                        // Calculate total cost from timeline if available, or use backend projection
                                         const totalCost = costAnalysis?.timeline?.reduce((acc, curr) => acc + (curr.cost_brl || 0), 0) || 0;
                                         const avgPerHour = totalCost / (hours || 1);
 
@@ -325,7 +364,7 @@ export function EquipmentMetricsPanel({ equipment, onClose }) {
 
                                     <Card>
                                         <CardHeader className="pb-2">
-                                            <CardTitle className="text-lg">Timeline de Consumo</CardTitle>
+                                            <CardTitle className="text-lg">Timeline de Consumo (Custo)</CardTitle>
                                         </CardHeader>
                                         <CardContent>
                                             <div className="h-64">
@@ -362,78 +401,80 @@ export function EquipmentMetricsPanel({ equipment, onClose }) {
                                     </Card>
                                 </TabsContent>
 
-                                {/* Power Quality */}
-                                <TabsContent value="quality" className="mt-4">
-                                    {powerQuality?.available === false ? (
-                                        <Card>
-                                            <CardContent className="p-8 text-center">
-                                                <AlertTriangle className="h-12 w-12 mx-auto text-yellow-500 mb-4" />
-                                                <p className="text-lg text-slate-600">{powerQuality?.message || 'Qualidade de energia não configurada'}</p>
-                                                <p className="text-sm text-slate-400 mt-2">Configure os endereços de tensão e corrente por fase no cadastro do equipamento.</p>
-                                            </CardContent>
-                                        </Card>
-                                    ) : (
-                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                            {/* Voltage */}
+                                {/* Power Quality - Only show if tab exists (Energy mode) */}
+                                {layout.tabs.some(t => t.value === 'quality') && (
+                                    <TabsContent value="quality" className="mt-4">
+                                        {powerQuality?.available === false ? (
                                             <Card>
-                                                <CardHeader className="pb-2">
-                                                    <CardTitle className="text-lg flex items-center gap-2">
-                                                        <Zap className="h-5 w-5 text-yellow-500" />
-                                                        Tensão por Fase
-                                                    </CardTitle>
-                                                </CardHeader>
-                                                <CardContent>
-                                                    <div className="space-y-3">
-                                                        {['a', 'b', 'c'].map((phase) => (
-                                                            <div key={phase} className="flex items-center justify-between">
-                                                                <span className="font-medium text-slate-600 uppercase">Fase {phase}</span>
-                                                                <span className="text-xl font-bold">
-                                                                    {powerQuality?.power_quality?.voltage?.[phase]?.toFixed(1) || '--'} V
-                                                                </span>
-                                                            </div>
-                                                        ))}
-                                                        <div className="border-t pt-3 mt-3">
-                                                            <div className="flex items-center justify-between text-sm">
-                                                                <span className="text-slate-500">Desequilíbrio</span>
-                                                                <Badge variant={powerQuality?.alerts?.voltage_imbalance ? 'destructive' : 'outline'}>
-                                                                    {powerQuality?.analysis?.voltage_imbalance_pct?.toFixed(2) || '0'}%
-                                                                </Badge>
-                                                            </div>
-                                                        </div>
-                                                    </div>
+                                                <CardContent className="p-8 text-center">
+                                                    <AlertTriangle className="h-12 w-12 mx-auto text-yellow-500 mb-4" />
+                                                    <p className="text-lg text-slate-600">{powerQuality?.message || 'Qualidade de energia não configurada'}</p>
+                                                    <p className="text-sm text-slate-400 mt-2">Configure os endereços de tensão e corrente por fase no cadastro do equipamento.</p>
                                                 </CardContent>
                                             </Card>
+                                        ) : (
+                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                                {/* Voltage */}
+                                                <Card>
+                                                    <CardHeader className="pb-2">
+                                                        <CardTitle className="text-lg flex items-center gap-2">
+                                                            <Zap className="h-5 w-5 text-yellow-500" />
+                                                            Tensão por Fase
+                                                        </CardTitle>
+                                                    </CardHeader>
+                                                    <CardContent>
+                                                        <div className="space-y-3">
+                                                            {['a', 'b', 'c'].map((phase) => (
+                                                                <div key={phase} className="flex items-center justify-between">
+                                                                    <span className="font-medium text-slate-600 uppercase">Fase {phase}</span>
+                                                                    <span className="text-xl font-bold">
+                                                                        {powerQuality?.power_quality?.voltage?.[phase]?.toFixed(1) || '--'} V
+                                                                    </span>
+                                                                </div>
+                                                            ))}
+                                                            <div className="border-t pt-3 mt-3">
+                                                                <div className="flex items-center justify-between text-sm">
+                                                                    <span className="text-slate-500">Desequilíbrio</span>
+                                                                    <Badge variant={powerQuality?.alerts?.voltage_imbalance ? 'destructive' : 'outline'}>
+                                                                        {powerQuality?.analysis?.voltage_imbalance_pct?.toFixed(2) || '0'}%
+                                                                    </Badge>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    </CardContent>
+                                                </Card>
 
-                                            {/* Current */}
-                                            <Card>
-                                                <CardHeader className="pb-2">
-                                                    <CardTitle className="text-lg flex items-center gap-2">
-                                                        <Activity className="h-5 w-5 text-blue-500" />
-                                                        Corrente por Fase
-                                                    </CardTitle>
-                                                </CardHeader>
-                                                <CardContent>
-                                                    <div className="space-y-3">
-                                                        {['a', 'b', 'c'].map((phase) => (
-                                                            <div key={phase} className="flex items-center justify-between">
-                                                                <span className="font-medium text-slate-600 uppercase">Fase {phase}</span>
-                                                                <span className="text-xl font-bold">
-                                                                    {powerQuality?.power_quality?.current?.[phase]?.toFixed(1) || '--'} A
-                                                                </span>
-                                                            </div>
-                                                        ))}
-                                                        <div className="border-t pt-3 mt-3">
-                                                            <div className="flex items-center justify-between text-sm">
-                                                                <span className="text-slate-500">Corrente Total</span>
-                                                                <span className="font-medium">{powerQuality?.analysis?.total_current?.toFixed(1) || '--'} A</span>
+                                                {/* Current */}
+                                                <Card>
+                                                    <CardHeader className="pb-2">
+                                                        <CardTitle className="text-lg flex items-center gap-2">
+                                                            <Activity className="h-5 w-5 text-blue-500" />
+                                                            Corrente por Fase
+                                                        </CardTitle>
+                                                    </CardHeader>
+                                                    <CardContent>
+                                                        <div className="space-y-3">
+                                                            {['a', 'b', 'c'].map((phase) => (
+                                                                <div key={phase} className="flex items-center justify-between">
+                                                                    <span className="font-medium text-slate-600 uppercase">Fase {phase}</span>
+                                                                    <span className="text-xl font-bold">
+                                                                        {powerQuality?.power_quality?.current?.[phase]?.toFixed(1) || '--'} A
+                                                                    </span>
+                                                                </div>
+                                                            ))}
+                                                            <div className="border-t pt-3 mt-3">
+                                                                <div className="flex items-center justify-between text-sm">
+                                                                    <span className="text-slate-500">Corrente Total</span>
+                                                                    <span className="font-medium">{powerQuality?.analysis?.total_current?.toFixed(1) || '--'} A</span>
+                                                                </div>
                                                             </div>
                                                         </div>
-                                                    </div>
-                                                </CardContent>
-                                            </Card>
-                                        </div>
-                                    )}
-                                </TabsContent>
+                                                    </CardContent>
+                                                </Card>
+                                            </div>
+                                        )}
+                                    </TabsContent>
+                                )}
                             </Tabs>
                         </>
                     )}

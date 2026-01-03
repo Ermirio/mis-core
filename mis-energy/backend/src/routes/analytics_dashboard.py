@@ -2,392 +2,316 @@
 from flask import Blueprint, request, jsonify
 import logging
 from datetime import datetime, timedelta
-import random
-import math
+from src.models.equipment import Equipment
+from src.services.influxdb_client import influxdb_service
 
 logger = logging.getLogger(__name__)
 analytics_dashboard_bp = Blueprint('analytics_dashboard', __name__)
 
-# Custo médio por kWh em R$
-COST_PER_KWH = 0.85
-
-# Tipos de energia e suas proporções típicas
-ENERGY_TYPES = {
-    'electricity': {'name': 'Eletricidade', 'color': '#3B82F6', 'percentage': 65},
-    'steam': {'name': 'Vapor', 'color': '#F59E0B', 'percentage': 20},
-    'biomass': {'name': 'Biomassa', 'color': '#10B981', 'percentage': 10},
-    'natural_gas': {'name': 'Gás Natural', 'color': '#8B5CF6', 'percentage': 5}
-}
+COST_PER_KWH_DEFAULT = 0.85 # Fallback
 
 @analytics_dashboard_bp.route('/analytics/dashboard-summary', methods=['GET'])
 def get_dashboard_summary():
-    """Retorna resumo do dashboard com consumo, custo e comparativos"""
+    """Retorna resumo do dashboard com consumo e custo REAL das últimas 24h ou período"""
     try:
-        # Parâmetros de filtro
-        start_date = request.args.get('start_date')
-        end_date = request.args.get('end_date')
-        shift = request.args.get('shift')  # morning, afternoon, night
-        line_id = request.args.get('line_id', type=int)
+        start_date_str = request.args.get('start_date')
+        end_date_str = request.args.get('end_date')
+        hierarchy_id = request.args.get('hierarchy_id', type=int)
+
+        # 1. Definir janelas de tempo
+        now = datetime.now()
         
-        # Período default: últimos 7 dias
-        if not end_date:
-            end_date = datetime.now()
+        if end_date_str:
+            end_date = datetime.fromisoformat(end_date_str.replace('Z', '+00:00'))
         else:
-            end_date = datetime.fromisoformat(end_date)
-            
-        if not start_date:
+            end_date = now
+
+        if start_date_str:
+            start_date = datetime.fromisoformat(start_date_str.replace('Z', '+00:00'))
+        else:
+            # Default: última semana
             start_date = end_date - timedelta(days=7)
-        else:
-            start_date = datetime.fromisoformat(start_date)
+
+        # Comparação (Período anterior de mesma duração)
+        duration = end_date - start_date
+        prev_end_date = start_date
+        prev_start_date = prev_end_date - duration
+
+        # 2. Obter equipamentos ativos (opcionalmente filtrados)
+        query_eq = Equipment.query.filter_by(is_active=True)
+        if hierarchy_id:
+             query_eq = query_eq.filter_by(hierarchy_id=hierarchy_id)
         
-        days = (end_date - start_date).days or 1
+        equipments = query_eq.all()
+        if not equipments:
+             return jsonify({'success': True, 'data': _empty_summary(start_date, end_date)})
+
+        # 3. Construir filtros Influx e Tarifas
+        tags = [eq.tag or eq.name for eq in equipments if (eq.tag or eq.name)]
+        if not tags: return jsonify({'success': True, 'data': _empty_summary(start_date, end_date)})
+
+        tag_filter = " OR ".join([f"\"tag\" = '{t}'" for t in tags])
         
-        # Simular consumo baseado em padrões industriais
-        base_consumption = 15000  # kWh/dia base
+        # Mapa de tarifa por tag para refino (avg tariff)
+        total_tariff = sum(eq.tariff_kwh or COST_PER_KWH_DEFAULT for eq in equipments)
+        avg_tariff = total_tariff / len(equipments)
+
+        # 4. Queries Agregadas (InfluxQL 1.8)
+        # Power metric
+        q_power_curr = f'''
+            SELECT mean("value") 
+            FROM "energy_consumption" 
+            WHERE ("metric" = 'power_kw') AND ({tag_filter}) 
+            AND time >= '{start_date.isoformat()}' AND time <= '{end_date.isoformat()}' 
+            GROUP BY "tag"
+        '''
+        q_power_prev = f'''
+            SELECT mean("value") 
+            FROM "energy_consumption" 
+            WHERE ("metric" = 'power_kw') AND ({tag_filter}) 
+            AND time >= '{prev_start_date.isoformat()}' AND time <= '{prev_end_date.isoformat()}' 
+            GROUP BY "tag"
+        '''
+
+        # Production metric (New) - Sum of totalizer deltas or Mean of rate? 
+        # For simplicity in this iteration: If 'production_rate' metric exists, we integrate it.
+        # If 'production_total' exists, we get MAX - MIN. 
+        # Let's assume 'production_rate' (ton/h) is available for now as it's easier to aggregate alongside power.
+        # If not, we fall back to 0.
+        q_prod_curr = f'''
+            SELECT mean("value") 
+            FROM "energy_consumption" 
+            WHERE ("metric" = 'production_rate') 
+            AND time >= '{start_date.isoformat()}' AND time <= '{end_date.isoformat()}' 
+            GROUP BY "tag" -- Note: Production tags might differ from power tags, this is a simplification for linked equipment
+        '''
+        # Ideally, we should query specific production tags linked to the hierarchy, but let's query all 'production_rate' 
+        # that might be associated with these lines. A more robust way is querying everything and summing.
         
-        # Adicionar variação por turno
-        shift_multipliers = {'morning': 1.2, 'afternoon': 1.0, 'night': 0.8}
-        shift_mult = shift_multipliers.get(shift, 1.0)
+        # ACTUALLY: The best generic approach without complex mapping now is to query ALL 'production_rate' in the period
+        # assuming the filter context (Factory/Area) implies which production lines are relevant.
+        # But we don't have tags for production meters in 'tag_filter' (which comes from current equipments).
+        # We need to include production equipments in 'equipments' list.
+        # We already do: Equipment.query.filter_by(is_active=True).all() includes production meters if they are active.
         
-        # Consumo atual (período selecionado)
-        current_consumption = base_consumption * days * shift_mult
-        current_consumption += random.uniform(-0.1, 0.1) * current_consumption
-        current_consumption = round(current_consumption, 2)
+        q_prod_curr = f'''
+             SELECT mean("value") FROM "energy_consumption" WHERE ("metric" = 'production_rate') AND ({tag_filter}) AND time >= '{start_date.isoformat()}' AND time <= '{end_date.isoformat()}' GROUP BY "tag"
+        '''
+        q_prod_prev = f'''
+             SELECT mean("value") FROM "energy_consumption" WHERE ("metric" = 'production_rate') AND ({tag_filter}) AND time >= '{prev_start_date.isoformat()}' AND time <= '{prev_end_date.isoformat()}' GROUP BY "tag"
+        '''
         
-        # Custo atual
-        current_cost = round(current_consumption * COST_PER_KWH, 2)
+        curr_res_power = influxdb_service.execute_query(q_power_curr)
+        prev_res_power = influxdb_service.execute_query(q_power_prev)
         
-        # Período anterior (mesmo intervalo)
-        previous_consumption = base_consumption * days * shift_mult
-        previous_consumption += random.uniform(-0.15, 0.05) * previous_consumption  # Tendência de melhoria
-        previous_consumption = round(previous_consumption, 2)
-        previous_cost = round(previous_consumption * COST_PER_KWH, 2)
+        curr_res_prod = influxdb_service.execute_query(q_prod_curr)
+        prev_res_prod = influxdb_service.execute_query(q_prod_prev)
         
-        # Calcular variação percentual
-        consumption_delta = round(((current_consumption - previous_consumption) / previous_consumption) * 100, 1) if previous_consumption else 0
-        cost_delta = round(((current_cost - previous_cost) / previous_cost) * 100, 1) if previous_cost else 0
+        # 5. Processar Resultados
+        hours = duration.total_seconds() / 3600.0
+        curr_kwh = _calculate_energy(curr_res_power, hours)
+        prev_kwh = _calculate_energy(prev_res_power, hours)
         
-        # Eficiência (kWh/ton produzido) - simulado
-        current_efficiency = round(random.uniform(45, 55), 1)
-        previous_efficiency = round(random.uniform(48, 58), 1)
-        efficiency_delta = round(((current_efficiency - previous_efficiency) / previous_efficiency) * 100, 1)
+        curr_ton = _calculate_energy(curr_res_prod, hours) # Same math: rate * hours = total
+        prev_ton = _calculate_energy(prev_res_prod, hours)
         
-        # Tendência geral
-        trend = 'down' if consumption_delta < 0 else 'up' if consumption_delta > 0 else 'stable'
+        curr_cost = curr_kwh * avg_tariff
+        prev_cost = prev_kwh * avg_tariff
         
+        # Efficiency (kWh / Ton)
+        # Avoid division by zero
+        curr_eff = (curr_kwh / curr_ton) if curr_ton > 0.1 else 0
+        prev_eff = (prev_kwh / prev_ton) if prev_ton > 0.1 else 0
+        
+        # Deltas
+        kwh_delta = ((curr_kwh - prev_kwh) / prev_kwh * 100) if prev_kwh > 0 else 0
+        cost_delta = ((curr_cost - prev_cost) / prev_cost * 100) if prev_cost > 0 else 0
+        eff_delta = ((curr_eff - prev_eff) / prev_eff * 100) if prev_eff > 0 else 0
+        
+        trend = 'stable'
+        if kwh_delta > 5: trend = 'up'
+        elif kwh_delta < -5: trend = 'down'
+
         return jsonify({
             'success': True,
             'data': {
                 'period': {
                     'start': start_date.isoformat(),
                     'end': end_date.isoformat(),
-                    'days': days
+                    'days': duration.days
                 },
                 'current': {
-                    'consumption_kwh': current_consumption,
-                    'cost_brl': current_cost,
-                    'efficiency_kwh_ton': current_efficiency
+                    'consumption_kwh': round(curr_kwh, 2),
+                    'cost_brl': round(curr_cost, 2),
+                    'efficiency_kwh_ton': round(curr_eff, 2),
+                    'production_ton': round(curr_ton, 2) # Added for debug/display
                 },
                 'previous': {
-                    'consumption_kwh': previous_consumption,
-                    'cost_brl': previous_cost,
-                    'efficiency_kwh_ton': previous_efficiency
+                    'consumption_kwh': round(prev_kwh, 2),
+                    'cost_brl': round(prev_cost, 2),
+                    'efficiency_kwh_ton': round(prev_eff, 2)
                 },
                 'delta': {
-                    'consumption_percent': consumption_delta,
-                    'cost_percent': cost_delta,
-                    'efficiency_percent': efficiency_delta
+                    'consumption_percent': round(kwh_delta, 1),
+                    'cost_percent': round(cost_delta, 1),
+                    'efficiency_percent': round(eff_delta, 1)
                 },
                 'trend': trend
             }
         })
-        
+
     except Exception as e:
         logger.error(f"Erro em dashboard-summary: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
+def _calculate_energy(influx_res, hours):
+    """Auxiliary: Sum mean power * time for all tags"""
+    total_energy = 0
+    if influx_res and 'results' in influx_res:
+        series = influx_res['results'][0].get('series', [])
+        for s in series:
+            # values: [[time, mean_val]]
+            if s.get('values'):
+                mean_power = s['values'][0][1]
+                if mean_power:
+                    total_energy += mean_power * hours
+    return total_energy
+
+def _empty_summary(start, end):
+    return {
+        'period': {'start': start.isoformat(), 'end': end.isoformat(), 'days': (end-start).days},
+        'current': {'consumption_kwh': 0, 'cost_brl': 0, 'efficiency_kwh_ton': 0},
+        'previous': {'consumption_kwh': 0, 'cost_brl': 0, 'efficiency_kwh_ton': 0},
+        'delta': {'consumption_percent': 0, 'cost_percent': 0, 'efficiency_percent': 0},
+        'trend': 'stable'
+    }
 
 @analytics_dashboard_bp.route('/analytics/time-series', methods=['GET'])
 def get_time_series():
-    """Retorna série temporal de consumo e custo"""
+    """Retorna série temporal de consumo REAL"""
     try:
-        period = request.args.get('period', 'hourly')  # hourly, daily, weekly
-        start_date = request.args.get('start_date')
-        end_date = request.args.get('end_date')
-        
+        period = request.args.get('period', 'daily') # hourly, daily
+        start_date_str = request.args.get('start_time') # changed from start_date to match frontend
+        end_date_str = request.args.get('end_time')
+
         now = datetime.now()
+        if end_date_str:
+            end_date = datetime.fromisoformat(end_date_str.replace('Z', '+00:00'))
+        else:
+             end_date = now
+             
+        if start_date_str:
+             start_date = datetime.fromisoformat(start_date_str.replace('Z', '+00:00'))
+        else:
+             start_date = end_date - timedelta(days=7)
         
-        # Determinar intervalo baseado no período
+        # Determine group by
         if period == 'hourly':
-            points = 24
-            delta = timedelta(hours=1)
-            start = now - timedelta(hours=24)
-            format_str = '%H:%M'
-        elif period == 'daily':
-            points = 30
-            delta = timedelta(days=1)
-            start = now - timedelta(days=30)
-            format_str = '%d/%m'
-        else:  # weekly
-            points = 12
-            delta = timedelta(weeks=1)
-            start = now - timedelta(weeks=12)
-            format_str = 'Sem %W'
+            group_by = '1h'
+            bucket_hours = 1
+            date_format = '%H:%M'
+        else: # daily or weekly
+            group_by = '1d'
+            bucket_hours = 24
+            date_format = '%d/%m'
+
+        # Get active equipment tags
+        equipments = Equipment.query.filter_by(is_active=True).all()
+        tags = [eq.tag or eq.name for eq in equipments if (eq.tag or eq.name)]
+        if not tags: return jsonify({'success': True, 'data': []})
+
+        tag_filter = "OR".join([f"\"tag\" = '{t}'" for t in tags])
+        avg_tariff = COST_PER_KWH_DEFAULT 
+        if equipments:
+             avg_tariff = sum(eq.tariff_kwh or COST_PER_KWH_DEFAULT for eq in equipments) / len(equipments)
+
+        # Influx Query: Mean Power Grouped by Time AND Tag
+        # We need to sum up energy of all machines per time bucket.
+        # Standard Influx 1.8 approach: subqueries or post-processing.
+        # Using Post-Processing map.
         
+        query = f'''
+            SELECT mean("value") 
+            FROM "energy_consumption" 
+            WHERE ("metric" = 'power_kw') AND ({tag_filter}) 
+            AND time >= '{start_date.isoformat()}' AND time <= '{end_date.isoformat()}' 
+            GROUP BY time({group_by}), "tag" fill(0)
+        '''
+        
+        result = influxdb_service.execute_query(query)
+        
+        # Aggregate by timestamp
+        time_map = {}
+        
+        if result and 'results' in result:
+             series = result['results'][0].get('series', [])
+             for s in series:
+                 for v in s.get('values', []):
+                     ts = v[0]
+                     pwr = v[1] or 0
+                     if ts not in time_map: method='sum_power'
+                     if ts not in time_map: time_map[ts] = 0
+                     time_map[ts] += pwr
+        
+        # Create output list
         data = []
-        current_time = start
-        
-        for i in range(points):
-            # Padrão de consumo baseado na hora/dia
-            if period == 'hourly':
-                hour = current_time.hour
-                if 6 <= hour <= 18:  # Horário comercial
-                    base = 1200
-                elif 19 <= hour <= 22:  # Pico
-                    base = 1500
-                else:  # Madrugada
-                    base = 600
-            else:
-                # Variação semanal (menos consumo no fim de semana)
-                day_of_week = current_time.weekday()
-                if day_of_week >= 5:  # Weekend
-                    base = 800
-                else:
-                    base = 1200
-            
-            # Adicionar variação aleatória
-            consumption = round(base * random.uniform(0.85, 1.15), 2)
-            cost = round(consumption * COST_PER_KWH, 2)
+        for ts in sorted(time_map.keys()):
+            dt = datetime.fromisoformat(ts.replace('Z', '+00:00'))
+            total_power = time_map[ts]
+            energy_kwh = total_power * bucket_hours
+            cost = energy_kwh * avg_tariff
             
             data.append({
-                'timestamp': current_time.isoformat(),
-                'label': current_time.strftime(format_str),
-                'consumption_kwh': consumption,
-                'cost_brl': cost
+                'timestamp': ts,
+                'label': dt.strftime(date_format),
+                'consumption_kwh': round(energy_kwh, 2),
+                'cost_brl': round(cost, 2)
             })
-            
-            current_time += delta
-        
+
         return jsonify({
             'success': True,
             'data': data,
             'period': period,
-            'unit_cost': COST_PER_KWH
+            'unit_cost': round(avg_tariff, 2)
         })
-        
+
     except Exception as e:
         logger.error(f"Erro em time-series: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
+@analytics_dashboard_bp.route('/analytics/insights', methods=['GET'])
+def get_insights():
+    # Placeholder: Insights usually require complex rules engine.
+    # Returning empty or basic static response allows frontend to render without error.
+    return jsonify({
+        'success': True, 
+        'data': [], 
+        'generated_at': datetime.now().isoformat()
+    })
 
 @analytics_dashboard_bp.route('/analytics/energy-breakdown', methods=['GET'])
 def get_energy_breakdown():
-    """Retorna breakdown de energia por tipo"""
-    try:
-        # Simular valores baseados nas proporções definidas
-        total_consumption = random.uniform(80000, 120000)
-        
-        breakdown = []
-        for key, info in ENERGY_TYPES.items():
-            # Adicionar pequena variação nas proporções
-            percentage = info['percentage'] + random.uniform(-2, 2)
-            value = round(total_consumption * (percentage / 100), 2)
-            cost = round(value * COST_PER_KWH, 2)
-            
-            breakdown.append({
-                'type': key,
-                'name': info['name'],
-                'color': info['color'],
-                'value_kwh': value,
-                'cost_brl': cost,
-                'percentage': round(percentage, 1)
-            })
-        
-        # Normalizar percentuais para somar 100%
-        total_pct = sum(item['percentage'] for item in breakdown)
-        for item in breakdown:
-            item['percentage'] = round((item['percentage'] / total_pct) * 100, 1)
-        
-        return jsonify({
+    # Placeholder: requires tagging by 'energy_type' which we might not have yet.
+    # Returning empty.
+     return jsonify({
             'success': True,
-            'data': breakdown,
-            'total_kwh': round(total_consumption, 2),
-            'total_cost': round(total_consumption * COST_PER_KWH, 2)
-        })
-        
-    except Exception as e:
-        logger.error(f"Erro em energy-breakdown: {e}")
-        return jsonify({'success': False, 'error': str(e)}), 500
-
+            'data': [],
+            'total_kwh': 0,
+            'total_cost': 0
+     })
 
 @analytics_dashboard_bp.route('/analytics/heatmap', methods=['GET'])
 def get_heatmap():
-    """Retorna dados de heatmap (consumo por dia da semana x hora)"""
-    try:
-        days = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb']
-        
-        heatmap_data = []
-        max_value = 0
-        min_value = float('inf')
-        
-        for day_idx, day_name in enumerate(days):
-            for hour in range(24):
-                # Padrão de consumo
-                is_weekend = day_idx == 0 or day_idx == 6
-                is_business_hours = 6 <= hour <= 18
-                is_peak = 19 <= hour <= 22
-                
-                if is_weekend:
-                    base = 400  # Fim de semana = baixo
-                elif is_peak:
-                    base = 1400  # Pico noturno
-                elif is_business_hours:
-                    base = 1100  # Horário comercial
-                else:
-                    base = 500  # Madrugada
-                
-                value = round(base * random.uniform(0.9, 1.1), 0)
-                max_value = max(max_value, value)
-                min_value = min(min_value, value)
-                
-                heatmap_data.append({
-                    'day': day_name,
-                    'day_index': day_idx,
-                    'hour': hour,
-                    'hour_label': f'{hour:02d}:00',
-                    'value': value
-                })
-        
-        return jsonify({
+     # Placeholder
+      return jsonify({
             'success': True,
-            'data': heatmap_data,
-            'days': days,
+            'data': [],
+            'days': ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'],
             'hours': list(range(24)),
-            'range': {
-                'min': min_value,
-                'max': max_value
-            }
+            'range': {'min': 0, 'max': 0}
         })
-        
-    except Exception as e:
-        logger.error(f"Erro em heatmap: {e}")
-        return jsonify({'success': False, 'error': str(e)}), 500
-
-
-@analytics_dashboard_bp.route('/analytics/insights', methods=['GET'])
-def get_insights():
-    """Retorna insights em linguagem natural sobre o consumo"""
-    try:
-        period = request.args.get('period', 'week')  # week, month
-        
-        # Simular dados de comparação
-        consumption_change = random.uniform(-15, 15)
-        cost_change = random.uniform(-12, 18)
-        peak_hour = random.choice([19, 20, 21])
-        peak_day = random.choice(['segunda', 'terça', 'quarta'])
-        
-        insights = []
-        
-        # Insight de consumo
-        if consumption_change > 0:
-            insights.append({
-                'type': 'warning',
-                'icon': 'trending-up',
-                'title': 'Consumo Aumentou',
-                'description': f'O consumo de energia aumentou {abs(consumption_change):.1f}% em relação ao período anterior.',
-                'recommendation': 'Verifique equipamentos com maior demanda e considere otimização.'
-            })
-        else:
-            insights.append({
-                'type': 'success',
-                'icon': 'trending-down',
-                'title': 'Consumo Reduzido',
-                'description': f'Excelente! O consumo diminuiu {abs(consumption_change):.1f}% comparado ao período anterior.',
-                'recommendation': 'Continue monitorando para manter a eficiência.'
-            })
-        
-        # Insight de horário de pico
-        insights.append({
-            'type': 'info',
-            'icon': 'clock',
-            'title': 'Horário de Pico',
-            'description': f'O maior consumo ocorre às {peak_hour}h, concentrado na {peak_day}-feira.',
-            'recommendation': 'Considere redistribuir cargas para horários de menor tarifa.'
-        })
-        
-        # Insight de custo
-        if cost_change > 10:
-            insights.append({
-                'type': 'alert',
-                'icon': 'dollar-sign',
-                'title': 'Custo Elevado',
-                'description': f'Os custos de energia aumentaram {cost_change:.1f}% este período.',
-                'recommendation': 'Revise contratos de fornecimento e eficiência de equipamentos.'
-            })
-        
-        # Insight de eficiência
-        efficiency_score = random.randint(70, 95)
-        insights.append({
-            'type': 'info' if efficiency_score >= 80 else 'warning',
-            'icon': 'zap',
-            'title': f'Score de Eficiência: {efficiency_score}%',
-            'description': f'Sua planta está operando com eficiência {"boa" if efficiency_score >= 80 else "abaixo do ideal"}.',
-            'recommendation': 'Monitore motores e sistemas de ar comprimido para ganhos adicionais.' if efficiency_score < 80 else 'Mantenha as práticas atuais de gestão energética.'
-        })
-        
-        return jsonify({
-            'success': True,
-            'data': insights,
-            'generated_at': datetime.now().isoformat(),
-            'period': period
-        })
-        
-    except Exception as e:
-        logger.error(f"Erro em insights: {e}")
-        return jsonify({'success': False, 'error': str(e)}), 500
-
 
 @analytics_dashboard_bp.route('/analytics/export-csv', methods=['GET'])
 def export_csv():
-    """Exporta dados como CSV"""
-    try:
-        data_type = request.args.get('type', 'time-series')
-        
-        # Gerar dados baseado no tipo
-        if data_type == 'time-series':
-            # Reutilizar lógica do time-series
-            now = datetime.now()
-            points = 24
-            delta = timedelta(hours=1)
-            start = now - timedelta(hours=24)
-            
-            csv_lines = ['Timestamp,Consumo (kWh),Custo (R$)']
-            current_time = start
-            
-            for i in range(points):
-                hour = current_time.hour
-                if 6 <= hour <= 18:
-                    base = 1200
-                elif 19 <= hour <= 22:
-                    base = 1500
-                else:
-                    base = 600
-                
-                consumption = round(base * random.uniform(0.85, 1.15), 2)
-                cost = round(consumption * COST_PER_KWH, 2)
-                
-                csv_lines.append(f'{current_time.isoformat()},{consumption},{cost}')
-                current_time += delta
-            
-            csv_content = '\n'.join(csv_lines)
-            
-            return csv_content, 200, {
-                'Content-Type': 'text/csv',
-                'Content-Disposition': f'attachment; filename=energy_data_{now.strftime("%Y%m%d_%H%M%S")}.csv'
-            }
-        
-        return jsonify({'success': False, 'error': 'Tipo de exportação inválido'}), 400
-        
-    except Exception as e:
-        logger.error(f"Erro em export-csv: {e}")
-        return jsonify({'success': False, 'error': str(e)}), 500
+    # Placeholder functionality
+    return "Not Implemented", 501
