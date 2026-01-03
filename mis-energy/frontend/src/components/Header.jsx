@@ -9,6 +9,7 @@ export function Header({ sidebarOpen, setSidebarOpen }) {
   const { toast } = useToast()
 
   // Initialize from localStorage
+  const [loading, setLoading] = useState(false);
   const [simulationActive, setSimulationActive] = useState(() => {
     return localStorage.getItem('mockMode') === 'true';
   });

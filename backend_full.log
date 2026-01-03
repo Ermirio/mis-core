@@ -1,0 +1,953 @@
+[InfluxDB] Initializing client with config: {'host': 'influxdb', 'port': 8086, 'database': 'industrial_db', 'username': 'admin', 'password': 'admin123'}
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=111.0 1767384369075985920
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=114.0 1767384369157367040
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=116.0 1767384370238550784
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=116.0 1767384370752346112
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=120.0 1767384373213711872
+[InfluxDB] Status: 204
+[InfluxDB] Initializing client with config: {'host': 'influxdb', 'port': 8086, 'database': 'industrial_db', 'username': 'admin', 'password': 'admin123'}
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=111.0 1767384373345554944
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=118.0 1767384374505618944
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=112.0 1767384375123641088
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=112.0 1767384375363510016
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=119.0 1767384375539077888
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=111.0 1767384376020084992
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=114.0 1767384376327332864
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=118.0 1767384376596198144
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=111.0 1767384378639745024
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=120.0 1767384378878628096
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=114.0 1767384379130053120
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=115.0 1767384380239745024
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=111.0 1767384380743416064
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=111.0 1767384383224136192
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=116.0 1767384383343641088
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=120.0 1767384385135708160
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=119.0 1767384385341923072
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=117.0 1767384385522038016
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=112.0 1767384386018800896
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=118.0 1767384386338622976
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=120.0 1767384388733714176
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=116.0 1767384389000005888
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=120.0 1767384389990354944
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=115.0 1767384390449688064
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=119.0 1767384392697891072
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=114.0 1767384392828793088
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=118.0 1767384340742095872
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=116.0 1767384395341388032
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=119.0 1767384395523880960
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=118.0 1767384396057202944
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=113.0 1767384396333688064
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=119.0 1767384398876969216
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=119.0 1767384399137530112
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=117.0 1767384400339410176
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=115.0 1767384400747890944
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=114.0 1767384403192306944
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=113.0 1767384403334075904
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=119.0 1767384405118334976
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=113.0 1767384405334230016
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=117.0 1767384405521704960
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=116.0 1767384406025146880
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=112.0 1767384406331482880
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=113.0 1767384408867151872
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=115.0 1767384409145970944
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=116.0 1767384410247044096
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=117.0 1767384410738125056
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=118.0 1767384413199275008
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=115.0 1767384413340208896
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=114.0 1767384415120665088
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=113.0 1767384415333679872
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=112.0 1767384415548104960
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=113.0 1767384416038147072
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=120.0 1767384416332871936
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=115.0 1767384418882519040
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=113.0 1767384419136837120
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=113.0 1767384420217579008
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=112.0 1767384420680665088
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=115.0 1767384422945838848
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=119.0 1767384423064635904
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=111.0 1767384424718287872
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=115.0 1767384424891397888
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=116.0 1767384371142163968
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=120.0 1767384425990469888
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=113.0 1767384426280325888
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=112.0 1767384428603044096
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=117.0 1767384428845283072
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=114.0 1767384429868023040
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=115.0 1767384430331760896
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=116.0 1767384432571688960
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=119.0 1767384432689763072
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=118.0 1767384434342803968
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=117.0 1767384434528541952
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=119.0 1767384434729321984
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=117.0 1767384435178608896
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=115.0 1767384435438529024
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=113.0 1767384437775973120
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=113.0 1767384438006772992
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=120.0 1767384439040605952
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=112.0 1767384439498539008
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=111.0 1767384441745965056
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=112.0 1767384441874543872
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=116.0 1767384443525646848
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=112.0 1767384443706895104
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=113.0 1767384443881506816
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=114.0 1767384444329899008
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=116.0 1767384444614216192
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=112.0 1767384446938831104
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=120.0 1767384447202035968
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=120.0 1767384448203433984
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=112.0 1767384448665662976
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=113.0 1767384450900937984
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=119.0 1767384451032100864
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=115.0 1767384452684612864
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=118.0 1767384452878735104
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=116.0 1767384453043163136
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=118.0 1767384453492335104
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=117.0 1767384453777825024
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=116.0 1767384458835834112
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=114.0 1767384459083649024
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=120.0 1767384460090487040
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=116.0 1767384460556032000
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=113.0 1767384462804765952
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=119.0 1767384462921679872
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=116.0 1767384464570368000
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=113.0 1767384464783298048
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=112.0 1767384464935027968
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=120.0 1767384465395311104
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=115.0 1767384465675243008
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=112.0 1767384468002068992
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=119.0 1767384468245174784
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=112.0 1767384469250662144
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=118.0 1767384469708188160
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=112.0 1767384471969971968
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=117.0 1767384472080173056
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=113.0 1767384473750008064
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=120.0 1767384473935437056
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=113.0 1767384474097870080
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=116.0 1767384474549669888
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=114.0 1767384474855973120
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=119.0 1767384477169090048
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=114.0 1767384477400270848
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=116.0 1767384478416687872
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=118.0 1767384478874886912
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=117.0 1767384481134157056
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=111.0 1767384481254612992
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=119.0 1767384482895202048
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=116.0 1767384483101526016
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=111.0 1767384483275970816
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=116.0 1767384483721111040
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=117.0 1767384484001008896
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=111.0 1767384486345488128
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=119.0 1767384487495534848
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=114.0 1767384487873689856
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=117.0 1767384488040946944
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=118.0 1767384493025629952
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=114.0 1767384493168082944
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=116.0 1767384494805460992
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=119.0 1767384494994853888
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=120.0 1767384495180912128
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=113.0 1767384495627703808
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=113.0 1767384495885431040
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=112.0 1767384498229520128
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=115.0 1767384498489907968
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=117.0 1767384499481430016
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=112.0 1767384499934541056
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=113.0 1767384502204033024
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=117.0 1767384502328123136
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=118.0 1767384503970619904
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=119.0 1767384504218295040
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=114.0 1767384504338164992
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=113.0 1767384504823399936
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=116.0 1767384505111226112
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=114.0 1767384507433517824
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=120.0 1767384507671981056
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=112.0 1767384508709177088
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=117.0 1767384509216836096
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=116.0 1767384511391665920
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=118.0 1767384511483079936
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=117.0 1767384513240636160
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=115.0 1767384513330692096
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=117.0 1767384513505861120
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=114.0 1767384514015606016
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=117.0 1767384514404828928
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=114.0 1767384516564264960
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=112.0 1767384516820246016
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=112.0 1767384517821458176
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=113.0 1767384518267035904
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=113.0 1767384520538039040
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=117.0 1767384520652185856
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=115.0 1767384525128176896
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=119.0 1767384525354062080
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=115.0 1767384525538504960
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=112.0 1767384526032844032
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=113.0 1767384526329807872
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=111.0 1767384528927448064
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=113.0 1767384529154406912
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=113.0 1767384530234108928
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=119.0 1767384530769521920
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=116.0 1767384533209636864
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=113.0 1767384533337853952
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=118.0 1767384535136773120
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=117.0 1767384535355948032
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=117.0 1767384535532016896
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=111.0 1767384536016371968
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=116.0 1767384536326329856
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=111.0 1767384538873197056
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=118.0 1767384539139283968
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=113.0 1767384540250214144
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=116.0 1767384540758866176
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=112.0 1767384543013739008
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=115.0 1767384543119313920
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=118.0 1767384544768069120
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=116.0 1767384544959889920
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=119.0 1767384545126592000
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=113.0 1767384545578533888
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=116.0 1767384545867997952
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=114.0 1767384548213172992
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=114.0 1767384548444348928
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=117.0 1767384549455898880
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=119.0 1767384549922358016
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=119.0 1767384552178994944
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=113.0 1767384552298723072
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=119.0 1767384555124389888
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=116.0 1767384555333292032
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=111.0 1767384555520935936
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=111.0 1767384556030073856
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=113.0 1767384556353426944
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=119.0 1767384558861210112
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=116.0 1767384559145271040
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=117.0 1767384560425015040
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=118.0 1767384560737221888
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=111.0 1767384563221755904
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=113.0 1767384563345436928
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=113.0 1767384565128692992
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=112.0 1767384565358558976
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=113.0 1767384565515675904
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=113.0 1767384566014082048
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=117.0 1767384566339996160
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=113.0 1767384568892648960
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=119.0 1767384569141307136
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=117.0 1767384570251734016
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=111.0 1767384570749041152
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=119.0 1767384573211098880
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=113.0 1767384573351671808
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=111.0 1767384575026288128
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=116.0 1767384575221050112
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=113.0 1767384575397926144
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=113.0 1767384575867911168
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=111.0 1767384576132582912
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=112.0 1767384578466028032
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=115.0 1767384578707990784
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=119.0 1767384579734190080
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=116.0 1767384580174982144
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=116.0 1767384582445410048
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=116.0 1767384582556848896
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=114.0 1767384584205938944
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=120.0 1767384584398298112
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=116.0 1767384584568443904
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=114.0 1767384531633742080
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=113.0 1767384586327141120
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=116.0 1767384588879556864
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=111.0 1767384589144758016
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=116.0 1767384590243459840
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=115.0 1767384590738202112
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=120.0 1767384593198411008
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=112.0 1767384593325778944
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=117.0 1767384595138953984
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=119.0 1767384595340267776
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=114.0 1767384595514287104
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=119.0 1767384596011617024
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=113.0 1767384596333140992
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=116.0 1767384598892060928
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=118.0 1767384599151716864
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=119.0 1767384600237903104
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=117.0 1767384600743685888
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=117.0 1767384603206159104
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=113.0 1767384603323316992
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=117.0 1767384605131820032
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=117.0 1767384605347801856
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=114.0 1767384605531740928
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=118.0 1767384606048423936
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=119.0 1767384606307866112
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=112.0 1767384608722529024
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=118.0 1767384608975811840
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=117.0 1767384609976620032
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=115.0 1767384610436749056
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=115.0 1767384612691252992
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=115.0 1767384612806281216
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=117.0 1767384614455575040
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=111.0 1767384614636462080
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=114.0 1767384614813249024
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=111.0 1767384615282319104
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=112.0 1767384615546215936
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=115.0 1767384618880356096
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=115.0 1767384619128221952
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=115.0 1767384620225027072
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=116.0 1767384620739387136
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=112.0 1767384623225128960
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=118.0 1767384623320504832
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=117.0 1767384625132837888
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=114.0 1767384625324343808
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=116.0 1767384625533658880
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=113.0 1767384626021291008
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=117.0 1767384626335196928
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=115.0 1767384628870449152
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=119.0 1767384629138935040
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=112.0 1767384630243505920
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=112.0 1767384630742272000
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=120.0 1767384633202574080
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=112.0 1767384633346438912
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=113.0 1767384635128459008
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=113.0 1767384635334124032
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=112.0 1767384635532419840
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=112.0 1767384636011877120
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=119.0 1767384636335704064
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=112.0 1767384638889648896
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=117.0 1767384639142819840
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=119.0 1767384640190140928
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=116.0 1767384640650974976
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=112.0 1767384642927273984
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=118.0 1767384643042553856
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=113.0 1767384644690588928
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=113.0 1767384644886117888
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=112.0 1767384645068943872
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=116.0 1767384645508416000
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=118.0 1767384645789614848
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=120.0 1767384648874597120
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=117.0 1767384649149487104
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=116.0 1767384650221484800
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=114.0 1767384650732517888
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=117.0 1767384653200595968
+[InfluxDB] Status: 204
+[InfluxDB] Writing to http://influxdb:8086/write (DB: industrial_db)
+[InfluxDB] Payload: energy_consumption,tag=F001-A001-L001-ENM-001,metric=power_kw,equipment_id=13,unit=kWh,equipment_type=energy_meter value=117.0 1767384653325350144
+[InfluxDB] Status: 204

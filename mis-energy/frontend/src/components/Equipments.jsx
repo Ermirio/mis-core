@@ -485,7 +485,7 @@ export function Equipments() {
   }
 
   // Compact Equipment Card for 6-column grid with real-time value
-  const EquipmentCard = ({ equipment }) => {
+  const EquipmentCard = ({ equipment, onDelete, onRead, onEdit, onViewMetrics }) => {
     // Get real-time value from state
     const rtValue = realTimeValues[equipment.id]
     const currentValue = rtValue?.value ?? equipment.last_value
@@ -572,7 +572,7 @@ export function Equipments() {
           <Button
             variant="outline"
             size="sm"
-            onClick={(e) => { e.stopPropagation(); setMetricsEquipment(equipment); }}
+            onClick={(e) => { e.stopPropagation(); onViewMetrics(equipment); }}
             className="h-8 px-2 bg-blue-50 hover:bg-blue-100 text-blue-600"
             title="Ver Métricas"
           >
@@ -581,7 +581,7 @@ export function Equipments() {
           <Button
             variant="outline"
             size="sm"
-            onClick={(e) => { e.stopPropagation(); readEquipmentValue(equipment); }}
+            onClick={(e) => { e.stopPropagation(); onRead(equipment); }}
             className="h-8 px-2"
             title="Ler Valor"
           >
@@ -590,7 +590,7 @@ export function Equipments() {
           <Button
             variant="outline"
             size="sm"
-            onClick={(e) => { e.stopPropagation(); handleEdit(equipment); }}
+            onClick={(e) => { e.stopPropagation(); onEdit(equipment); }}
             className="h-8 px-2"
             title="Editar"
           >
@@ -599,7 +599,7 @@ export function Equipments() {
           <Button
             variant="outline"
             size="sm"
-            onClick={(e) => { e.stopPropagation(); handleDelete(equipment.id); }}
+            onClick={(e) => { e.stopPropagation(); onDelete(equipment.id); }}
             className="h-8 px-2 text-red-600 hover:text-red-700"
             title="Excluir"
           >
@@ -1329,7 +1329,14 @@ export function Equipments() {
       ) : (
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-3">
           {filteredEquipments.map((equipment) => (
-            <EquipmentCard key={equipment.id} equipment={equipment} />
+            <EquipmentCard
+              key={equipment.id}
+              equipment={equipment}
+              onDelete={handleDelete}
+              onRead={readEquipmentValue}
+              onEdit={handleEdit}
+              onViewMetrics={setMetricsEquipment}
+            />
           ))}
         </div>
       )}

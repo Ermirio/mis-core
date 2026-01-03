@@ -16,6 +16,11 @@ export default defineConfig({
   },
   server: {
     proxy: {
+      '/mis-energy-api': {
+        target: 'http://127.0.0.1:5005',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/mis-energy-api/, '/api')
+      },
       '/api': {
         target: 'http://127.0.0.1:5005',
         changeOrigin: true

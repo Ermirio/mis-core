@@ -486,7 +486,7 @@ def read_equipment_value(equipment_id):
                 ip_address=gateway.ip_address,
                 port=gateway.port,
                 modbus_address=equipment.modbus_address,
-                register=equipment.opc_register,
+                register=equipment.modbus_register,
                 register_type=equipment.register_type,
                 data_type=equipment.data_type
             )
@@ -507,6 +507,10 @@ def read_equipment_value(equipment_id):
         
         # Armazenar no InfluxDB se configurado
         try:
+            # Determinar código da tag e métrica para compatibilidade com histórico
+            tag_code = equipment.tag or equipment.name
+            metric_name = 'power_kw' if equipment.meter_type == 'energy' else 'generic'
+            
             influxdb_service.write_measurement(
                 equipment_id=equipment.id,
                 equipment_name=equipment.name,
@@ -515,7 +519,9 @@ def read_equipment_value(equipment_id):
                 location=equipment.location,
                 area=equipment.area,
                 hierarchy_path=equipment._get_hierarchy_path(),
-                equipment_type=equipment.equipment_type
+                equipment_type=equipment.equipment_type,
+                tag_code=tag_code,
+                metric_name=metric_name
             )
         except Exception as e:
             # Log do erro mas não falha a operação
@@ -660,14 +666,18 @@ def get_equipment_history(equipment_id):
         start_time = datetime.now() - delta
         
         # Consultar InfluxDB
-        influx_host = 'mis-core-influxdb'
+        # Use configuration from influxdb_service to ensure consistency
+        influx_host = 'influxdb' 
         influx_port = 8086
-        database = 'db_energy'
+        database = 'industrial_db' # Was db_energy, but logs show industrial_db
         username = 'admin'
         password = 'admin123'
         
-        # tag corresponde ao equipamento_codigo (F001-A001-L001-ENM-001)
+        # tag corresponde ao equipamento_codigo (F001-A001-L001-ENM-001) ou nome como fallback
         eq_tag = equipment.tag or equipment.name
+        
+        # DEBUG: Log da query para verificação
+        logger.info(f"Buscando histórico para TAG: {eq_tag}, Metric: {metric}, Period: {period}")
         
         query = f'''
             SELECT mean("value") as value 
@@ -679,22 +689,30 @@ def get_equipment_history(equipment_id):
         '''
         
         try:
+            logging.info(f"InfluxDB Query: {query}")
             response = requests.get(
                 f'http://{influx_host}:{influx_port}/query',
                 params={'db': database, 'q': query, 'u': username, 'p': password},
                 timeout=5
             )
             
+            logging.info(f"InfluxDB Response Code: {response.status_code}")
+            
             if response.status_code == 200:
                 data = response.json()
-                series = data.get('results', [{}])[0].get('series', [{}])[0]
-                values = series.get('values', [])
+                # logging.info(f"InfluxDB Data: {data}") # Pode ser verboso
+                series = data.get('results', [{}])[0].get('series', [{}])
                 
-                history = [
-                    {'timestamp': v[0], 'value': v[1]} 
-                    for v in values if v[1] is not None
-                ]
+                if not series:
+                   history = []
+                else:
+                   values = series[0].get('values', [])
+                   history = [
+                       {'timestamp': v[0], 'value': v[1]} 
+                       for v in values if v[1] is not None
+                   ]
             else:
+                logging.error(f"InfluxDB Error Body: {response.text}")
                 history = []
         except:
             # Fallback: ZERO SIMULATION
@@ -737,20 +755,19 @@ def get_equipment_history(equipment_id):
 def get_equipment_cost_analysis(equipment_id):
     """
     Retorna análise de custo detalhada
-    
-    Query params:
-        period: 24h, 7d, 30d
     """
     try:
         from datetime import datetime, timedelta
-
+        import requests
+        import sys
         
         equipment = Equipment.query.get_or_404(equipment_id)
         
+        # Initialization
+        now = datetime.now()
         period = request.args.get('period', '7d')
         tariff = equipment.tariff_kwh or 0.5
         
-        # Gerar dados de custo por hora/dia
         period_map = {
             '24h': (24, 'hour'),
             '7d': (7, 'day'),
@@ -762,11 +779,106 @@ def get_equipment_cost_analysis(equipment_id):
         total_cost = 0
         total_energy = 0
         
-        now = datetime.now()
-        # ZERO SIMULATION fallback
-        timeline = []
-
+        # Configuration
+        influx_host = 'influxdb'
+        influx_port = 8086
+        database = 'industrial_db'
+        username = 'admin'
+        password = 'admin123'
         
+        eq_tag = equipment.tag or equipment.name
+        group_by = '1h' if period == '24h' else '1d'
+        start_time = now - timedelta(hours=24 if period == '24h' else (7*24 if period == '7d' else 30*24))
+        
+        # MAIN QUERY: Aggregation
+        query = f'''
+            SELECT mean("value") as avg_power
+            FROM "energy_consumption" 
+            WHERE "tag" = '{eq_tag}'
+            AND time > '{start_time.isoformat()}Z'
+            GROUP BY time({group_by}) fill(0)
+        '''
+        
+        print(f"DEBUG QUERY: {query}", file=sys.stderr)
+        
+        try:
+            # Using Basic Auth
+            response = requests.get(
+                f'http://{influx_host}:{influx_port}/query',
+                params={'db': database, 'q': query},
+                auth=(username, password),
+                timeout=5
+            )
+            
+            print(f"DEBUG STATUS: {response.status_code}", file=sys.stderr)
+            
+            if response.status_code == 200:
+                data = response.json()
+                series = data.get('results', [{}])[0].get('series', [])
+                
+                if series:
+                    values = series[0].get('values', [])
+                    hours_per_bucket = 1 if group_by == '1h' else 24
+                    
+                    for v in values:
+                        ts = v[0]
+                        avg_power = v[1] if v[1] is not None else 0
+                        kwh = avg_power * hours_per_bucket
+                        cost = kwh * tariff
+                        
+                        timeline.append({
+                            'timestamp': ts,
+                            'energy_kwh': round(kwh, 2),
+                            'cost_brl': round(cost, 2)
+                        })
+                        total_energy += kwh
+                        total_cost += cost
+                else:
+                    print("DEBUG: Main query empty. Logic Fallback.", file=sys.stderr)
+                    # FALLBACK: Raw Data
+                    fallback_query = f'''
+                        SELECT "value" 
+                        FROM "energy_consumption" 
+                        WHERE "tag" = '{eq_tag}'
+                        AND time > '{start_time.isoformat()}Z'
+                    '''
+                    print(f"DEBUG FALLBACK: {fallback_query}", file=sys.stderr)
+                    
+                    fb_response = requests.get(
+                        f'http://{influx_host}:{influx_port}/query',
+                        params={'db': database, 'q': fallback_query},
+                        auth=(username, password),
+                        timeout=5
+                    )
+                    
+                    if fb_response.status_code == 200:
+                        fb_data = fb_response.json()
+                        fb_series = fb_data.get('results', [{}])[0].get('series', [])
+                        
+                        if fb_series:
+                            fb_values = fb_series[0].get('values', [])
+                            # Crude average
+                            total_val = sum(v[1] for v in fb_values if v[1] is not None)
+                            count_val = len(fb_values)
+                            avg_val = total_val / count_val if count_val > 0 else 0
+                            
+                            hours_total = 24 if period == '24h' else (7*24)
+                            total_energy = avg_val * hours_total
+                            total_cost = total_energy * tariff
+                            
+                            # Single point
+                            timeline.append({
+                                'timestamp': now.isoformat(),
+                                'energy_kwh': round(total_energy, 2),
+                                'cost_brl': round(total_cost, 2)
+                            })
+            else:
+                print(f"DEBUG ERROR BODY: {response.text}", file=sys.stderr)
+                
+        except Exception as e:
+            print(f"DEBUG EXCEPTION: {e}", file=sys.stderr)
+            logger.error(f"Erro query custo: {e}")
+
         # Identificar picos (top 3 custos)
         sorted_timeline = sorted(timeline, key=lambda x: x['cost_brl'], reverse=True)
         peaks = sorted_timeline[:3]

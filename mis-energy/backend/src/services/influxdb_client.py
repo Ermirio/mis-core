@@ -48,6 +48,7 @@ class InfluxDBService:
                     'password': 'admin123'
                 }
             
+            print(f"[InfluxDB] Initializing client with config: {config}", flush=True)
             self.config = config
             
             # Criar database se não existir
@@ -148,8 +149,9 @@ class InfluxDBService:
     def write_measurement(self, equipment_id: int, equipment_name: str, 
                          value: float, unit: str, location: str = None, 
                          area: str = None, hierarchy_path: str = None,
-                         equipment_type: str = None, timestamp: datetime = None) -> bool:
-        """Escreve medição no InfluxDB"""
+                         equipment_type: str = None, timestamp: datetime = None,
+                         tag_code: str = None, metric_name: str = 'power_kw') -> bool:
+        """Escreve medição no InfluxDB (Alinhado com Coletor e Query History)"""
         try:
             if not self.config:
                 if not self.initialize_client():
@@ -162,22 +164,51 @@ class InfluxDBService:
             port = self.config.get('port', 8086)
             database = self.config.get('database', 'db_energy')
             
-            # Line Protocol para InfluxDB 1.8
-            tags = f'equipment_id={equipment_id},equipment_name={equipment_name.replace(" ", "_")},unit={unit}'
-            if location:
-                tags += f',location={location.replace(" ", "_")}'
-            if area:
-                tags += f',area={area.replace(" ", "_")}'
-            if equipment_type:
-                tags += f',equipment_type={equipment_type}'
+            # Formatação de tags para Line Protocol
+            # Query espera: tag={tag_code} e metric={metric_name}
             
-            line = f'energy_consumption,{tags} value={float(value)} {int(timestamp.timestamp() * 1e9)}'
+            # Se tag_code não for fornecido, usa equipment_name como fallback
+            target_tag = tag_code if tag_code else equipment_name
+            
+            # Base Tags necessárias para compatibilidade com Dashboard e Histórico
+            influx_tags = [
+                f'tag={target_tag}',
+                f'metric={metric_name}',
+                f'equipment_id={equipment_id}'
+            ]
+            
+            # Tags extras para metadados
+            if unit: influx_tags.append(f'unit={unit}')
+            if equipment_type: influx_tags.append(f'equipment_type={equipment_type}')
+            # opcional: location/area se necessário, mas mantenha curto para cardinalidade
+            
+            tags_str = ','.join(influx_tags)
+            
+            # Measurement name fixo para compatibilidade
+            measurement = 'energy_consumption'
+            
+            # Line: energy_consumption,tag=X,metric=Y value=Z 123456789
+            line = f'{measurement},{tags_str} value={float(value)} {int(timestamp.timestamp() * 1e9)}'
             
             url = f"http://{host}:{port}/write"
+            
+            # DEBUG LOGGING IMPERATIVO (PRINT)
+            print(f"[InfluxDB] Writing to {url} (DB: {database})", flush=True)
+            print(f"[InfluxDB] Payload: {line}", flush=True)
+            
+            # Recuperar credenciais da config
+            username = self.config.get('username', 'admin')
+            password = self.config.get('password', 'admin123')
+            
             response = requests.post(url, params={
-                'db': database
+                'db': database,
+                'u': username,
+                'p': password
             }, data=line, timeout=5)
             
+            print(f"[InfluxDB] Status: {response.status_code}", flush=True)
+            if response.status_code != 204:
+                print(f"[InfluxDB] Error Body: {response.text}", flush=True)
             
             return response.status_code == 204
             

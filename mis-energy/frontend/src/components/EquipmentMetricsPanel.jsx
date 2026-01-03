@@ -16,6 +16,13 @@ import {
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
+const METRIC_LABELS = {
+    'power_kw': 'Potência (kW)',
+    'energy_kwh': 'Energia (kWh)',
+    'demand_kw': 'Demanda (kW)',
+    'power_factor': 'Fator de Potência'
+};
+
 /**
  * EquipmentMetricsPanel - Painel completo de métricas de equipamento
  * 
@@ -196,7 +203,9 @@ export function EquipmentMetricsPanel({ equipment, onClose }) {
                                     <Card>
                                         <CardHeader className="pb-2">
                                             <div className="flex items-center justify-between">
-                                                <CardTitle className="text-lg">Histórico de Potência</CardTitle>
+                                                <CardTitle className="text-lg">
+                                                    Histórico: {METRIC_LABELS[selectedMetric] || 'Potência'}
+                                                </CardTitle>
                                                 <Select value={selectedMetric} onValueChange={setSelectedMetric}>
                                                     <SelectTrigger className="w-40">
                                                         <SelectValue />
@@ -440,7 +449,7 @@ export function EquipmentMetricsPanel({ equipment, onClose }) {
                         Última atualização: {metrics?.timestamp ? format(new Date(metrics.timestamp), 'HH:mm:ss', { locale: ptBR }) : '--'}
                     </div>
                 </div>
-            </div>
-        </div>
+            </div >
+        </div >
     );
 }
