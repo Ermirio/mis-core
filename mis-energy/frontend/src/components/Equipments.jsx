@@ -557,20 +557,40 @@ export function Equipments() {
           {/* Real-time Value Display */}
           <div className={`mt-2 p-2 rounded-md ${isAboveStandard
             ? 'bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800'
-            : 'bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800'
+            : 'bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700'
             }`}>
             <div className="flex items-center justify-between">
-              <span className="text-[10px] text-slate-500">Valor Atual</span>
+              <span className="text-[10px] text-slate-500">
+                {equipment.meter_type === 'energy' ? 'Potência' : 'Vazão'}
+              </span>
               {rtValue && (
                 <span className="text-[10px] text-slate-400">
                   {rtValue.timestamp?.toLocaleTimeString().slice(0, 5)}
                 </span>
               )}
             </div>
-            <p className={`text-lg font-bold ${isAboveStandard ? 'text-red-600' : 'text-green-600'}`}>
+            <p className={`text-lg font-bold ${isAboveStandard ? 'text-red-600' : 'text-slate-900 dark:text-white'}`}>
               {currentValue != null ? Number(currentValue).toLocaleString('pt-BR', { maximumFractionDigits: 1 }) : '--'}
               <span className="text-xs font-normal ml-1">{displayUnit}</span>
             </p>
+          </div>
+          
+          {/* Financial Metrics - Only for energy meters */}
+          {equipment.meter_type === 'energy' && equipment.tariff_kwh && currentValue != null && (
+            <div className="mt-2 p-2 rounded-md bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] text-slate-500">Custo/Hora</span>
+                <span className="text-xs font-bold text-amber-700 dark:text-amber-400">
+                  R$ {(currentValue * (equipment.tariff_kwh || 0.5)).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </span>
+              </div>
+            </div>
+          )}
+          
+          {/* Gateway Info */}
+          <div className="mt-2 flex items-center gap-1 text-[10px] text-slate-400">
+            <Network className="h-3 w-3" />
+            <span className="truncate">{equipment.gateway?.name || 'Sem gateway'}</span>
           </div>
 
           {/* Consumption Progress Bar */}
