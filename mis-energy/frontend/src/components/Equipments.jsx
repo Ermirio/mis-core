@@ -142,6 +142,23 @@ export function Equipments() {
       const updates = await Promise.all(
         equipments.slice(0, 20).map(async (eq) => { // Limit to first 20 to avoid overload
           try {
+            // For production meters, use /metrics endpoint to get efficiency
+            if (eq.meter_type === 'production') {
+              const data = await api.get(`/equipments/${eq.id}/metrics`, { timeout: 10000 })
+              if (data.success) {
+                return {
+                  id: eq.id,
+                  value: data.data.metrics?.production_rate,
+                  unit: eq.unit || 'ton',
+                  efficiency_kwh_ton: data.data.metrics?.efficiency_kwh_ton,
+                  timestamp: new Date(),
+                  success: true
+                }
+              }
+              return { id: eq.id, success: false }
+            }
+
+            // For energy meters, use /read endpoint
             const data = await api.post(`/equipments/${eq.id}/read`, {}, { timeout: 10000 })
             if (data.success) {
               return { id: eq.id, value: data.data.value, unit: data.data.unit, timestamp: new Date(), success: true }
@@ -156,7 +173,7 @@ export function Equipments() {
       const newValues = {}
       updates.forEach(u => {
         if (u.success) {
-          newValues[u.id] = { value: u.value, unit: u.unit, timestamp: u.timestamp }
+          newValues[u.id] = { value: u.value, unit: u.unit, timestamp: u.timestamp, efficiency_kwh_ton: u.efficiency_kwh_ton }
         }
       })
       setRealTimeValues(prev => ({ ...prev, ...newValues }))
@@ -574,7 +591,7 @@ export function Equipments() {
               <span className="text-xs font-normal ml-1">{displayUnit}</span>
             </p>
           </div>
-          
+
           {/* Financial Metrics - Only for energy meters */}
           {equipment.meter_type === 'energy' && equipment.tariff_kwh && currentValue != null && (
             <div className="mt-2 p-2 rounded-md bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800">
@@ -586,30 +603,65 @@ export function Equipments() {
               </div>
             </div>
           )}
-          
+
+          {/* Efficiency Metrics - Only for production meters */}
+          {equipment.meter_type === 'production' && (
+            <div className="mt-2 p-2 rounded-md bg-teal-50 dark:bg-teal-900/20 border border-teal-200 dark:border-teal-800">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] text-slate-500">Eficiência</span>
+                <span className="text-xs font-bold text-teal-700 dark:text-teal-400">
+                  {rtValue?.efficiency_kwh_ton != null
+                    ? `${Number(rtValue.efficiency_kwh_ton).toLocaleString('pt-BR', { maximumFractionDigits: 2 })} kWh/Ton`
+                    : '-- kWh/Ton'}
+                </span>
+              </div>
+            </div>
+          )}
+
           {/* Gateway Info */}
           <div className="mt-2 flex items-center gap-1 text-[10px] text-slate-400">
             <Network className="h-3 w-3" />
             <span className="truncate">{equipment.gateway?.name || 'Sem gateway'}</span>
           </div>
 
-          {/* Consumption Progress Bar */}
-          {consumptionPercent !== null && (
-            <div className="mt-2">
-              <div className="flex justify-between text-[10px] text-slate-500 mb-0.5">
-                <span>Padrão: {standardConsumption}</span>
-                <span className={isAboveStandard ? 'text-red-500 font-medium' : 'text-green-500'}>
-                  {consumptionPercent.toFixed(0)}%
-                </span>
+          {/* Consumption Progress Bar with Semantic Colors */}
+          {consumptionPercent !== null && (() => {
+            // Semantic color logic based on meter type
+            const getProgressColor = (percent, meterType) => {
+              if (meterType === 'production') {
+                // For production: below target = bad, above = good
+                if (percent < 80) return { bar: 'bg-red-500', text: 'text-red-500', label: 'Crítico' }
+                if (percent < 100) return { bar: 'bg-amber-500', text: 'text-amber-500', label: 'Abaixo' }
+                if (percent <= 120) return { bar: 'bg-green-500', text: 'text-green-500', label: 'No Alvo' }
+                return { bar: 'bg-blue-500', text: 'text-blue-500', label: 'Excelente' }
+              } else {
+                // For energy: above target = bad, below = good
+                if (percent < 80) return { bar: 'bg-blue-500', text: 'text-blue-500', label: 'Ótimo' }
+                if (percent <= 100) return { bar: 'bg-green-500', text: 'text-green-500', label: 'No Alvo' }
+                if (percent <= 120) return { bar: 'bg-amber-500', text: 'text-amber-500', label: 'Atenção' }
+                return { bar: 'bg-red-500', text: 'text-red-500', label: 'Crítico' }
+              }
+            }
+
+            const colorScheme = getProgressColor(consumptionPercent, equipment.meter_type)
+
+            return (
+              <div className="mt-2">
+                <div className="flex justify-between text-[10px] text-slate-500 mb-0.5">
+                  <span>Padrão: {standardConsumption}</span>
+                  <span className={`${colorScheme.text} font-medium`}>
+                    {consumptionPercent.toFixed(0)}%
+                  </span>
+                </div>
+                <div className="h-1.5 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
+                  <div
+                    className={`h-full transition-all ${colorScheme.bar}`}
+                    style={{ width: `${Math.min(consumptionPercent, 100)}%` }}
+                  />
+                </div>
               </div>
-              <div className="h-1.5 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
-                <div
-                  className={`h-full transition-all ${consumptionPercent > 100 ? 'bg-red-500' : 'bg-green-500'}`}
-                  style={{ width: `${Math.min(consumptionPercent, 100)}%` }}
-                />
-              </div>
-            </div>
-          )}
+            )
+          })()}
         </CardContent>
 
         {/* Hover actions overlay */}
@@ -650,8 +702,8 @@ export function Equipments() {
           >
             <Trash2 className="h-4 w-4" />
           </Button>
-        </div>
-      </Card>
+        </div >
+      </Card >
     )
   }
 
@@ -908,6 +960,25 @@ export function Equipments() {
                         </div>
                         <p className="text-xs text-slate-500">
                           Usado para identificar produção abaixo do esperado
+                        </p>
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label>Meta de Eficiência Energética</Label>
+                        <div className="flex space-x-2">
+                          <Input
+                            type="number"
+                            step="0.01"
+                            value={formData.parameters?.efficiency_target || ''}
+                            onChange={(e) => updateParameter('efficiency_target', parseFloat(e.target.value) || null)}
+                            placeholder="1.0"
+                          />
+                          <span className="flex items-center text-sm text-slate-500 px-2 bg-slate-100 dark:bg-slate-800 rounded">
+                            kWh/Ton
+                          </span>
+                        </div>
+                        <p className="text-xs text-slate-500">
+                          Target de eficiência - quanto menor, melhor
                         </p>
                       </div>
                     </div>

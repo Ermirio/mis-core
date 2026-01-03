@@ -39,7 +39,10 @@ export function EquipmentMetricsPanel({ equipment, onClose }) {
     const [history, setHistory] = useState([]);
     const [costAnalysis, setCostAnalysis] = useState(null);
     const [powerQuality, setPowerQuality] = useState(null);
-    const [selectedMetric, setSelectedMetric] = useState('power_kw');
+    // Default metric based on meter type
+    const [selectedMetric, setSelectedMetric] = useState(
+        equipment?.meter_type === 'production' ? 'production_rate' : 'power_kw'
+    );
     const [selectedPeriod, setSelectedPeriod] = useState('24h');
     const [activeTab, setActiveTab] = useState('overview');
 

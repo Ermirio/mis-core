@@ -7,6 +7,7 @@ import { Dashboard } from '@/components/Dashboard'
 import { Gateways } from '@/components/Gateways'
 import { Equipments } from '@/components/Equipments'
 import { Settings } from '@/components/Settings'
+import { Notifications } from '@/components/Notifications'
 import { EnergyDashboard } from '@/pages/EnergyDashboard'
 import { Toaster } from '@/components/ui/toaster'
 import IntroVideo from '@/components/IntroVideo'
@@ -42,12 +43,13 @@ function App() {
                   <Route path="/gateways" element={<Gateways />} />
                   <Route path="/equipments" element={<Equipments />} />
                   <Route path="/settings" element={<Settings />} />
+                  <Route path="/notifications" element={<Notifications />} />
                 </Routes>
               </main>
             </div>
           </div>
         </div>
-      </Router>
+      </Router >
       <Toaster />
     </>
   )

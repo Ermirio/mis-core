@@ -35,6 +35,8 @@ app.register_blueprint(analytics_dashboard_bp, url_prefix='/api')
 app.register_blueprint(metrics_bp, url_prefix='/api')
 from src.routes.ingestion import ingestion_bp
 app.register_blueprint(ingestion_bp, url_prefix='/api')
+from src.routes.notifications import notifications_bp
+app.register_blueprint(notifications_bp, url_prefix='/api')
 
 # Inicializar banco de dados
 db.init_app(app)
