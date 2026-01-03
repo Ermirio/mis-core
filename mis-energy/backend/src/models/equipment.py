@@ -107,6 +107,7 @@ class Equipment(db.Model):
             'standard_consumption': self.standard_consumption,
             'address_type': self.address_type,
             'gateway_id': self.gateway_id,
+            'gateway': {'id': self.gateway.id, 'name': self.gateway.name} if self.gateway else None,
             'gateway_name': self.gateway.name if self.gateway else None,
             'modbus_address': self.modbus_address,
             'opc_node_id': self.opc_node_id,

@@ -461,22 +461,33 @@ def read_equipment_value(equipment_id):
             # Leitura OPC UA real
             from src.services.opc_client import opc_client_service
             
-            if not equipment.opc_node_id:
+            # Determine which node to read based on equipment type
+            node_to_read = None
+            
+            if equipment.meter_type == 'production':
+                # For production meters, prioritize production-specific nodes
+                node_to_read = equipment.parameters.get('production_rate_node') or equipment.parameters.get('production_total_node')
+            
+            if not node_to_read:
+                # Fallback: For energy meters or if no production node, use power node or legacy
+                node_to_read = equipment.opc_node_power_kw or equipment.opc_node_id
+            
+            if not node_to_read:
                 return jsonify({
                     'success': False,
-                    'error': 'NodeID OPC não configurado para este equipamento'
+                    'error': 'Nenhum NodeID OPC configurado para este equipamento. Configure os endereços na aba Endereçamento.'
                 }), 400
             
             result = opc_client_service.read_value(
                 opc_url=gateway.opc_url,
-                node_id=equipment.opc_node_id,
+                node_id=node_to_read,
                 timeout=gateway.timeout or 5
             )
             
             if not result['success']:
                 return jsonify({
                     'success': False,
-                    'error': result['error']
+                    'error': f"Erro OPC UA: \"{result['error']}\""
                 }), 500
         else:
             # Leitura Modbus
@@ -620,6 +631,30 @@ def get_equipment_metrics(equipment_id):
                 
                 metrics['production_total'] = safe_read(prod_total_node, 1.0) # Assume scale 1.0 or need param?
                 metrics['production_rate'] = safe_read(prod_rate_node, 1.0) 
+                
+                # For efficiency calculation, we need power_kw from an associated energy meter
+                # Find the entry-point energy meter on the same hierarchy
+                if metrics.get('power_kw') is None and equipment.hierarchy_id:
+                    energy_meter = Equipment.query.filter(
+                        Equipment.hierarchy_id == equipment.hierarchy_id,
+                        Equipment.meter_type == 'energy',
+                        Equipment.is_entry_point == True,
+                        Equipment.id != equipment.id
+                    ).first()
+                    
+                    if energy_meter and energy_meter.gateway and energy_meter.gateway.protocol_type == 'opc':
+                        energy_opc_config = {
+                            'url': energy_meter.gateway.opc_url,
+                            'timeout': energy_meter.gateway.timeout or 5
+                        }
+                        def safe_read_energy(node_id, scale=1.0):
+                            if not node_id: return None
+                            try:
+                                res = opc_client_service.read_value(energy_opc_config['url'], node_id, energy_opc_config['timeout'])
+                                return res.get('converted_value') * scale if res.get('success') and res.get('converted_value') is not None else None
+                            except:
+                                return None
+                        metrics['power_kw'] = safe_read_energy(energy_meter.opc_node_power_kw, energy_meter.scale_factor)
                 
                 # Real-time Efficiency (kWh / Ton) calculation
                 # eff = Power (kW) / Rate (Ton/h) -> kWh/Ton
