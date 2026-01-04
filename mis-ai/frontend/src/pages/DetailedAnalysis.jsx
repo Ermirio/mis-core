@@ -49,7 +49,7 @@ const DetailedAnalysis = () => {
         try {
             const data = await api.getLines()
             setLines(data)
-            if (data.length > 0) setSelectedLine(data[0].line_name)
+            if (data.length > 0) setSelectedLine(data[0].name)
         } catch (error) {
             console.error('Erro ao carregar linhas:', error)
         }
@@ -184,7 +184,7 @@ const DetailedAnalysis = () => {
                                 onChange={(e) => setSelectedLine(e.target.value)}
                             >
                                 {lines.map(line => (
-                                    <option key={line.id} value={line.line_name}>{line.line_name}</option>
+                                    <option key={line.id} value={line.name}>{line.name}</option>
                                 ))}
                             </select>
                         </div>
