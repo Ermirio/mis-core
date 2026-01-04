@@ -405,6 +405,8 @@ export function Equipments() {
       // Cost configuration
       tariff_kwh: equipment.tariff_kwh || 0.5,
       tariff_demand: equipment.tariff_demand || '',
+      max_cost_hour: equipment.parameters?.max_cost_hour || '',
+      modbus_register: equipment.modbus_register ? equipment.modbus_register.toString() : '',
       modbus_register: equipment.modbus_register ? equipment.modbus_register.toString() : '',
       register_type: equipment.register_type,
       data_type: equipment.data_type,
@@ -516,6 +518,8 @@ export function Equipments() {
     setActiveTab('basic')
   }
 
+
+
   const updateParameter = (key, value) => {
     setFormData(prev => ({
       ...prev,
@@ -535,11 +539,18 @@ export function Equipments() {
 
     // Check if above standard consumption
     const standardConsumption = equipment.standard_consumption
-    const isAboveStandard = standardConsumption && currentValue > standardConsumption
-    const consumptionPercent = standardConsumption ? (currentValue / standardConsumption) * 100 : null
+    const isAboveStandard = standardConsumption && Number(currentValue) > Number(standardConsumption)
+    const consumptionPercent = standardConsumption ? (Number(currentValue) / Number(standardConsumption)) * 100 : null
+
+    // Cost Alert Logic
+    const currentCost = (equipment.meter_type === 'energy' && currentValue)
+      ? (Number(currentValue) * (equipment.tariff_kwh || 0.5))
+      : 0
+    const maxCostHour = equipment.parameters?.max_cost_hour ? Number(equipment.parameters.max_cost_hour) : null
+    const isCostAlert = maxCostHour && currentCost > maxCostHour
 
     return (
-      <Card className="group hover:shadow-md transition-all duration-200 cursor-pointer relative overflow-hidden">
+      <Card className={`group hover:shadow-md transition-all duration-200 cursor-pointer relative overflow-hidden ${isCostAlert ? 'ring-2 ring-red-500 animate-pulse' : ''}`}>
         <CardContent className="p-3">
           {/* Header with icon and status */}
           <div className="flex items-center justify-between mb-2">
@@ -553,12 +564,17 @@ export function Equipments() {
                 <Package className="h-4 w-4 text-green-600 dark:text-green-400" />
               )}
             </div>
-            <Badge
-              variant={equipment.is_active ? 'default' : 'secondary'}
-              className={`text-[10px] px-1.5 py-0.5 ${equipment.is_active ? 'bg-green-500' : ''}`}
-            >
-              {equipment.is_active ? 'On' : 'Off'}
-            </Badge>
+            <div className="flex gap-2">
+              {isCostAlert && (
+                <Badge className="bg-red-600 text-white animate-pulse px-1.5 py-0.5 text-[10px]">Alerta Custo</Badge>
+              )}
+              <Badge
+                variant={equipment.is_active ? 'default' : 'secondary'}
+                className={`text-[10px] px-1.5 py-0.5 ${equipment.is_active ? 'bg-green-500' : ''}`}
+              >
+                {equipment.is_active ? 'On' : 'Off'}
+              </Badge>
+            </div>
           </div>
 
           {/* Name - truncated */}
@@ -572,9 +588,14 @@ export function Equipments() {
           </p>
 
           {/* Real-time Value Display */}
-          <div className={`mt-2 p-2 rounded-md ${isAboveStandard
-            ? 'bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800'
-            : 'bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700'
+          <div className={`mt-2 p-2 rounded-md ${((equipment.meter_type && equipment.meter_type.toLowerCase().trim() === 'production') ||
+            (equipment.equipment_type === 'production_meter'))
+            ? (standardConsumption && Number(currentValue) < Number(standardConsumption)
+              ? 'bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800' // Production < Target = Bad
+              : 'bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800') // Production > Target = Good
+            : (isAboveStandard
+              ? 'bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800' // Energy > Target = Bad (Red)
+              : 'bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800') // Energy < Target = Good
             }`}>
             <div className="flex items-center justify-between">
               <span className="text-[10px] text-slate-500">
@@ -586,7 +607,10 @@ export function Equipments() {
                 </span>
               )}
             </div>
-            <p className={`text-lg font-bold ${isAboveStandard ? 'text-red-600' : 'text-slate-900 dark:text-white'}`}>
+            <p className={`text-lg font-bold ${equipment.meter_type === 'production'
+              ? (standardConsumption && Number(currentValue) < Number(standardConsumption) ? 'text-red-600' : 'text-green-600')
+              : (isAboveStandard ? 'text-red-600' : 'text-slate-900 dark:text-white')
+              }`}>
               {currentValue != null ? Number(currentValue).toLocaleString('pt-BR', { maximumFractionDigits: 1 }) : '--'}
               <span className="text-xs font-normal ml-1">{displayUnit}</span>
             </p>
@@ -594,11 +618,15 @@ export function Equipments() {
 
           {/* Financial Metrics - Only for energy meters */}
           {equipment.meter_type === 'energy' && equipment.tariff_kwh && currentValue != null && (
-            <div className="mt-2 p-2 rounded-md bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800">
+            <div className={`mt-2 p-2 rounded-md border ${isCostAlert
+              ? 'bg-red-100 dark:bg-red-900/40 border-red-500 dark:border-red-500'
+              : 'bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800'}`}>
               <div className="flex items-center justify-between">
-                <span className="text-[10px] text-slate-500">Custo/Hora</span>
-                <span className="text-xs font-bold text-amber-700 dark:text-amber-400">
-                  R$ {(currentValue * (equipment.tariff_kwh || 0.5)).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                <span className={`text-[10px] ${isCostAlert ? 'text-red-700 font-bold' : 'text-slate-500'}`}>
+                  {isCostAlert ? 'Custo Crítico/Hora' : 'Custo/Hora'}
+                </span>
+                <span className={`text-xs font-bold ${isCostAlert ? 'text-red-700 dark:text-red-300' : 'text-amber-700 dark:text-amber-400'}`}>
+                  R$ {currentCost.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </span>
               </div>
             </div>
@@ -630,6 +658,7 @@ export function Equipments() {
             const getProgressColor = (percent, meterType) => {
               if (meterType === 'production') {
                 // For production: below target = bad, above = good
+                // Invert logic: < 80% is critical (Red), > 100% is good (Green)
                 if (percent < 80) return { bar: 'bg-red-500', text: 'text-red-500', label: 'Crítico' }
                 if (percent < 100) return { bar: 'bg-amber-500', text: 'text-amber-500', label: 'Abaixo' }
                 if (percent <= 120) return { bar: 'bg-green-500', text: 'text-green-500', label: 'No Alvo' }
@@ -643,7 +672,7 @@ export function Equipments() {
               }
             }
 
-            const colorScheme = getProgressColor(consumptionPercent, equipment.meter_type)
+            const colorScheme = getProgressColor(Number(consumptionPercent), equipment.meter_type)
 
             return (
               <div className="mt-2">
@@ -1241,34 +1270,32 @@ export function Equipments() {
                             </div>
                           )}
 
-                          {/* Configuração de Custo - Hide for Production */}
-                          {formData.meter_type !== 'production' && (
-                            <div className="space-y-3 pt-3 border-t border-purple-200">
-                              <p className="text-xs font-semibold text-slate-600 uppercase tracking-wide">Configuração de Custo</p>
-                              <div className="grid grid-cols-2 gap-3">
-                                <div className="space-y-1.5">
-                                  <Label className="text-sm">Tarifa (R$/kWh)</Label>
-                                  <Input
-                                    type="number"
-                                    step="0.01"
-                                    value={formData.tariff_kwh}
-                                    onChange={(e) => setFormData({ ...formData, tariff_kwh: e.target.value })}
-                                    placeholder="0.50"
-                                  />
-                                </div>
-                                <div className="space-y-1.5">
-                                  <Label className="text-sm">Tarifa Demanda (R$/kW)</Label>
-                                  <Input
-                                    type="number"
-                                    step="0.01"
-                                    value={formData.tariff_demand}
-                                    onChange={(e) => setFormData({ ...formData, tariff_demand: e.target.value })}
-                                    placeholder="25.00"
-                                  />
-                                </div>
+                          {/* Configuração de Custo - Always Show */}
+                          <div className="space-y-3 pt-3 border-t border-purple-200">
+                            <p className="text-xs font-semibold text-slate-600 uppercase tracking-wide">Configuração de Custo</p>
+                            <div className="grid grid-cols-2 gap-3">
+                              <div className="space-y-1.5">
+                                <Label className="text-sm">Tarifa (R$/kWh)</Label>
+                                <Input
+                                  type="number"
+                                  step="0.01"
+                                  value={formData.tariff_kwh}
+                                  onChange={(e) => setFormData({ ...formData, tariff_kwh: e.target.value })}
+                                  placeholder="0.50"
+                                />
+                              </div>
+                              <div className="space-y-1.5">
+                                <Label className="text-sm">Custo Limite (R$/h)</Label>
+                                <Input
+                                  type="number"
+                                  step="1.0"
+                                  value={formData.parameters.max_cost_hour || ''}
+                                  onChange={(e) => updateParameter('max_cost_hour', e.target.value)}
+                                  placeholder="100.00"
+                                />
                               </div>
                             </div>
-                          )}
+                          </div>
 
                           {/* Legacy NodeID (compatibilidade) */}
                           <div className="space-y-2 pt-3 border-t border-dashed border-slate-300">

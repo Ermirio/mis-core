@@ -403,3 +403,102 @@ def get_alerts():
             'success': False,
             'error': str(e)
         }), 500
+
+@analytics_bp.route('/analytics/factory-view', methods=['GET'])
+def get_factory_view():
+    """
+    Retorna visão consolidada da fábrica com totalizadores por nível hierárquico.
+    - Total Fábrica (Entry Points)
+    - Total Áreas (Soma de Áreas)
+    - Total Linhas (Soma de Linhas)
+    - Total Equipamentos (Soma de Equipamentos Finais)
+    """
+    try:
+        # Obter todos os equipamentos ativos
+        equipments = Equipment.query.filter_by(is_active=True).all()
+        
+        factory_total_kw = 0
+        area_total_kw = 0
+        line_total_kw = 0
+        equipment_total_kw = 0
+        
+        factory_cost_hr = 0
+        area_cost_hr = 0
+        line_cost_hr = 0
+        equipment_cost_hr = 0
+        
+        # Helper para calcular custo
+        def calc_cost(kw, tariff):
+            return (kw or 0) * (tariff or 0.5)
+
+        for eq in equipments:
+            val = eq.last_value or 0
+            # Evitar somar valores negativos ou inválidos
+            if val < 0: val = 0
+            
+            cost = calc_cost(val, eq.tariff_kwh)
+            
+            # Determinando o nível para agregação
+            # Idealmente, usamos hierarchy_level. Se não tiver, tentamos inferir.
+            level = eq._get_hierarchy_level()
+            
+            # Lógica de Agregação
+            # 1. Se é Entry Point de Fábrica (nível mais alto)
+            if eq.is_entry_point and (level == 'factory' or not level): 
+                 # Se não tiver nível, mas é entry point, assumimos fábrica se não tiver pais?
+                 # Simplificação: User disse "Total Fabrica", "Total Area", "Total Linha", "Total Equipamentos"
+                 # Vamos agrupar puramente pelo nível hierárquico.
+                 factory_total_kw += val
+                 factory_cost_hr += cost
+            
+            # 2. Se é Entry Point de Área
+            if level == 'area' and eq.is_entry_point:
+                area_total_kw += val
+                area_cost_hr += cost
+                
+            # 3. Se é Entry Point de Linha
+            if level == 'line' and eq.is_entry_point:
+                line_total_kw += val
+                line_cost_hr += cost
+                
+            # 4. Se é Equipamento Final (Machine Group ou Generic, e NÃO é entry point de linha/area)
+            # Ou simplesmente tudo que não é entry point?
+            # O user disse "soma de todos equipamentos existentes de medição de energia excluindo os de entrada"
+            if not eq.is_entry_point:
+                equipment_total_kw += val
+                equipment_cost_hr += cost
+
+        return jsonify({
+            'success': True,
+            'data': {
+                'factory': {
+                    'power_kw': round(factory_total_kw, 2),
+                    'cost_hour': round(factory_cost_hr, 2),
+                    'label': 'Total Fábrica'
+                },
+                'areas': {
+                    'power_kw': round(area_total_kw, 2),
+                    'cost_hour': round(area_cost_hr, 2),
+                    'label': 'Total Áreas'
+                },
+                'lines': {
+                    'power_kw': round(line_total_kw, 2),
+                    'cost_hour': round(line_cost_hr, 2),
+                    'label': 'Total Linhas'
+                },
+                'equipments': {
+                    'power_kw': round(equipment_total_kw, 2),
+                    'cost_hour': round(equipment_cost_hr, 2),
+                    'label': 'Total Equipamentos'
+                },
+                'timestamp': datetime.now().isoformat()
+            }
+        })
+
+    except Exception as e:
+        logger.error(f"Erro ao obter factory view: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+

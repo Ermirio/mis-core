@@ -8,6 +8,7 @@ import { Gateways } from '@/components/Gateways'
 import { Equipments } from '@/components/Equipments'
 import { Settings } from '@/components/Settings'
 import { Notifications } from '@/components/Notifications'
+import { FactoryView } from '@/components/FactoryView'
 import { EnergyDashboard } from '@/pages/EnergyDashboard'
 import { Toaster } from '@/components/ui/toaster'
 import IntroVideo from '@/components/IntroVideo'
@@ -39,6 +40,7 @@ function App() {
               <main className="flex-1 p-6">
                 <Routes>
                   <Route path="/" element={<Dashboard />} />
+                  <Route path="/factory-view" element={<FactoryView />} />
                   <Route path="/analytics" element={<EnergyDashboard />} />
                   <Route path="/gateways" element={<Gateways />} />
                   <Route path="/equipments" element={<Equipments />} />

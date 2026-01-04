@@ -15,26 +15,31 @@ def get_equipment_status(equipment):
     alerts = []
     
     gateway = equipment.gateway
-    if not gateway or gateway.protocol_type != 'opc':
-        return alerts
     
     # Helper para leitura segura
     def safe_read(node_id, scale=1.0):
-        if not node_id:
+        if not node_id or not gateway or gateway.protocol_type != 'opc':
             return None
         try:
             res = opc_client_service.read_value(gateway.opc_url, node_id, gateway.timeout or 5)
-            return res.get('converted_value') * scale if res.get('success') and res.get('converted_value') is not None else None
+            # Ensure we only use valid numeric values
+            val = res.get('converted_value')
+            if res.get('success') and val is not None and isinstance(val, (int, float)):
+                return val * scale
+            return None
         except:
             return None
     
     standard = equipment.standard_consumption
     
     if equipment.meter_type == 'production':
-        # Production meter checks
+        # Production meter logic (Keep utilizing safe_read or add logic for last_value if needed - assuming production is mostly OPC driven for now)
         prod_rate_node = equipment.parameters.get('production_rate_node')
         current_rate = safe_read(prod_rate_node, 1.0)
-        
+        # Fallback for production if needed
+        if current_rate is None and equipment.last_value is not None:
+             current_rate = equipment.last_value
+
         if current_rate is not None and standard:
             percent = (current_rate / standard) * 100
             if percent < 80:
@@ -74,9 +79,23 @@ def get_equipment_status(equipment):
             ).first()
             
             if energy_meter and current_rate and current_rate > 0:
-                power_kw = safe_read(energy_meter.opc_node_power_kw, energy_meter.scale_factor)
-                if power_kw:
-                    efficiency = power_kw / current_rate
+                # Try OPC read for energy meter
+                kw_val = None
+                if energy_meter.gateway and energy_meter.gateway.protocol_type == 'opc':
+                     # Re-use OPC logic manually since safe_read is bound to 'equipment' gateway
+                     try:
+                         res = opc_client_service.read_value(energy_meter.gateway.opc_url, energy_meter.opc_node_power_kw, 5)
+                         if res.get('success') and res.get('converted_value') is not None:
+                             kw_val = res.get('converted_value') * energy_meter.scale_factor
+                     except:
+                         pass
+                
+                # Fallback to DB
+                if kw_val is None:
+                    kw_val = energy_meter.last_value
+
+                if kw_val:
+                    efficiency = kw_val / current_rate
                     if efficiency > efficiency_target:
                         alerts.append({
                             'type': 'efficiency_high',
@@ -92,6 +111,10 @@ def get_equipment_status(equipment):
     else:
         # Energy meter checks  
         power_kw = safe_read(equipment.opc_node_power_kw, equipment.scale_factor)
+        
+        # Fallback to database value (Simulation/Modbus/History)
+        if power_kw is None:
+             power_kw = equipment.last_value
         
         if power_kw is not None and standard:
             percent = (power_kw / standard) * 100
@@ -133,6 +156,29 @@ def get_equipment_status(equipment):
                 'value': pf,
                 'target': 0.92
             })
+
+        # Cost Check
+        max_cost_hour = equipment.parameters.get('max_cost_hour')
+        if power_kw is not None and max_cost_hour: 
+            try:
+                max_cost_val = float(max_cost_hour)
+                tariff = equipment.tariff_kwh if equipment.tariff_kwh is not None else 0.5
+                current_cost = power_kw * tariff
+                
+                if current_cost > max_cost_val:
+                    alerts.append({
+                        'type': 'cost_critical',
+                        'severity': 'critical',
+                        'title': 'Custo Crítico/Hora',
+                        'message': f'{equipment.name}: R$ {current_cost:.2f}/h (limite: R$ {max_cost_val:.2f}/h)',
+                        'equipment_id': equipment.id,
+                        'equipment_name': equipment.name,
+                        'value': current_cost,
+                        'target': max_cost_val
+                    })
+            except (ValueError, TypeError) as e:
+                print(f"ERROR calculating cost for {equipment.name}: {e}")
+                pass
     
     return alerts
 
@@ -151,6 +197,7 @@ def get_notifications():
                 alerts = get_equipment_status(eq)
                 all_alerts.extend(alerts)
             except Exception as e:
+                print(f"ERROR processing {eq.name}: {e}")
                 continue  # Skip failed equipment
         
         # Sort by severity (critical first)

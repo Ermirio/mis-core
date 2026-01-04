@@ -229,9 +229,9 @@ export function Dashboard() {
     const currentMetric = selectedMetrics[equipment.id] || (isProduction ? 'production_rate' : 'power_kw');
 
     const isAboveStandard = equipment.standard_consumption &&
-      equipment.last_value > equipment.standard_consumption;
+      Number(equipment.last_value) > Number(equipment.standard_consumption);
     const isBelowStandard = equipment.standard_consumption &&
-      equipment.last_value < equipment.standard_consumption;
+      Number(equipment.last_value) < Number(equipment.standard_consumption);
     const isRunning = equipment.is_active;
 
     const consumptionPercent = equipment.standard_consumption

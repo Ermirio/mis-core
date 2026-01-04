@@ -9,7 +9,8 @@ import {
   Activity,
   Database,
   Wifi,
-  BarChart3
+  BarChart3,
+  Factory
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
@@ -20,6 +21,12 @@ const navigation = [
     href: '/',
     icon: LayoutDashboard,
     description: 'Visão geral do sistema'
+  },
+  {
+    name: 'Factory View',
+    href: '/factory-view',
+    icon: Factory,
+    description: 'Consolidado da Fábrica'
   },
   {
     name: 'Analytics',
