@@ -525,8 +525,16 @@ def read_equipment_value(equipment_id):
         # Armazenar no InfluxDB se configurado
         try:
             # Determinar código da tag e métrica para compatibilidade com histórico
+            # Determinar código da tag e métrica para compatibilidade com histórico
             tag_code = equipment.tag or equipment.name
-            metric_name = 'power_kw' if equipment.meter_type == 'energy' else 'generic'
+            
+            # Determine metric name based on equipment type
+            if equipment.meter_type == 'energy':
+                 metric_name = 'power_kw'
+            elif equipment.meter_type == 'production':
+                 metric_name = 'production_rate' # Default storage for production meter
+            else:
+                 metric_name = 'generic'
             
             influxdb_service.write_measurement(
                 equipment_id=equipment.id,
@@ -544,17 +552,52 @@ def read_equipment_value(equipment_id):
             # Log do erro mas não falha a operação
             logger.warning(f"Erro ao salvar no InfluxDB: {e}")
         
+        # Calculate Efficiency for Production Meters
+        efficiency_value = None
+        if equipment.meter_type == 'production':
+            try:
+                # Find associated energy meter (using explicit link or hierarchy)
+                # Strategy: Look for an energy meter that is an "Entry Point" in the same hierarchy
+                # Or use hardcoded association logic if needed. 
+                # For now, we will reuse the logic from get_equipment_metrics: fetch power from the first energy meter found
+                
+                # Fetch power from associated energy meter (fallback to DB last value if needed)
+                # Simplification: Assume we have an 'opc_node_power_kw' configured on this production meter? 
+                # OR we query the Energy Meter associated.
+                
+                # Let's try to find an Energy Meter in the same area/line that is an Entry Point
+                energy_meter = Equipment.query.filter_by(
+                    hierarchy_id=equipment.hierarchy_id, 
+                    meter_type='energy',
+                    is_entry_point=True
+                ).first()
+                
+                power_kw = 0
+                if energy_meter:
+                    # If we have a local energy meter, use its last value
+                   power_kw = energy_meter.last_value or 0
+                
+                if power_kw > 0 and scaled_value > 0:
+                     efficiency_value = power_kw / scaled_value
+            except Exception as e:
+                logger.warning(f"Error calculating efficiency: {e}")
+
+        response_data = {
+            'equipment_id': equipment_id,
+            'value': scaled_value,
+            'unit': equipment.unit,
+            'timestamp': result['timestamp'],
+            'raw_value': result['raw_value'],
+            'converted_value': result['converted_value'],
+            'scale_factor': equipment.scale_factor
+        }
+
+        if efficiency_value is not None:
+             response_data['efficiency_kwh_ton'] = efficiency_value
+
         return jsonify({
             'success': True,
-            'data': {
-                'equipment_id': equipment_id,
-                'value': scaled_value,
-                'unit': equipment.unit,
-                'timestamp': result['timestamp'],
-                'raw_value': result['raw_value'],
-                'converted_value': result['converted_value'],
-                'scale_factor': equipment.scale_factor
-            }
+            'data': response_data
         })
         
     except Exception as e:
@@ -713,9 +756,8 @@ def get_equipment_metrics(equipment_id):
 def get_equipment_history(equipment_id):
     """
     Retorna histórico de uma métrica específica
-    
     Query params:
-        metric: power_kw, energy_kwh, demand_kw, power_factor
+        metric: power_kw, energy_kwh, demand_kw, power_factor, efficiency_kwh_ton
         period: 1h, 6h, 12h, 24h, 7d, 30d
     """
     try:
@@ -739,71 +781,112 @@ def get_equipment_history(equipment_id):
         delta = period_map.get(period, timedelta(hours=24))
         start_time = datetime.now() - delta
         
-        # Consultar InfluxDB
-        # Use configuration from influxdb_service to ensure consistency
+        # Configuration
         influx_host = 'influxdb' 
         influx_port = 8086
-        database = 'industrial_db' # Was db_energy, but logs show industrial_db
+        database = 'industrial_db'
         username = 'admin'
         password = 'admin123'
         
-        # tag corresponde ao equipamento_codigo (F001-A001-L001-ENM-001) ou nome como fallback
         eq_tag = equipment.tag or equipment.name
-        
-        # DEBUG: Log da query para verificação
-        logger.info(f"Buscando histórico para TAG: {eq_tag}, Metric: {metric}, Period: {period}")
-        
-        query = f'''
-            SELECT mean("value") as value 
-            FROM "energy_consumption" 
-            WHERE "tag" = '{eq_tag}'
-            AND "metric" = '{metric}'
-            AND time > '{start_time.isoformat()}Z'
-            GROUP BY time(5m) fill(none)
-        '''
-        
-        try:
-            logging.info(f"InfluxDB Query: {query}")
-            response = requests.get(
-                f'http://{influx_host}:{influx_port}/query',
-                params={'db': database, 'q': query, 'u': username, 'p': password},
-                timeout=5
-            )
-            
-            logging.info(f"InfluxDB Response Code: {response.status_code}")
-            
-            if response.status_code == 200:
-                data = response.json()
-                # logging.info(f"InfluxDB Data: {data}") # Pode ser verboso
-                series = data.get('results', [{}])[0].get('series', [{}])
-                
-                if not series:
-                   history = []
-                else:
-                   values = series[0].get('values', [])
-                   history = [
-                       {'timestamp': v[0], 'value': v[1]} 
-                       for v in values if v[1] is not None
-                   ]
-            else:
-                logging.error(f"InfluxDB Error Body: {response.text}")
-                history = []
-        except:
-            # Fallback: ZERO SIMULATION
-            history = []
 
-        
-        # Calcular estatísticas
-        if history:
-            values = [h['value'] for h in history if h['value']]
-            stats = {
-                'min': round(min(values), 2) if values else None,
-                'max': round(max(values), 2) if values else None,
-                'avg': round(sum(values) / len(values), 2) if values else None,
-                'count': len(values)
-            }
+        # Helper to fetch history for a single metric
+        def fetch_metric_history(target_metric, target_tag=None):
+            if target_tag is None:
+                target_tag = eq_tag
+                
+            query = f'''
+                SELECT last("value") as value 
+                FROM "energy_consumption" 
+                WHERE "tag" = '{target_tag}'
+                AND "metric" = '{target_metric}'
+                AND time > '{start_time.isoformat()}Z'
+                GROUP BY time(5m) fill(previous)
+            '''
+            try:
+                response = requests.get(
+                    f'http://{influx_host}:{influx_port}/query',
+                    params={'db': database, 'q': query, 'u': username, 'p': password},
+                    timeout=5
+                )
+                if response.status_code == 200:
+                    data = response.json()
+                    series = data.get('results', [{}])[0].get('series', [{}])
+                    if series:
+                        values = series[0].get('values', [])
+                        # Convert to dict {timestamp_str: value} for easy matching
+                        return {v[0]: v[1] for v in values}
+                return {}
+            except Exception as e:
+                logger.error(f"Error fetching {target_metric}: {e}")
+                return {}
+
+        history_list = []
+
+        if metric == 'efficiency_kwh_ton':
+            # Calculate Efficiency = Power (kW) / Production Rate (Ton/h)
+            
+            # For power, we MUST look at the associated Energy Meter
+            energy_tag = eq_tag # Default fallback
+            
+            # Try to find associated Energy Meter (Entry Point in same hierarchy)
+            try:
+                energy_meter = Equipment.query.filter_by(
+                    hierarchy_id=equipment.hierarchy_id, 
+                    meter_type='energy',
+                    is_entry_point=True
+                ).first()
+                
+                if energy_meter:
+                    energy_tag = energy_meter.tag or energy_meter.name
+            except Exception as e:
+                logger.warning(f"Could not find associated energy meter for history: {e}")
+            
+            # logger.info(f"Efficiency History: using energy_tag='{energy_tag}' and production_tag='{eq_tag}'")
+
+            power_data = fetch_metric_history('power_kw', target_tag=energy_tag)
+            rate_data = fetch_metric_history('production_rate') # Own tag
+            
+            # Use intersection of keys only if they are strictly aligned, 
+            # OR use union and handle missing values (which fill(previous) helps with)
+            all_timestamps = sorted(set(list(power_data.keys()) + list(rate_data.keys())))
+            
+            for ts in all_timestamps:
+                pwr = power_data.get(ts)
+                rate = rate_data.get(ts)
+                
+                # We need both values to be present (non-None and rate > 0)
+                if pwr is not None and rate and rate > 0:
+                    eff = pwr / rate
+                    # Filter crazy values / outliers (0 to 500 kWh/ton is reasonable range for most industries)
+                    if 0 <= eff <= 500:
+                        history_list.append({'timestamp': ts, 'value': round(eff, 2)})
+
+        else:
+            # Standard single metric fetch
+            raw_data = fetch_metric_history(metric)
+            history_list = [
+                {'timestamp': ts, 'value': val} 
+                for ts, val in sorted(raw_data.items())
+            ]
+
+        # Calculate stats
+        if history_list:
+            # Filter out None values just in case
+            values = [h['value'] for h in history_list if h['value'] is not None]
+            
+            if values:
+                stats = {
+                    'min': round(min(values), 2),
+                    'max': round(max(values), 2),
+                    'avg': round(sum(values) / len(values), 2),
+                    'count': len(values)
+                }
+            else:
+                 stats = {'min': None, 'max': None, 'avg': None, 'count': 0}
         else:
             stats = {'min': None, 'max': None, 'avg': None, 'count': 0}
+
         
         return jsonify({
             'success': True,
@@ -812,7 +895,7 @@ def get_equipment_history(equipment_id):
                 'equipment_name': equipment.name,
                 'metric': metric,
                 'period': period,
-                'history': history[-100:],  # Limitar a 100 pontos
+                'history': history_list[-100:], # Limit points
                 'stats': stats
             }
         })

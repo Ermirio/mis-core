@@ -152,8 +152,8 @@ export function DateRangePicker({
                                                     setCustomEnd(e.target.value);
                                                     setUseNow(false);
                                                 }}
-                                                className={`h-9 text-sm flex-1 ${useNow ? 'opacity-50' : ''}`}
-                                                disabled={useNow}
+                                                onFocus={() => setUseNow(false)}
+                                                className={`h-9 text-sm flex-1 ${useNow ? 'opacity-50 cursor-pointer' : ''}`}
                                             />
                                         </>
                                     ) : (
