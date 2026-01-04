@@ -259,6 +259,56 @@ services:
     restart: unless-stopped
 
   # ==========================================
+  # FERRAMENTAS AUXILIARES (Phase 2)
+  # ==========================================
+
+  node-red:
+    build:
+      context: ./mis-core/node-red
+    container_name: mis-core-node-red
+    environment:
+      - TZ=America/Sao_Paulo
+    volumes:
+      - node_red_data:/data
+    networks:
+      - mis-network
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: mis-core-grafana
+    environment:
+      - TZ=America/Sao_Paulo
+      # Fix: Remove Domain to fallback to Host header default
+      # Fix: Hardcoded URL avoids expansion issues
+      - GF_SERVER_ROOT_URL=http://localhost:3000/grafana/
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_SECURITY_ALLOW_EMBEDDING=true
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./mis-core/grafana/img/logo.png:/usr/share/grafana/public/img/grafana_icon.svg
+      - ./mis-core/grafana/img/logo.png:/usr/share/grafana/public/img/fav32.png
+    ports:
+      - "3004:3000"
+    networks:
+      - mis-network
+    restart: unless-stopped
+
+  mosquitto:
+    image: eclipse-mosquitto:latest
+    container_name: mis-core-mosquitto
+    volumes:
+      - ./mis-core/mosquitto/config/mosquitto.conf:/mosquitto/config/mosquitto.conf
+      - mosquitto_data:/mosquitto/data
+      - mosquitto_log:/mosquitto/log
+    ports:
+      - "1883:1883"
+      - "9001:9001"
+    networks:
+      - mis-network
+    restart: unless-stopped
+
+  # ==========================================
   # SERVIÇOS AUXILIARES (Legacy Core)
   # ==========================================
 
@@ -339,6 +389,14 @@ volumes:
     name: mis-core-influxdb-data
   kapacitor_data:
     name: mis-core-kapacitor-data
+  node_red_data:
+    name: mis-core-node-red-data
+  grafana_data:
+    name: mis-core-grafana-data
+  mosquitto_data:
+    name: mis-core-mosquitto-data
+  mosquitto_log:
+    name: mis-core-mosquitto-log
   django_static:
     name: mis-core-django-static
 
