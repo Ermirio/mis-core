@@ -12,6 +12,7 @@ import threading
 from datetime import datetime, timedelta, timezone
 from models import PredictionData, PredictionTarget, PredictionModel, OPCVariables, get_db
 from opc_client import opc_client
+from influx_client import influx_client
 
 class GenericPredictor:
     """Preditor genérico que suporta múltiplos targets e modelos"""
@@ -378,7 +379,36 @@ class GenericPredictor:
                 db.rollback()
             finally:
                 db.close()
-            
+
+            # =============================================================================
+            # PERSISTÊNCIA NO INFLUXDB (NOVO)
+            # =============================================================================
+            try:
+                if influx_client.connected:
+                    influx_measurement = "predictions"
+                    influx_tags = {
+                        "line": line_name_for_opc,
+                        "model_id": str(model_id),
+                        "model_name": model_record.model_name
+                    }
+                    influx_fields = {
+                        "value": float(prediction)
+                    }
+                    if confidence_std_dev is not None:
+                        influx_fields["confidence"] = float(confidence_std_dev)
+                    
+                    # Escreve no Influx
+                    influx_client.write_point(
+                        measurement=influx_measurement,
+                        tags=influx_tags,
+                        fields=influx_fields,
+                        time=datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
+                    )
+                    logging.info(f"✅ Predição gravada no InfluxDB: {prediction:.4f}")
+            except Exception as e_influx:
+                logging.error(f"❌ Erro ao gravar no InfluxDB: {e_influx}")
+            # =============================================================================
+
             return new_prediction.to_dict(), "Predição realizada com sucesso"
             
         except Exception as e:

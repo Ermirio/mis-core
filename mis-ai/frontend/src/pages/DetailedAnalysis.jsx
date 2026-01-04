@@ -56,28 +56,27 @@ const DetailedAnalysis = () => {
     }
 
     const loadNodes = async (lineName) => {
-        // Aqui idealmente teríamos um endpoint para listar variáveis disponíveis.
-        // Como não temos, vamos simular ou buscar de uma predição recente se possível,
-        // ou usar uma lista fixa baseada no conhecimento do sistema.
-        // Para este MVP, vamos assumir que o backend pode retornar os nodes usados nos targets dessa linha.
-
-        // Como fallback, vamos buscar targets da linha e usar suas variáveis associadas se possível,
-        // ou listar variáveis comuns se soubermos.
-        // Por enquanto, vou deixar uma lista vazia e permitir que o usuário digite ou
-        // (Melhoria futura: endpoint /api/opc/nodes?line=X)
-
-        // Vamos tentar buscar targets e extrair features
         try {
-            // Mock temporário de variáveis comuns
-            const commonNodes = [
-                { id: 'ns=2;s=Drivers.Motor1.Temperature', name: 'Temperatura Motor 1' },
-                { id: 'ns=2;s=Drivers.Motor1.Speed', name: 'Velocidade Motor 1' },
-                { id: 'ns=2;s=Sensors.Vibration', name: 'Vibração' },
-                { id: 'ns=2;s=Production.Count', name: 'Contagem Produção' }
-            ]
-            setAvailableNodes(commonNodes)
+            // Busca variáveis reais do backend
+            const variables = await api.getOPCVariables(lineName)
+            if (variables && Array.isArray(variables)) {
+                // Mapeia para o formato esperado pelo componente { id, name }
+                const formattedNodes = variables.map(v => ({
+                    id: v.node_id,
+                    name: v.variable_name || v.node_id // Fallback para node_id se não tiver nome
+                }))
+                setAvailableNodes(formattedNodes)
+            } else {
+                setAvailableNodes([])
+            }
         } catch (error) {
-            console.error("Erro ao carregar nodes", error)
+            console.error("Erro ao carregar nodes:", error)
+            setAvailableNodes([]) // Garante lista vazia em caso de erro
+            toast({
+                title: "Erro",
+                description: "Falha ao carregar variáveis da linha.",
+                variant: "destructive"
+            })
         }
     }
 

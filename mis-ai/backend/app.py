@@ -13,6 +13,7 @@ from ml_model import generic_predictor
 from models import (Line, PredictionTarget, PredictionModel, PredictionData, 
                     OPCLogs, OPCVariables, OPCServerConfig, create_default_data, create_tables, get_db)
 from opc_client import opc_client, OPCClient
+from influx_client import influx_client
 
 # ==================== CONFIGURAÇÕES INICIAIS ====================
 load_dotenv()
@@ -35,6 +36,16 @@ try:
 except Exception as e:
     logging.critical("❌ FALHA CRÍTICA ao inicializar o banco de dados.", exc_info=True)
     exit(1)
+
+# ==================== INICIALIZAÇÃO INFLUXDB ====================
+try:
+    if influx_client.connect():
+        influx_client.create_database()
+        logging.info("✅ InfluxDB inicializado e banco 'mis-ai' verificado.")
+    else:
+        logging.warning("⚠️ Falha ao conectar ao InfluxDB na inicialização.")
+except Exception as e:
+    logging.error(f"❌ Erro ao inicializar InfluxDB: {e}", exc_info=True)
 
 # ==================== INICIALIZAÇÃO DO OPC (PRODUÇÃO) ====================
 # Esta seção roda automaticamente quando o módulo é importado pelo Gunicorn

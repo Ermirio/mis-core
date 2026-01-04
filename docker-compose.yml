@@ -163,6 +163,12 @@ services:
       # Conecta no MySQL Compartilhado (Service: mysql)
       DATABASE_URL: mysql+pymysql://${MYSQL_USER}:${MYSQL_PASSWORD}@mysql:3306/density_db
       OPC_SERVER_URL: ${OPC_SERVER_URL}
+      # InfluxDB Configuration
+      INFLUXDB_HOST: influxdb
+      INFLUXDB_PORT: 8086
+      INFLUXDB_USER: ${INFLUXDB_ADMIN_USER}
+      INFLUXDB_PASSWORD: ${INFLUXDB_ADMIN_PASSWORD}
+      INFLUXDB_DATABASE: mis-ai
     networks:
       - mis-network
     volumes:
@@ -305,6 +311,8 @@ services:
       - "8889:8888"
     environment:
       INFLUXDB_URL: http://influxdb:8086
+      INFLUXDB_USERNAME: ${INFLUXDB_ADMIN_USER}
+      INFLUXDB_PASSWORD: ${INFLUXDB_ADMIN_PASSWORD}
     networks:
       - mis-network
     restart: unless-stopped
@@ -316,6 +324,8 @@ services:
       - "9093:9092"
     environment:
       KAPACITOR_INFLUXDB_0_URLS_0: http://influxdb:8086
+      KAPACITOR_INFLUXDB_0_USERNAME: ${INFLUXDB_ADMIN_USER}
+      KAPACITOR_INFLUXDB_0_PASSWORD: ${INFLUXDB_ADMIN_PASSWORD}
     volumes:
       - kapacitor_data:/var/lib/kapacitor
     networks:
