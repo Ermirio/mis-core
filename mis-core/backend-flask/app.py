@@ -13,7 +13,7 @@ from blueprints.golden_state import golden_state_bp
 # ===== CONFIGS =====
 INFLUX_HOST = config('INFLUXDB_HOST', default='127.0.0.1')
 INFLUX_PORT = config('INFLUXDB_PORT', default=8086, cast=int)
-INFLUX_DB = config('INFLUXDB_DATABASE', default='industrial_db')
+INFLUX_DB = config('INFLUXDB_DATABASE', default='mis_core_db')
 INFLUX_USER = 'admin' # Hardcoded Config Fix
 INFLUX_PASS = 'admin123' # Hardcoded Config Fix
 DJANGO_API_URL = config('DJANGO_API_URL', default='http://127.0.0.1:8000/api')
@@ -68,4 +68,4 @@ def create_app():
 
 if __name__ == '__main__':
     app = create_app()
-    app.run(host='127.0.0.1', port=5000, debug=True)
+    app.run(host='0.0.0.0', port=5000, debug=True)
