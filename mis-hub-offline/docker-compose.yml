@@ -168,7 +168,7 @@ services:
 
   # ===== AI BACKEND (FLASK) =====
   mis-ai-backend:
-    image: mis-core-mis-ai-backend:latest
+    image: mis-core-mis-ai-backend:v1.1
     pull_policy: never
     container_name: mis-hub-ai-backend
     ports:
