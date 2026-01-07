@@ -8,6 +8,12 @@ import logging
 import sys
 import os
 from rest_framework.pagination import PageNumberPagination
+
+# Paginação flexível para aceitar page_size via query param
+class FlexiblePageNumberPagination(PageNumberPagination):
+    page_size = 100
+    page_size_query_param = 'page_size'
+    max_page_size = 10000
 from .models import (
     LinhaProducao, Equipamento, Sensor, MetricaProducao, 
     Defeito, ConexaoOPC, TagColeta,
@@ -335,8 +341,10 @@ class EventoEstadoEquipamentoViewSet(viewsets.ModelViewSet):
     queryset = EventoEstadoEquipamento.objects.select_related('equipamento')
     serializer_class = EventoEstadoEquipamentoSerializer
     
+    pagination_class = FlexiblePageNumberPagination
+    
     def get_queryset(self):
-        """Permite filtrar por equipamento e período"""
+        """Permite filtrar por equipamento, linha e período"""
         queryset = super().get_queryset()
         
         equipamento_id = self.request.query_params.get('equipamento_id')
@@ -347,10 +355,19 @@ class EventoEstadoEquipamentoViewSet(viewsets.ModelViewSet):
         if equipamento_codigo:
             queryset = queryset.filter(equipamento__codigo=equipamento_codigo)
         
+        # Filtro por linha (via equipamento -> linha)
+        linha_id = self.request.query_params.get('linha_id')
+        if linha_id:
+            queryset = queryset.filter(equipamento__linha_id=linha_id)
+        
         # Filtro por período (suporta inicio/fim e data_inicio/data_fim)
         inicio = self.request.query_params.get('inicio') or self.request.query_params.get('data_inicio')
         if inicio:
-            queryset = queryset.filter(inicio__gte=inicio)
+            # Filtra eventos que começaram APÓS a data OU que ainda estavam abertos (fim >= inicio ou fim nulo)
+            queryset = queryset.filter(
+                Q(inicio__gte=inicio) | 
+                (Q(inicio__lt=inicio) & (Q(fim__gte=inicio) | Q(fim__isnull=True)))
+            )
         
         fim = self.request.query_params.get('fim') or self.request.query_params.get('data_fim')
         if fim:

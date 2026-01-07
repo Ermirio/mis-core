@@ -11,12 +11,12 @@ DEBUG = config('DJANGO_DEBUG', default=True, cast=bool)
 # DEFINIÇÃO ÚNICA
 ALLOWED_HOSTS = ['*'] # Lembre-se de restringir isso em produção
 
-# DEFINIÇÃO ÚNICA E CORRIGIDA
-CSRF_TRUSTED_ORIGINS = [
+# CSRF Trusted Origins - Lê do ambiente e faz merge com padrões
+_default_csrf_origins = [
     "http://localhost:3000",
     "http://127.0.0.1:3000",
-    "http://localhost:3001",  # Adicionado para o React
-    "http://127.0.0.1:3001", # Adicionado para o React
+    "http://localhost:3001",
+    "http://127.0.0.1:3001",
     "http://localhost:5000",
     "http://127.0.0.1:5000",
     "http://localhost:8000",
@@ -24,6 +24,9 @@ CSRF_TRUSTED_ORIGINS = [
     "http://localhost:5173",
     "http://127.0.0.1:5173",
 ]
+_extra_csrf_origins = config('CSRF_TRUSTED_ORIGINS', default='').split(',')
+_extra_csrf_origins = [o.strip() for o in _extra_csrf_origins if o.strip()]
+CSRF_TRUSTED_ORIGINS = _default_csrf_origins + _extra_csrf_origins
 
 
 INSTALLED_APPS = [
@@ -136,7 +139,7 @@ CORS_ALLOW_CREDENTIALS = True
 # REST Framework
 REST_FRAMEWORK = {
     'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
-    'PAGE_SIZE': 100
+    'PAGE_SIZE': 100,
 }
 
 

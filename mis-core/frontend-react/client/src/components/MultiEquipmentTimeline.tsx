@@ -50,7 +50,8 @@ export default function MultiEquipmentTimeline({
                     linha_id: linhaId.toString(),
                     data_inicio: ontem.toISOString(),
                     data_fim: agora.toISOString(),
-                    ordering: '-inicio'
+                    ordering: '-inicio',
+                    page_size: '10000' // Buscar todos os eventos de 24h
                 });
 
                 const response = await fetch(`${DJANGO_API_URL}/eventos-estado/?${params}`);
