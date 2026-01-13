@@ -312,7 +312,8 @@ services:
     container_name: mis-hub-grafana
     environment:
       - TZ=America/Sao_Paulo
-      - GF_SERVER_ROOT_URL=http://localhost:3000/grafana/
+      - GF_SERVER_ROOT_URL=http://192.168.30.71:3000/grafana-hub/
+      - GF_SERVER_SERVE_FROM_SUB_PATH=true
       - GF_AUTH_ANONYMOUS_ENABLED=true
       - GF_SECURITY_ALLOW_EMBEDDING=true
     volumes:
@@ -349,6 +350,7 @@ services:
       INFLUXDB_URL: http://influxdb:8086
       INFLUXDB_USERNAME: ${INFLUXDB_ADMIN_USER}
       INFLUXDB_PASSWORD: ${INFLUXDB_ADMIN_PASSWORD}
+      PUBLIC_URL: http://192.168.30.71:3000/chronograf-hub
     networks:
       - mis-network
     restart: unless-stopped
