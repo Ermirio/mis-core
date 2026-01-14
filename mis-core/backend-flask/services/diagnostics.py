@@ -102,7 +102,7 @@ def capture_golden_state(equipamento_codigo, capture_type='MANUAL'):
             "measurement": "golden_state_profile",
             "tags": {
                 "equipamento": equipamento_codigo,
-                "sku": profile.get('last_sku_codigo_field', 'N/A'),
+                "sku": profile.get('last_sku_codigo_field') or profile.get('last_sku_codigo') or 'N/A',
                 "capture_type": capture_type
             },
             "time": datetime.utcnow().isoformat(),

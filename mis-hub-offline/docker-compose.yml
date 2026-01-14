@@ -111,7 +111,7 @@ services:
 
   # ===== FLASK (ANALYTICS BACKEND) =====
   flask:
-    image: mis-core-flask:v1.2
+    image: mis-core-flask:v1.3
     pull_policy: never
     container_name: mis-hub-flask
     environment:
