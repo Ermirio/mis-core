@@ -10,7 +10,8 @@ import {
     TrendingUp,
     BarChart3,
     Search,
-    Zap
+    Zap,
+    Play
 } from 'lucide-react'
 import './Sidebar.css'
 
@@ -91,6 +92,15 @@ const Sidebar = ({ collapsed, onToggle }) => {
                 >
                     <TrendingUp size={20} />
                     {!collapsed && <span>Predições</span>}
+                </NavLink>
+
+                <NavLink
+                    to="/simulation"
+                    className={({ isActive }) => isActive ? "sidebar-link active" : "sidebar-link"}
+                    title="Simulador"
+                >
+                    <Play size={20} />
+                    {!collapsed && <span>Simulador</span>}
                 </NavLink>
 
                 <NavLink

@@ -15,6 +15,7 @@ import DataCollection from '@/pages/DataCollection'
 import PredictionView from '@/pages/PredictionView'
 import DetailedAnalysis from '@/pages/DetailedAnalysis'
 import OPCConfiguration from '@/pages/OPCConfiguration'
+import Simulation from '@/pages/Simulation'
 import './App.css'
 
 // Defina o basename aqui (corresponde ao 'base' do Vite e 'location' do Nginx)
@@ -137,6 +138,16 @@ function App() {
                   element={
                     <OPCConfiguration
                       selectedLine={selectedLine}
+                    />
+                  }
+                />
+                <Route
+                  path="/simulation"
+                  element={
+                    <Simulation
+                      selectedLine={selectedLine}
+                      selectedTarget={selectedTarget}
+                      selectedModel={selectedModel}
                     />
                   }
                 />

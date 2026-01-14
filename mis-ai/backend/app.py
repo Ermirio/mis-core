@@ -422,6 +422,30 @@ def predict_with_model(model_id):
         return jsonify(success), 200 # <-- CORREÇÃO: Retorna 'success' (os dados)
     else:
         return jsonify({'error': result}), 500
+
+@app.route('/api/models/<int:model_id>/simulate', methods=['POST'])
+def simulate_with_model(model_id):
+    """Executa uma predição com valores de features fornecidos manualmente (simulação)."""
+    data = request.get_json()
+    if not data or "features" not in data:
+        return jsonify({"error": "O campo 'features' com os valores é obrigatório"}), 400
+
+    # Chama o método de simulação no predictor
+    prediction_result, message = generic_predictor.simulate(model_id, data["features"])
+    
+    if prediction_result is not None:
+        return jsonify(prediction_result), 200
+    else:
+        return jsonify({"error": message}), 500
+
+@app.route('/api/models/<int:model_id>/metadata', methods=['GET'])
+def get_model_metadata(model_id):
+    """Retorna os metadados de um modelo, incluindo features, importâncias e ranges."""
+    metadata, message = generic_predictor.get_model_metadata(model_id)
+    if metadata:
+        return jsonify(metadata), 200
+    else:
+        return jsonify({"error": message}), 404
     
     
 # ==========================================================

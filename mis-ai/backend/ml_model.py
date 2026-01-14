@@ -593,5 +593,112 @@ class GenericPredictor:
             return model.is_active
         finally:
             db.close()
+    
+    def simulate(self, model_id, feature_values):
+        """Faz uma predição usando valores de features fornecidos manualmente (simulação)."""
+        try:
+            # Etapa 1: Carregar o modelo se não estiver em cache
+            if model_id not in self.models:
+                success, message = self.load_model(model_id)
+                if not success:
+                    return None, message
+            
+            model_data = self.models[model_id]
+            model = model_data["model"]
+            required_features = model_data["features"]
+            
+            # Etapa 2: Preparar vetor de features com os valores recebidos
+            # Garante que todas as features necessárias estão presentes, usando 0 como padrão
+            feature_vector = {feature: feature_values.get(feature, 0.0) for feature in required_features}
+            
+            # Garante a ordem correta das colunas para o modelo
+            X_pred = pd.DataFrame([feature_vector])[required_features]
+            
+            # Etapa 3: Fazer a predição
+            prediction = model.predict(X_pred)[0]
+            
+            # Etapa 4: Retornar um objeto claro para o frontend
+            return {"predicted_value": float(prediction)}, "Simulação bem-sucedida"
+
+        except Exception as e:
+            logging.error(f"Erro na simulação do modelo {model_id}: {e}", exc_info=True)
+            return None, str(e)
+    
+    def get_model_metadata(self, model_id):
+        """Busca as features, importâncias e ranges de um modelo."""
+        try:
+            # Etapa 1: Carregar o modelo se não estiver em cache
+            if model_id not in self.models:
+                success, message = self.load_model(model_id)
+                if not success:
+                    return None, message
+            
+            model_data = self.models[model_id]
+            features = model_data["features"]
+            importances = model_data.get("feature_importances", [])
+            
+            # Etapa 2: Buscar ranges (min/max) de cada feature no banco de dados
+            db = next(get_db())
+            try:
+                # Buscar o target_id do modelo
+                model_record = db.query(PredictionModel).filter(PredictionModel.id == model_id).first()
+                if not model_record:
+                    return None, "Modelo não encontrado"
+                
+                target_id = model_record.target_id
+                
+                # Buscar dados históricos para calcular ranges
+                prediction_data = db.query(PredictionData).filter(
+                    PredictionData.target_id == target_id,
+                    PredictionData.opc_values != None
+                ).all()
+                
+                # Calcular min/max para cada feature
+                feature_ranges = {}
+                for feature in features:
+                    values = []
+                    for record in prediction_data:
+                        if isinstance(record.opc_values, dict) and feature in record.opc_values:
+                            try:
+                                values.append(float(record.opc_values[feature]))
+                            except (ValueError, TypeError):
+                                continue
+                    
+                    if values:
+                        feature_ranges[feature] = {
+                            "min": min(values),
+                            "max": max(values),
+                            "mean": sum(values) / len(values)
+                        }
+                    else:
+                        # Valores padrão se não houver dados históricos
+                        feature_ranges[feature] = {
+                            "min": 0.0,
+                            "max": 100.0,
+                            "mean": 50.0
+                        }
+                
+                # Formatar feature_importances para o frontend
+                formatted_importances = []
+                if importances:
+                    for feature_name, importance_value in importances:
+                        formatted_importances.append({
+                            "feature": feature_name,
+                            "importance": float(importance_value)
+                        })
+                
+                return {
+                    "features": features,
+                    "feature_importances": formatted_importances,
+                    "feature_ranges": feature_ranges
+                }, "Metadados recuperados com sucesso"
+            
+            finally:
+                db.close()
+        
+        except Exception as e:
+            logging.error(f"Erro ao buscar metadados do modelo {model_id}: {e}", exc_info=True)
+            return None, str(e)
+
 # Instância global do preditor
 generic_predictor = GenericPredictor()
