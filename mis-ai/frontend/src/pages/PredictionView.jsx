@@ -256,12 +256,17 @@ const PredictionView = ({ selectedLine, selectedTarget, selectedModel }) => {
   }
 
   // Função para gerenciar o clique no seletor de data.
-  const handleDateChange = (e) => {
+  // Função para gerenciar o clique no seletor de data inicial.
+  const handleStartDateChange = (e) => {
     if (realTimeMode) return // Desabilita se estiver em modo tempo real
+    setStartDate(e.target.value);
+    setShowTimeFilters(true);
+  };
 
-    const newDate = e.target.value;
-    setStartDate(newDate);
-    setEndDate(newDate);
+  // Função para gerenciar o clique no seletor de data final.
+  const handleEndDateChange = (e) => {
+    if (realTimeMode) return // Desabilita se estiver em modo tempo real
+    setEndDate(e.target.value);
     setShowTimeFilters(true);
   };
 
@@ -503,8 +508,8 @@ const PredictionView = ({ selectedLine, selectedTarget, selectedModel }) => {
           onClick={handleToggleContinuousPredictions}
           size="lg"
           className={`flex items-center space-x-3 px-8 py-4 text-lg font-semibold transition-all duration-300 ${continuousPredictions
-              ? 'bg-red-600 hover:bg-red-700 dark:bg-red-500 dark:hover:bg-red-600 animate-pulse'
-              : 'bg-green-600 hover:bg-green-700 dark:bg-green-500 dark:hover:bg-green-600 hover:scale-105'
+            ? 'bg-red-600 hover:bg-red-700 dark:bg-red-500 dark:hover:bg-red-600 animate-pulse'
+            : 'bg-green-600 hover:bg-green-700 dark:bg-green-500 dark:hover:bg-green-600 hover:scale-105'
             } shadow-lg hover:shadow-xl`}
         >
           {continuousPredictions ? (
@@ -629,13 +634,24 @@ const PredictionView = ({ selectedLine, selectedTarget, selectedModel }) => {
                 {/* Filtro de Data e Hora */}
                 <div className="flex items-center space-x-2">
                   <Label htmlFor="start-date" className="text-sm whitespace-nowrap">
-                    Data:
+                    De:
                   </Label>
                   <Input
                     id="start-date"
                     type="date"
                     value={startDate}
-                    onChange={handleDateChange}
+                    onChange={handleStartDateChange}
+                    className="w-auto text-sm cursor-pointer"
+                    disabled={realTimeMode}
+                  />
+                  <Label htmlFor="end-date" className="text-sm whitespace-nowrap">
+                    Até:
+                  </Label>
+                  <Input
+                    id="end-date"
+                    type="date"
+                    value={endDate}
+                    onChange={handleEndDateChange}
                     className="w-auto text-sm cursor-pointer"
                     disabled={realTimeMode}
                   />

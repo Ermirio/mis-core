@@ -111,7 +111,8 @@ class OPCClient:
             # --- CORREÇÃO ---
             variables = db.query(OPCVariables).filter(
                 OPCVariables.line_name == line,
-                OPCVariables.type_category == 'read' # <-- CORREÇÃO: Ler APENAS inputs
+                OPCVariables.is_active == True
+                # OPCVariables.type_category == 'read' <-- REMOVIDO: Agora lê read e write para logar tudo
             ).all()
             # --- FIM DA CORREÇÃO ---
             
