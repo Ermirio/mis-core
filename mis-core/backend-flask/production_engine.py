@@ -134,6 +134,33 @@ class ProductionEngine:
     def recarregar_configuracoes(self):
         self.config_manager._atualizar_cache()
         return self.shift_manager.forcar_atualizacao()
+    
+    def reset_shift_counters(self, equipment_code=None):
+        """
+        Reseta contadores de turno para um equipamento específico ou todos.
+        Chamado pelo scheduler no fim do turno.
+        """
+        if equipment_code:
+            # Reset de equipamento específico
+            if equipment_code in self._cache:
+                state = self._cache[equipment_code]
+                state['acc_shift'] = 0
+                state['acc_time_stop_shift'] = 0.0
+                state['shift_start_time'] = None
+                logger.info(f"✓ Reset de turno para {equipment_code}")
+                return True
+            return False
+        else:
+            # Reset de todos equipamentos
+            count = 0
+            for eq_code in list(self._cache.keys()):
+                state = self._cache[eq_code]
+                state['acc_shift'] = 0
+                state['acc_time_stop_shift'] = 0.0
+                state['shift_start_time'] = None
+                count += 1
+            logger.info(f"✓ Reset de turno para {count} equipamentos")
+            return count > 0
 
     def get_state(self, equipment_code):
         return self._get_state(equipment_code)
@@ -198,6 +225,10 @@ class ProductionEngine:
                 
                 # NOVO: Recupera timestamp e estado
                 timestamp_val = d.get('timestamp_medicao')
+                
+                # NOVO: Recupera shift_start_time do banco
+                shift_start_val = d.get('turno_inicio_timestamp')
+                if shift_start_val: state['shift_start_time'] = float(shift_start_val)
                 if timestamp_val: state['last_timestamp'] = float(timestamp_val)
                 
                 estado_val = d.get('estado_maquina')
@@ -274,19 +305,50 @@ class ProductionEngine:
         state['last_timestamp'] = now_timestamp
         state['last_estado'] = estado_maquina
 
-        # 6. Deltas de Produção e Refugo
-        delta = 0
-        # 6. Deltas de Produção e Refugo
+        # 6. Deltas de Produção e Refugo com Detecção Inteligente de Reset
         delta = 0
         if state['last_raw'] is not None:
-            delta = max(0, contagem_bruta - state['last_raw'])
-            if delta < 0: delta = contagem_bruta  # Reset físico
+            delta = contagem_bruta - state['last_raw']
+            
+            # Detecção de Reset Físico do Sensor
+            if delta < 0:
+                logger.info(f"{equipamento}: Reset físico detectado (contador diminuiu: {state['last_raw']} -> {contagem_bruta})")
+                delta = contagem_bruta  # Usa valor atual como delta
+            
+            # Detecção de "Início Impossível" (valor alto no início do turno)
+            # Se mudou de turno recentemente E delta é muito alto (> 1000), pode ser lixo
+            elif shift_changed and delta > 1000:
+                logger.warning(f"{equipamento}: Delta suspeito após mudança de turno ({delta}), ignorando e usando valor atual")
+                delta = 0  # Ignora este delta, começa do zero
+            
+            delta = max(0, delta)  # Garante que nunca seja negativo
+        else:
+            # Primeira medição: se valor é muito alto (> 500), pode ser lixo de turno anterior
+            if contagem_bruta > 500:
+                logger.warning(f"{equipamento}: Primeira medição com valor alto ({contagem_bruta}), considerando como 0")
+                delta = 0
+            else:
+                delta = contagem_bruta
+        
         state['last_raw'] = contagem_bruta
 
         delta_waste = 0
         if state['last_waste'] is not None:
-            delta_waste = max(0, descarte - state['last_waste'])
-            if delta_waste < 0: delta_waste = descarte  # Reset físico
+            delta_waste = descarte - state['last_waste']
+            
+            if delta_waste < 0:
+                logger.info(f"{equipamento}: Reset físico de descarte detectado ({state['last_waste']} -> {descarte})")
+                delta_waste = descarte
+            
+            delta_waste = max(0, delta_waste)
+        else:
+            # Primeira medição de descarte
+            if descarte > 100:
+                logger.warning(f"{equipamento}: Primeira medição de descarte com valor alto ({descarte}), considerando como 0")
+                delta_waste = 0
+            else:
+                delta_waste = descarte
+        
         state['last_waste'] = descarte
 
         # 7. Acumuladores de Produção
@@ -383,6 +445,10 @@ class ProductionEngine:
         # Persistência de Contexto Rico (SKU, Descrição, CUC)
         if extra_context:
             state['last_payload'] = extra_context
+        
+        # NOVO: Adiciona turno_inicio_timestamp para persistência
+        if state['shift_start_time']:
+            metrics['turno_inicio_timestamp'] = float(state['shift_start_time'])
             
         return metrics
 

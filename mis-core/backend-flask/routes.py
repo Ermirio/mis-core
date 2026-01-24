@@ -92,6 +92,39 @@ def changed_state(eq, state):
         logger.error(f"Error getting all realtime: {e}")
         return jsonify({'error': str(e)}), 500
 
+@api_bp.route('/api/shift/reset', methods=['POST'])
+def reset_shift():
+    """
+    Endpoint para resetar contadores de turno.
+    Chamado pelo scheduler no fim do turno.
+    Body: {"equipment_code": "E01"} ou {} para todos
+    """
+    try:
+        production_engine = current_app.extensions.get('production_engine')
+        if not production_engine:
+            return jsonify({'error': 'Engine not initialized'}), 500
+        
+        data = request.get_json() or {}
+        equipment_code = data.get('equipment_code')
+        
+        result = production_engine.reset_shift_counters(equipment_code)
+        
+        if result:
+            return jsonify({
+                'success': True,
+                'message': f'Reset de turno executado para {equipment_code or "todos equipamentos"}',
+                'count': result if isinstance(result, int) else 1
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'message': 'Nenhum equipamento encontrado para reset'
+            }), 404
+    
+    except Exception as e:
+        logger.error(f"Erro no reset de turno: {e}")
+        return jsonify({'error': str(e)}), 500
+
 @api_bp.route('/api/health/system', methods=['GET'])
 def system_health():
     """
@@ -679,16 +712,34 @@ def get_ole_realtime(linha_nome):
                                     logger.info(f"DEBUG VAZAO CALC: ({vel} * 60 * {fmt}) / 1M = {taxa_instantanea} t/h")
                             
                             # Fallback Influx se Engine zerado (e Influx tiver histórico)
+                            # NOVO: Tenta penúltimo equipamento antes de usar MAX de todos
                             if producao_real_ton == 0:
-                                q_last = f"SELECT last(toneladas_turno), last(velocidade_atual), last(formato_gramas) FROM production WHERE \"equipment\" = '{primeiro_eq}'"
-                                rs_last = influx_client.query(q_last)
-                                pts_last = list(rs_last.get_points())
-                                if pts_last:
-                                    producao_real_ton = float(pts_last[0].get('last', 0) or 0)
-                                    vel_i = float(pts_last[0].get('last_1', 0) or 0)
-                                    fmt_i = float(pts_last[0].get('last_2', 0) or 0)
-                                    if taxa_instantanea == 0 and fmt_i > 0:
-                                         taxa_instantanea = (vel_i * 60 * fmt_i) / 1_000_000.0
+                                logger.warning(f"⚠️ Último equipamento ({ultimo_eq}) sem dados, tentando penúltimo...")
+                                
+                                # Tenta penúltimo equipamento
+                                if len(eqs) > 1:
+                                    penultimo_eq = eqs[-2]['codigo']
+                                    st_penultimo = production_engine.get_state(penultimo_eq)
+                                    met_penultimo = st_penultimo.get('latest_metrics', {})
+                                    producao_real_ton = met_penultimo.get('toneladas_turno', 0.0)
+                                    
+                                    if producao_real_ton > 0:
+                                        logger.info(f"✓ Usando penúltimo equipamento ({penultimo_eq}): {producao_real_ton}t")
+                                
+                                # Se ainda zerado, busca no InfluxDB
+                                if producao_real_ton == 0:
+                                    q_last = f"SELECT last(toneladas_turno), last(velocidade_atual), last(formato_gramas) FROM production WHERE \"equipment\" = '{ultimo_eq}'"
+                                    rs_last = influx_client.query(q_last)
+                                    pts_last = list(rs_last.get_points())
+                                    if pts_last:
+                                        producao_real_ton = float(pts_last[0].get('last', 0) or 0)
+                                        vel_i = float(pts_last[0].get('last_1', 0) or 0)
+                                        fmt_i = float(pts_last[0].get('last_2', 0) or 0)
+                                        if taxa_instantanea == 0 and fmt_i > 0:
+                                             taxa_instantanea = (vel_i * 60 * fmt_i) / 1_000_000.0
+                                        
+                                        if producao_real_ton > 0:
+                                            logger.info(f"✓ Recuperado do InfluxDB ({ultimo_eq}): {producao_real_ton}t")
 
         except Exception as e:
             logger.error(f"Erro buscando ultimo eq: {e}")

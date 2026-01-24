@@ -11,6 +11,74 @@ from services.diagnostics_engine import check_continuous_optimization
 logger = logging.getLogger('Scheduler')
 DJANGO_API_URL = config('DJANGO_API_URL', default='http://127.0.0.1:8000/api')
 
+def job_shift_end_check():
+    """
+    Verifica se algum turno está terminando e força reset de contadores.
+    Executa a cada minuto para detectar fim de turno com precisão.
+    """
+    logger.info("⏰ Verificando fim de turnos...")
+    
+    try:
+        from datetime import datetime, timedelta
+        
+        # Busca turnos ativos do Django
+        url = f"{DJANGO_API_URL}/turnos/?ativo=true"
+        resp = requests.get(url, timeout=3)
+        
+        if not resp.ok:
+            logger.error(f"Falha ao buscar turnos: {resp.status_code}")
+            return
+        
+        data = resp.json()
+        turnos = data.get('results', data) if isinstance(data, dict) else data
+        
+        now = datetime.now()
+        now_time = now.time()
+        
+        for turno in turnos:
+            try:
+                hora_fim = datetime.strptime(turno['hora_fim'], '%H:%M:%S').time()
+                
+                # Calcula diferença em segundos até o fim do turno
+                fim_dt = datetime.combine(now.date(), hora_fim)
+                
+                # Ajuste para turno noturno (virada de dia)
+                hora_inicio = datetime.strptime(turno['hora_inicio'], '%H:%M:%S').time()
+                if hora_inicio > hora_fim:
+                    # Turno noturno
+                    if now_time < hora_inicio:
+                        # Estamos no dia seguinte, fim é hoje
+                        pass
+                    else:
+                        # Estamos no mesmo dia, fim é amanhã
+                        fim_dt += timedelta(days=1)
+                
+                diff = (fim_dt - now).total_seconds()
+                
+                # Se está nos últimos 60 segundos do turno, executa reset
+                if 0 < diff <= 60:
+                    logger.info(f"🔔 Turno {turno['nome']} terminando em {diff:.0f}s - Executando reset")
+                    
+                    # Chama endpoint de reset
+                    reset_url = "http://localhost:5000/api/shift/reset"
+                    reset_resp = requests.post(reset_url, json={}, timeout=5)
+                    
+                    if reset_resp.ok:
+                        result = reset_resp.json()
+                        logger.info(f"✓ Reset executado: {result.get('message')}")
+                    else:
+                        logger.error(f"Erro no reset: {reset_resp.status_code}")
+                
+                # Log de debug para turnos próximos (5 minutos)
+                elif 0 < diff <= 300:
+                    logger.debug(f"Turno {turno['nome']} termina em {diff/60:.1f} minutos")
+            
+            except Exception as e:
+                logger.error(f"Erro processando turno {turno.get('nome', 'desconhecido')}: {e}")
+    
+    except Exception as e:
+        logger.error(f"Erro no job de fim de turno: {e}")
+
 def job_continuous_optimization():
     """
     Periodic job to check for Golden State optimization opportunities.
@@ -55,6 +123,9 @@ def start_scheduler(app):
         scheduler = BackgroundScheduler()
         
         # Add job to run every 5 minutes
+        # Job de reset de turno (1 minuto)
+        scheduler.add_job(job_shift_end_check, 'interval', minutes=1, id='shift_end_check')
+        
         scheduler.add_job(job_continuous_optimization, 'interval', minutes=5, id='golden_state_opt')
         
         # New "The Watcher" Jobs (Auto-Capture Triggers)
