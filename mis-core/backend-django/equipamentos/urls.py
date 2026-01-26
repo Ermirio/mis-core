@@ -4,6 +4,7 @@ from . import views
 from . import tonnage_views
 from . import loss_analysis_views
 from . import waste_dashboard_views
+from .giveaway_views import GiveAwaySummaryView
 
 router = DefaultRouter()
 router.register(r'linhas', views.LinhaProducaoViewSet, basename='linha')
@@ -74,4 +75,7 @@ urlpatterns = [
     # === Dashboard de Análise de Descartes ===
     path('descartes/resumo/', waste_dashboard_views.WasteDashboardSummaryView.as_view(), name='waste-dashboard-summary'),
     path('descartes/linhas/', waste_dashboard_views.WasteLinhasDisponiveisView.as_view(), name='waste-linhas-disponiveis'),
+
+    # === Dashboard de Give Away ===
+    path('giveaway/resumo/', GiveAwaySummaryView.as_view(), name='giveaway-dashboard-summary'),
 ]

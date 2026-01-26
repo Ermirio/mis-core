@@ -178,7 +178,9 @@ const LineAnalytics: React.FC = () => {
             { nome: 'Disponibilidade', tag: 'disponibilidade_linha', desc: 'Disponibilidade da linha' },
             { nome: 'Performance', tag: 'performance_linha', desc: 'Performance da linha' },
             { nome: 'Qualidade', tag: 'qualidade_linha', desc: 'Qualidade da linha' },
-            { nome: 'Vazão Real (ton/h)', tag: 'vazao_linha_ton_h', desc: 'Taxa de produção' }
+            { nome: 'Vazão Real (ton/h)', tag: 'vazao_linha_ton_h', desc: 'Taxa de produção' },
+            { nome: 'Give Away (kg)', tag: 'giveaway_linha_kg', desc: 'Excesso de peso (kg)' },
+            { nome: 'Give Away (%)', tag: 'giveaway_linha_perc', desc: 'Percentual de perda por peso' }
         ];
 
         return consolidatedMetrics.map(m => ({

@@ -150,55 +150,71 @@ class WasteDashboardSummaryView(APIView):
                 linha_unidades = 0
                 
                 for eq in equipamentos:
-                    # Query para obter último e primeiro valor do período (para calcular delta)
-                    query_first = f"""
-                        SELECT FIRST("refugo_op_acumulado") as refugo, FIRST("contagem_saida") as prod, 
-                               FIRST("formato_gramas") as fmt
-                        FROM "production" 
-                        WHERE "equipment" = '{eq.codigo}' 
-                        AND time >= '{dt_inicio.isoformat()}' AND time <= '{dt_fim.isoformat()}'
+                    # Query para somar diferenças não-negativas (incrementos reais)
+                    # Isso captura o total produzido/descartado mesmo se o contador resetar (ex: troca de OP)
+                    # Agrupamos por 1m para ter resolução fina dos incrementos
+                    
+                    query_refugo = f"""
+                        SELECT SUM("diff") FROM (
+                            SELECT NON_NEGATIVE_DIFFERENCE(LAST("refugo_op_acumulado")) as "diff"
+                            FROM "production" 
+                            WHERE "equipment" = '{eq.codigo}' 
+                            AND time >= '{dt_inicio.isoformat()}' AND time <= '{dt_fim.isoformat()}'
+                            GROUP BY time(1m)
+                        )
                     """
-                    query_last = f"""
-                        SELECT LAST("refugo_op_acumulado") as refugo, LAST("contagem_saida") as prod,
-                               LAST("formato_gramas") as fmt
-                        FROM "production" 
-                        WHERE "equipment" = '{eq.codigo}' 
+                    
+                    query_prod = f"""
+                        SELECT SUM("diff") FROM (
+                            SELECT NON_NEGATIVE_DIFFERENCE(LAST("contagem_saida")) as "diff"
+                            FROM "production" 
+                            WHERE "equipment" = '{eq.codigo}' 
+                            AND time >= '{dt_inicio.isoformat()}' AND time <= '{dt_fim.isoformat()}'
+                            GROUP BY time(1m)
+                        )
+                    """
+                    
+                    # Formato: pegar o último (simplificação aceitável)
+                    query_fmt = f"""
+                        SELECT LAST("formato_gramas") as fmt
+                        FROM "production"
+                        WHERE "equipment" = '{eq.codigo}'
                         AND time >= '{dt_inicio.isoformat()}' AND time <= '{dt_fim.isoformat()}'
                     """
                     
-                    first_data = query_influxdb(query_first)
-                    last_data = query_influxdb(query_last)
+                    refugo_data = query_influxdb(query_refugo)
+                    prod_data = query_influxdb(query_prod)
+                    fmt_data = query_influxdb(query_fmt)
                     
-                    if first_data and last_data:
-                        first = first_data[0]
-                        last = last_data[0]
+                    refugo_delta = 0
+                    prod_delta = 0
+                    formato = 500.0
+                    
+                    if refugo_data and 'sum' in refugo_data[0]:
+                        refugo_delta = refugo_data[0]['sum'] or 0
                         
-                        refugo_delta = (last.get('refugo') or 0) - (first.get('refugo') or 0)
-                        prod_delta = (last.get('prod') or 0) - (first.get('prod') or 0)
-                        formato = last.get('fmt') or 500  # gramas
+                    if prod_data and 'sum' in prod_data[0]:
+                        prod_delta = prod_data[0]['sum'] or 0
                         
-                        # Se delta negativo (virada de turno), usar valor absoluto do último
-                        if refugo_delta < 0:
-                            refugo_delta = last.get('refugo') or 0
-                        if prod_delta < 0:
-                            prod_delta = last.get('prod') or 0
+                    if fmt_data and 'fmt' in fmt_data[0]:
+                        formato = fmt_data[0]['fmt'] or 500.0
                         
-                        eq_descarte_tons = (refugo_delta * formato) / 1000000
-                        eq_prod_tons = (prod_delta * formato) / 1000000
-                        
-                        linha_descarte_tons += eq_descarte_tons
-                        linha_producao_tons += eq_prod_tons
-                        linha_unidades += refugo_delta
-                        
-                        # Top equipamentos
-                        if refugo_delta > 0:
-                            top_equipamentos.append({
-                                'equipamento': eq.nome,
-                                'linha': linha.nome,
-                                'unidades': int(refugo_delta),
-                                'tons': round(eq_descarte_tons, 4),
-                                'percentual': 0  # Calculado depois
-                            })
+                    eq_descarte_tons = (refugo_delta * formato) / 1000000
+                    eq_prod_tons = (prod_delta * formato) / 1000000
+                    
+                    linha_descarte_tons += eq_descarte_tons
+                    linha_producao_tons += eq_prod_tons
+                    linha_unidades += refugo_delta
+                    
+                    # Top equipamentos
+                    if refugo_delta > 0:
+                        top_equipamentos.append({
+                            'equipamento': eq.nome,
+                            'linha': linha.nome,
+                            'unidades': int(refugo_delta),
+                            'tons': round(eq_descarte_tons, 4),
+                            'percentual': 0  # Calculado depois
+                        })
                 
                 # Calcular percentual da linha
                 linha_percentual = (linha_descarte_tons / linha_producao_tons * 100) if linha_producao_tons > 0 else 0
@@ -230,17 +246,23 @@ class WasteDashboardSummaryView(APIView):
             percentual_consolidado = (total_descarte_tons / total_producao_tons * 100) if total_producao_tons > 0 else 0
             
             # Query para evolução temporal (agrupado por hora)
-            # Simplificado: média por hora para todas as linhas
+            # Usando NON_NEGATIVE_DIFFERENCE para somar incrementos por hora
             eq_codes = [eq.codigo for linha in linhas for eq in Equipamento.objects.filter(linha=linha)]
             if eq_codes:
                 eq_filter = " OR ".join([f"\"equipment\" = '{c}'" for c in eq_codes])
+                
+                # Query complexa: Soma das diferenças de TODOS equipamentos, agrupados por 1h
                 query_temporal = f"""
-                    SELECT SUM("refugo_op_acumulado") as refugo, SUM("contagem_saida") as prod
-                    FROM "production"
-                    WHERE ({eq_filter})
-                    AND time >= '{dt_inicio.isoformat()}' AND time <= '{dt_fim.isoformat()}'
-                    GROUP BY time(1h)
+                    SELECT SUM("diff_refugo") as refugo, SUM("diff_prod") as prod FROM (
+                        SELECT NON_NEGATIVE_DIFFERENCE(LAST("refugo_op_acumulado")) as "diff_refugo",
+                               NON_NEGATIVE_DIFFERENCE(LAST("contagem_saida")) as "diff_prod"
+                        FROM "production"
+                        WHERE ({eq_filter})
+                        AND time >= '{dt_inicio.isoformat()}' AND time <= '{dt_fim.isoformat()}'
+                        GROUP BY time(1h), "equipment"
+                    ) GROUP BY time(1h)
                 """
+                
                 temporal_data = query_influxdb(query_temporal)
                 evolucao_temporal = [
                     {
@@ -250,6 +272,64 @@ class WasteDashboardSummaryView(APIView):
                     }
                     for p in temporal_data if p.get('time')
                 ]
+            
+            # === ANÁLISE DE DESCARTE POR ESTADO ===
+            # Estratégia: Buscar delta refugo e estado minuto a minuto para cada equipamento
+            # e correlacionar: se houve descarte naquele minuto, atribuir ao estado daquele minuto.
+            
+            descarte_por_estado_raw = {}  # {0: 15.5, 1: 200.0, ...}
+            
+            for linha in linhas:
+                equipamentos = Equipamento.objects.filter(linha=linha)
+                for eq in equipamentos:
+                    # Busca detalhada minuto a minuto
+                    query_state_waste = f"""
+                        SELECT NON_NEGATIVE_DIFFERENCE(LAST("refugo_op_acumulado")) as "diff_refugo",
+                               LAST("estado_maquina") as "state",
+                               LAST("formato_gramas") as "fmt"
+                        FROM "production"
+                        WHERE "equipment" = '{eq.codigo}'
+                        AND time >= '{dt_inicio.isoformat()}' AND time <= '{dt_fim.isoformat()}'
+                        GROUP BY time(1m)
+                    """
+                    state_data = query_influxdb(query_state_waste)
+                    
+                    for point in state_data:
+                        diff = point.get('diff_refugo', 0)
+                        if diff and diff > 0:
+                            state = int(point.get('state', 1)) # Default 1 (Produzindo) se null
+                            fmt = point.get('fmt', 500.0)
+                            
+                            tons = (diff * fmt) / 1000000.0
+                            
+                            descarte_por_estado_raw[state] = descarte_por_estado_raw.get(state, 0) + tons
+
+            # Mapeamento de Estados (Conforme dataValidation.ts)
+            ESTADO_MAP = {
+                0: 'Parado',
+                1: 'Produzindo',
+                2: 'Aguardando',
+                3: 'Manutenção',
+                4: 'Offline'
+            }
+            
+            descarte_por_estado = []
+            for state_code, tons in descarte_por_estado_raw.items():
+                label = ESTADO_MAP.get(state_code, f'Estado {state_code}')
+                descarte_por_estado.append({
+                    'estado_code': state_code,
+                    'estado_label': label,
+                    'tons': round(tons, 4),
+                    'percentual': 0 # Calculado abaixo
+                })
+            
+            # Calcular percentuais
+            total_waste_state = sum(d['tons'] for d in descarte_por_estado)
+            for d in descarte_por_estado:
+                d['percentual'] = round((d['tons'] / total_waste_state * 100) if total_waste_state > 0 else 0, 1)
+                
+            # Ordenar por maior descarte
+            descarte_por_estado = sorted(descarte_por_estado, key=lambda x: x['tons'], reverse=True)
             
             response_data = {
                 'periodo': periodo,
@@ -266,7 +346,8 @@ class WasteDashboardSummaryView(APIView):
                 'por_linha': dados_por_linha,
                 'top_equipamentos': top_equipamentos,
                 'linha_maior_descarte': linha_maior_descarte,
-                'evolucao_temporal': evolucao_temporal[:24]  # Limitar a 24 pontos
+                'evolucao_temporal': evolucao_temporal[:24],
+                'descarte_por_estado': descarte_por_estado  # Novo campo
             }
             
             return Response(response_data)

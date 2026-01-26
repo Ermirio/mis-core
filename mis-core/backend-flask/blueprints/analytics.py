@@ -40,6 +40,7 @@ def query_influx_to_df(client, tags, start_time, end_time):
             alias = tag_info.get('alias', field)
             
             # Check if this is a consolidated metric
+            # Check if this is a consolidated metric
             if field in CONSOLIDATED_METRICS:
                 # Get all equipment codes for this line
                 try:
@@ -51,9 +52,11 @@ def query_influx_to_df(client, tags, start_time, end_time):
                         equipment_codes = [e.get('codigo') for e in equipment_list if e.get('codigo')]
                     else:
                         equipment_codes = []
+                        equipment_list = []
                 except Exception as e:
                     logger.warning(f"Could not fetch equipment list for line {eq_code}: {e}")
                     equipment_codes = []
+                    equipment_list = []
                 
                 if not equipment_codes:
                     continue
@@ -106,8 +109,67 @@ def query_influx_to_df(client, tags, start_time, end_time):
                     
                     df_agg = pd.DataFrame({alias: agg_series})
                     dfs.append(df_agg)
+
+            # === GIVE AWAY (Calculated Series) ===
+            elif field in ['giveaway_linha_kg', 'giveaway_linha_perc']:
+                try:
+                    # 1. Busca configs de equipamento
+                    django_url = f"http://mis-core-django:8000/api/equipamentos/?linha__codigo={eq_code}"
+                    resp = http_requests.get(django_url, timeout=5)
+                    eq_list = []
+                    if resp.status_code == 200:
+                        data = resp.json()
+                        eq_list = data.get('results', data) if isinstance(data, dict) else data
                     
+                    # 2. Identifica Weighing Equipment (Enchedora > Balança > Ordem 1)
+                    weighing_eq = next((e['codigo'] for e in eq_list if e.get('tipo') == 'ENCHEDORA'), None)
+                    if not weighing_eq:
+                        weighing_eq = next((e['codigo'] for e in eq_list if e.get('tipo') == 'BALANCA'), None)
+                    if not weighing_eq:
+                        weighing_eq = next((e['codigo'] for e in eq_list if e.get('ordem_na_linha') == 1), None)
+                    
+                    if weighing_eq:
+                        # 3. Query Específica
+                        # MEAN(peso), LAST(meta), DIFF(count)
+                        q_ga = f"""
+                            SELECT 
+                                MEAN("ultimo_peso") as peso_medio, 
+                                LAST("formato_gramas") as peso_alvo, 
+                                NON_NEGATIVE_DIFFERENCE(LAST("contagem_saida")) as producao 
+                            FROM "production" 
+                            WHERE "equipment" = '{weighing_eq}' 
+                            AND time >= '{start_time}' AND time <= '{end_time}' 
+                            GROUP BY time(1m)
+                        """
+                        rs_ga = client.query(q_ga)
+                        points_ga = list(rs_ga.get_points())
+                        
+                        if points_ga:
+                            df_ga = pd.DataFrame(points_ga)
+                            df_ga['time'] = pd.to_datetime(df_ga['time'], utc=True).dt.tz_convert('America/Sao_Paulo')
+                            df_ga.set_index('time', inplace=True)
+                            
+                            df_ga['peso_medio'] = pd.to_numeric(df_ga['peso_medio'], errors='coerce')
+                            df_ga['peso_alvo'] = pd.to_numeric(df_ga['peso_alvo'], errors='coerce')
+                            df_ga['producao'] = pd.to_numeric(df_ga['producao'], errors='coerce').fillna(0)
+                            
+                            # Cálculo: (Medio - Alvo) * Prod / 1000
+                            df_ga['_giveaway_kg'] = (df_ga['peso_medio'] - df_ga['peso_alvo']) * df_ga['producao'] / 1000.0
+                            
+                            if field == 'giveaway_linha_perc':
+                                prod_ref = (df_ga['peso_alvo'] * df_ga['producao'] / 1000.0).replace(0, np.nan)
+                                series_result = (df_ga['_giveaway_kg'] / prod_ref * 100).fillna(0)
+                            else:
+                                series_result = df_ga['_giveaway_kg']
+                                
+                            df_final = pd.DataFrame({alias: series_result})
+                            dfs.append(df_final)
+
+                except Exception as e:
+                    logger.error(f"Erro calculando Give Away para {eq_code}: {e}")
+
             else:
+
                 # Standard equipment-level query (original logic)
                 query = f"SELECT \"{field}\" FROM \"production\" WHERE \"equipment\" = '{eq_code}' AND time >= '{start_time}' AND time <= '{end_time}'"
                 

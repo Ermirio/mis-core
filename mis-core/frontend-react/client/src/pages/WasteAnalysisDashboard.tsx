@@ -52,6 +52,12 @@ interface WasteData {
         descarte: number;
         producao: number;
     }>;
+    descarte_por_estado?: Array<{
+        estado_code: number;
+        estado_label: string;
+        tons: number;
+        percentual: number;
+    }>;
 }
 
 interface LinhaOption {
@@ -146,6 +152,17 @@ const WasteAnalysisDashboard: React.FC = () => {
         a.href = url;
         a.download = `descartes_${periodo}_${format(new Date(), 'yyyy-MM-dd')}.csv`;
         a.click();
+    };
+
+    // Cores para estados
+    const getEstadoColor = (label: string) => {
+        const lower = label.toLowerCase();
+        if (lower.includes('produzindo')) return '#22c55e'; // Green
+        if (lower.includes('parado')) return '#ef4444'; // Red
+        if (lower.includes('manutenção') || lower.includes('manutencao')) return '#8b5cf6'; // Purple
+        if (lower.includes('aguardando') || lower.includes('block')) return '#f97316'; // Orange
+        if (lower.includes('offline')) return '#64748b'; // Slate
+        return '#94a3b8'; // Default Gray
     };
 
     return (
@@ -313,9 +330,9 @@ const WasteAnalysisDashboard: React.FC = () => {
             </div>
 
             {/* Gráficos */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+            <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6 mb-6">
                 {/* Comparação por Linha */}
-                <Card className="shadow-lg">
+                <Card className="shadow-lg lg:col-span-2 xl:col-span-1">
                     <CardHeader>
                         <CardTitle className="flex items-center gap-2">
                             <BarChart3 className="h-5 w-5 text-blue-500" />
@@ -389,7 +406,50 @@ const WasteAnalysisDashboard: React.FC = () => {
                                     height: 300,
                                     margin: { l: 20, r: 20, t: 30, b: 30 },
                                     showlegend: true,
-                                    legend: { orientation: 'v', x: 1, y: 0.5, font: { size: 10 } }
+                                    legend: { orientation: 'h', y: -0.2 }
+                                }}
+                                useResizeHandler
+                                className="w-full"
+                            />
+                        ) : (
+                            <div className="h-[300px] flex items-center justify-center text-slate-400">
+                                Sem dados disponíveis
+                            </div>
+                        )}
+                    </CardContent>
+                </Card>
+
+                {/* Descarte por Estado (NOVO) */}
+                <Card className="shadow-lg">
+                    <CardHeader>
+                        <CardTitle className="flex items-center gap-2">
+                            <PieChart className="h-5 w-5 text-orange-500" />
+                            Descarte por Estado
+                        </CardTitle>
+                        <CardDescription>Associação com estado da máquina</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                        {data?.descarte_por_estado && data.descarte_por_estado.length > 0 ? (
+                            <Plot
+                                data={[
+                                    {
+                                        labels: data.descarte_por_estado.map(d => d.estado_label),
+                                        values: data.descarte_por_estado.map(d => d.tons),
+                                        type: 'pie',
+                                        hole: 0.6,
+                                        textinfo: 'percent',
+                                        textposition: 'outside',
+                                        marker: {
+                                            colors: data.descarte_por_estado.map(d => getEstadoColor(d.estado_label))
+                                        }
+                                    }
+                                ]}
+                                layout={{
+                                    autosize: true,
+                                    height: 300,
+                                    margin: { l: 20, r: 20, t: 30, b: 30 },
+                                    showlegend: true,
+                                    legend: { orientation: 'h', y: -0.2 }
                                 }}
                                 useResizeHandler
                                 className="w-full"

@@ -97,6 +97,15 @@ const Sidebar: React.FC<SidebarProps> = ({ collapsed, onToggle }) => {
           {!collapsed && <span>Descartes</span>}
         </NavLink>
 
+        <NavLink
+          to="/giveaway"
+          className={({ isActive }) => isActive ? "sidebar-link active" : "sidebar-link"}
+          title="Gestão de Give Away"
+        >
+          <span>⚖️</span>
+          {!collapsed && <span>Give Away</span>}
+        </NavLink>
+
         <div className="sidebar-divider"></div>
         {!collapsed && <p className="sidebar-section-title">LINHAS DE PRODUÇÃO</p>}
 

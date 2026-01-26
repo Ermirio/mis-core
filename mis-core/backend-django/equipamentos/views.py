@@ -4,6 +4,7 @@ from rest_framework.response import Response
 from django.db.models import Q, Sum, Avg, Max, Min, Count, F
 from django.utils import timezone
 from datetime import datetime, timedelta
+import pytz
 import logging
 import sys
 import os
@@ -1183,6 +1184,96 @@ def metricas_linha_consolidadas(request):
         except Exception as e:
             logging.error(f"Erro ao buscar OP/Meta em tempo real: {e}")
         
+            # --- INJEÇÃO DE GIVE AWAY (On-the-fly) ---
+            try:
+                # 1. Identificar Equipamento de Pesagem (Enchedora > Balança > Ordem 1)
+                eq_peso = equipamentos_linha.filter(tipo='ENCHEDORA').first()
+                if not eq_peso:
+                    eq_peso = equipamentos_linha.filter(tipo='BALANCA').first()
+                if not eq_peso:
+                    eq_peso = equipamentos_linha.filter(ordem_na_linha=1).first()
+                
+                if eq_peso:
+                    # Preparar limites de data para Influx (UTC)
+                    now_utc = timezone.now().astimezone(pytz.UTC)
+                    start_dt = metricas.last().data_hora.astimezone(pytz.UTC) if metricas.exists() else (now_utc - timedelta(hours=24))
+                    end_dt = metricas.first().data_hora.astimezone(pytz.UTC) + timedelta(hours=1) if metricas.exists() else now_utc
+                    
+                    time_start_str = start_dt.strftime('%Y-%m-%dT%H:%M:%SZ')
+                    time_end_str = end_dt.strftime('%Y-%m-%dT%H:%M:%SZ')
+
+                    # Query Influx agrupada por Hora (compatível com granularidade base)
+                    # Nota: Se o período for TURNO, ideal seria agrupar diferente, mas HORA funciona como base para lookup
+                    client_influx = get_influx_client()
+                    query_ga = f"""
+                        SELECT MEAN("ultimo_peso") as "peso_medio", LAST("formato_gramas") as "peso_alvo"
+                        FROM "production"
+                        WHERE "equipment" = '{eq_peso.codigo}'
+                        AND time >= '{time_start_str}' AND time <= '{time_end_str}'
+                        GROUP BY time(1h)
+                    """
+                    result_ga = client_influx.query(query_ga)
+                    points_ga = list(result_ga.get_points())
+                    
+                    # Indexar pontos Influx por timestamp (Hora cheia str) para lookup rápido
+                    # Influx retorna strings como '2026-01-26T14:00:00Z'
+                    ga_map = {}
+                    for p in points_ga:
+                        try:
+                            # Chave: 'YYYY-MM-DDTHH'
+                            ts_key = p['time'][:13] 
+                            ga_map[ts_key] = p
+                        except:
+                            pass
+
+                    # Cruzar dados e injetar nos itens
+                    for item in metricas_data:
+                        try:
+                            # item['data_hora'] é string ISO do DRF
+                            # Extrai YYYY-MM-DDTHH para match
+                            ts_iso = item.get('data_hora', '')
+                            if ts_iso:
+                                # Normaliza para UTC se vier com offset (ex: -03:00)
+                                # Mas o match simples de string pode falhar se fusos diferentes.
+                                # DRF usually outputs ISO. Vamos tentar match flexível.
+                                key_lookup = ts_iso[:13] 
+                                
+                                # Ajuste de Fuso: Influx é UTC (Z). Metricas pode ser Local (-03).
+                                # Se Metrica for 14:00 Local, é 17:00 UTC.
+                                # Precisamos converter item['data_hora'] para UTC para buscar no map.
+                                dt_item = datetime.fromisoformat(ts_iso.replace('Z', '+00:00'))
+                                if dt_item.tzinfo:
+                                    dt_item_utc = dt_item.astimezone(pytz.UTC)
+                                else:
+                                    dt_item_utc = pytz.timezone('America/Sao_Paulo').localize(dt_item).astimezone(pytz.UTC)
+                                
+                                key_utc = dt_item_utc.strftime('%Y-%m-%dT%H')
+                                
+                                point = ga_map.get(key_utc)
+                                if point and point.get('peso_medio') and point.get('peso_alvo'):
+                                    peso_medio = point['peso_medio']
+                                    peso_alvo = point['peso_alvo']
+                                    producao = item.get('contagem_saida') or 0
+                                    
+                                    diff_g = peso_medio - peso_alvo
+                                    giveaway_kg = (diff_g * producao) / 1000.0
+                                    
+                                    prod_ref_kg = (peso_alvo * producao) / 1000.0
+                                    percent = (giveaway_kg / prod_ref_kg * 100) if prod_ref_kg > 0 else 0.0
+                                    
+                                    item['giveaway_kg'] = round(giveaway_kg, 3)
+                                    item['giveaway_percent'] = round(percent, 2)
+                                else:
+                                    item['giveaway_kg'] = 0.0
+                                    item['giveaway_percent'] = 0.0
+                        except Exception as inner_e:
+                             # Falha pontual de calculo não deve parar o loop
+                             pass
+
+            except Exception as e:
+                logging.error(f"Erro ao injetar Give Away nas métricas consolidadas: {e}")
+                # Não quebra a resposta principal
+            
         return Response({
             'status': 'success',
             'total': metricas.count(),

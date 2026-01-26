@@ -143,4 +143,10 @@ REST_FRAMEWORK = {
 }
 
 
-IMPORT_EXPORT_USE_TRANSACTIONS = True
+
+# --- InfluxDB ---
+INFLUXDB_HOST = config('INFLUXDB_HOST', default='mis-core-influxdb')
+INFLUXDB_PORT = config('INFLUXDB_PORT', default=8086, cast=int)
+INFLUXDB_USER = config('INFLUXDB_USER', default='admin')
+INFLUXDB_PASSWORD = config('INFLUXDB_PASSWORD', default='admin123')
+INFLUXDB_DATABASE = config('INFLUXDB_DB', default='industrial_db')
