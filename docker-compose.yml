@@ -55,7 +55,7 @@ services:
 
   # ===== DJANGO (CORE BACKEND) =====
   django:
-    image: mis-core-django:v1.0
+    image: mis-core-django:v2.0
     build:
       context: ./mis-core/backend-django
       dockerfile: Dockerfile
@@ -100,7 +100,7 @@ services:
 
   # ===== FRONTEND CORE (NGINX) =====
   frontend:
-    image: mis-core-frontend:v1.0
+    image: mis-core-frontend:v2.1
     build:
       context: ./mis-core/frontend-react
       dockerfile: Dockerfile
@@ -123,7 +123,7 @@ services:
 
   # ===== PROXY REVERSO =====
   nginx-proxy:
-    image: mis-core-proxy:v1.0
+    image: mis-core-proxy:v2.0
     build:
       context: ./proxy-reverse
       dockerfile: Dockerfile
@@ -145,6 +145,8 @@ services:
       mis-ai-backend:
         condition: service_started
       mis-ai-frontend:
+        condition: service_started
+      emqx:
         condition: service_started
     restart: unless-stopped
 
@@ -294,16 +296,25 @@ services:
       - mis-network
     restart: unless-stopped
 
-  mosquitto:
-    image: eclipse-mosquitto:latest
-    container_name: mis-core-mosquitto
+  emqx:
+    image: emqx/emqx:5.8.5
+    container_name: mis-core-emqx
+    user: root
+    environment:
+      # Desabilitar autenticação padrão para testes iniciais (opcional, mas recomendado manter on)
+      # EMQX_ALLOW_ANONYMOUS: "true"
+      # Dashboard User
+      EMQX_DASHBOARD__DEFAULT_USERNAME: admin
+      EMQX_DASHBOARD__DEFAULT_PASSWORD: public
     volumes:
-      - ./mis-core/mosquitto/config/mosquitto.conf:/mosquitto/config/mosquitto.conf
-      - mosquitto_data:/mosquitto/data
-      - mosquitto_log:/mosquitto/log
+      - emqx_data:/opt/emqx/data
+      - emqx_log:/opt/emqx/log
     ports:
-      - "1883:1883"
-      - "9001:9001"
+      - "1883:1883" # MQTT TCP
+      - "8083:8083" # WebSocket
+      - "8084:8084" # WebSocket SSL
+      - "8883:8883" # MQTT SSL
+      - "18083:18083" # Dashboard (HTTP)
     networks:
       - mis-network
     restart: unless-stopped
@@ -314,7 +325,7 @@ services:
 
   # Legado Core Flask (Manter ou Remover? Mantendo por compatibilidade)
   flask:
-    image: mis-core-flask:v1.1
+    image: mis-core-flask:v2.0
     build:
       context: ./mis-core/backend-flask
       dockerfile: Dockerfile
@@ -328,6 +339,7 @@ services:
       DJANGO_HOST: django
       DJANGO_PORT: 8000
       DJANGO_API_URL: http://django:8000/api
+      TZ: ${TZ}
     ports:
       - "${FLASK_HOST_PORT}:5000"
     volumes:
@@ -340,7 +352,7 @@ services:
     restart: unless-stopped
 
   coletor:
-    image: mis-core-coletor:v1.0
+    image: mis-core-coletor:v2.0
     build:
       context: ./mis-core/coletor
       dockerfile: Dockerfile
@@ -393,10 +405,10 @@ volumes:
     name: mis-core-node-red-data
   grafana_data:
     name: mis-core-grafana-data
-  mosquitto_data:
-    name: mis-core-mosquitto-data
-  mosquitto_log:
-    name: mis-core-mosquitto-log
+  emqx_data:
+    name: mis-core-emqx-data
+  emqx_log:
+    name: mis-core-emqx-log
   django_static:
     name: mis-core-django-static
 

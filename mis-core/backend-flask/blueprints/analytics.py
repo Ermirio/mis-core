@@ -11,56 +11,120 @@ logger = logging.getLogger(__name__)
 def query_influx_to_df(client, tags, start_time, end_time):
     """
     Queries InfluxDB for multiple tags and returns a single aligned DataFrame.
-    Assumes tags are in 'production' or 'machine_status' measurements?
-    Actually, tags map to Fields in 'production' usually.
-    OR 'tags' arg might be a list of dicts: {'measurement': 'production', 'field': 'velocidade'}
+    Supports both equipment-level and line-level (consolidated) metrics.
     
-    For simplicity, assuming all process variables are fields in 'production'.
+    Line-level metrics are detected by tag_influx patterns like:
+    - producao_linha_tons, descarte_linha_tons, oee_linha, etc.
     """
     try:
-        # Build query
-        # We need to query each field. If they are in the same measurement, we can query together?
-        # InfluxQL is tricky with multiple fields if they have different timestamps (which they might).
-        # Best to query individually and merge in Pandas.
+        import requests as http_requests
+        
+        # Mapping for consolidated metrics: tag_influx -> influx field + aggregation
+        # NOTA: 'descarte' no InfluxDB está sempre 0, o valor correto está em 'refugo_op_acumulado'
+        CONSOLIDATED_METRICS = {
+            'producao_linha_tons': {'field': 'contagem_saida', 'agg': 'sum', 'convert_tons': True},
+            'descarte_linha_tons': {'field': 'refugo_op_acumulado', 'agg': 'last_diff', 'convert_tons': True},  # Usa refugo_op_acumulado
+            'descarte_linha_perc': {'field': 'refugo_op_acumulado', 'agg': 'percent'},
+            'oee_linha': {'field': 'oee_realtime', 'agg': 'mean'},
+            'disponibilidade_linha': {'field': 'availability_realtime', 'agg': 'mean'},
+            'performance_linha': {'field': 'performance_realtime', 'agg': 'mean'},
+            'qualidade_linha': {'field': 'quality_realtime', 'agg': 'mean'},
+            'vazao_linha_ton_h': {'field': 'velocidade_atual', 'agg': 'mean'}
+        }
         
         dfs = []
         
         for tag_info in tags:
-            # tag_info: { 'tag_influx': 'velocidade_atual', 'equipamento_code': 'E001', 'alias': 'Velocidade Enchedora' }
             field = tag_info.get('tag_influx')
             eq_code = tag_info.get('equipamento_code')
             alias = tag_info.get('alias', field)
             
-            # Construct Query: SELECT mean("field") FROM "production" WHERE "equipment"='...' AND time > ... GROUP BY time(1m) FILL(null)
-            # Using mean/resample in Influx is efficient for long ranges.
-            # But for Histogram we want RAW data?
-            # If range is huge, raw data is too big.
-            # Let's try raw data if range < 24h, else aggregate?
-            
-            # For correlation, we NEED aligned timestamps.
-            # Let's allow resample_interval param.
-            
-            query = f"SELECT \"{field}\" FROM \"production\" WHERE \"equipment\" = '{eq_code}' AND time >= '{start_time}' AND time <= '{end_time}'"
-            
-            rs = client.query(query)
-            points = list(rs.get_points())
-            
-            if points:
-                df = pd.DataFrame(points)
-                # Convert UTC to America/Sao_Paulo
-                df['time'] = pd.to_datetime(df['time'], utc=True).dt.tz_convert('America/Sao_Paulo')
-                df.set_index('time', inplace=True)
-                df.rename(columns={field: alias}, inplace=True)
-                # Ensure numeric
-                df[alias] = pd.to_numeric(df[alias], errors='coerce')
-                dfs.append(df)
+            # Check if this is a consolidated metric
+            if field in CONSOLIDATED_METRICS:
+                # Get all equipment codes for this line
+                try:
+                    django_url = f"http://mis-core-django:8000/api/equipamentos/?linha__codigo={eq_code}"
+                    resp = http_requests.get(django_url, timeout=5)
+                    if resp.status_code == 200:
+                        eq_data = resp.json()
+                        equipment_list = eq_data.get('results', eq_data) if isinstance(eq_data, dict) else eq_data
+                        equipment_codes = [e.get('codigo') for e in equipment_list if e.get('codigo')]
+                    else:
+                        equipment_codes = []
+                except Exception as e:
+                    logger.warning(f"Could not fetch equipment list for line {eq_code}: {e}")
+                    equipment_codes = []
+                
+                if not equipment_codes:
+                    continue
+                
+                # Query each equipment and aggregate
+                metric_config = CONSOLIDATED_METRICS[field]
+                influx_field = metric_config['field']
+                all_eq_dfs = []
+                
+                for eq in equipment_codes:
+                    query = f"SELECT \"{influx_field}\" FROM \"production\" WHERE \"equipment\" = '{eq}' AND time >= '{start_time}' AND time <= '{end_time}'"
+                    rs = client.query(query)
+                    points = list(rs.get_points())
+                    
+                    if points:
+                        df_eq = pd.DataFrame(points)
+                        df_eq['time'] = pd.to_datetime(df_eq['time'], utc=True).dt.tz_convert('America/Sao_Paulo')
+                        df_eq.set_index('time', inplace=True)
+                        df_eq[influx_field] = pd.to_numeric(df_eq[influx_field], errors='coerce')
+                        df_eq['equipment'] = eq  # Tag para identificar equipamento
+                        all_eq_dfs.append(df_eq)
+                
+                if all_eq_dfs:
+                    # Combine all equipment data
+                    combined = pd.concat(all_eq_dfs, axis=0)
+                    
+                    # Resample and aggregate based on type
+                    if metric_config['agg'] == 'sum':
+                        agg_series = combined[influx_field].resample('1min').sum()
+                    elif metric_config['agg'] == 'mean':
+                        agg_series = combined[influx_field].resample('1min').mean()
+                    elif metric_config['agg'] == 'last_diff':
+                        # Para contadores acumulativos: pega o ÚLTIMO valor de cada equipamento por minuto
+                        # e soma todos equipamentos
+                        agg_series = combined.groupby('equipment')[influx_field].resample('1min').last().groupby(level=1).sum()
+                    else:
+                        agg_series = combined[influx_field].resample('1min').mean()
+                    
+                    # Convert to tons if needed
+                    if metric_config.get('convert_tons'):
+                        # Get format from first equipment (simplification)
+                        try:
+                            fmt_query = f"SELECT last(\"formato_gramas\") FROM \"production\" WHERE \"equipment\" = '{equipment_codes[0]}'"
+                            fmt_rs = client.query(fmt_query)
+                            fmt_pts = list(fmt_rs.get_points())
+                            formato = float(fmt_pts[0].get('last', 500)) if fmt_pts else 500.0
+                        except:
+                            formato = 500.0
+                        agg_series = agg_series * formato / 1000000.0
+                    
+                    df_agg = pd.DataFrame({alias: agg_series})
+                    dfs.append(df_agg)
+                    
+            else:
+                # Standard equipment-level query (original logic)
+                query = f"SELECT \"{field}\" FROM \"production\" WHERE \"equipment\" = '{eq_code}' AND time >= '{start_time}' AND time <= '{end_time}'"
+                
+                rs = client.query(query)
+                points = list(rs.get_points())
+                
+                if points:
+                    df = pd.DataFrame(points)
+                    df['time'] = pd.to_datetime(df['time'], utc=True).dt.tz_convert('America/Sao_Paulo')
+                    df.set_index('time', inplace=True)
+                    df.rename(columns={field: alias}, inplace=True)
+                    df[alias] = pd.to_numeric(df[alias], errors='coerce')
+                    dfs.append(df)
         
         if not dfs:
             return pd.DataFrame()
             
-        # Merge all DFs on index (outer join to keep all timestamps initially)
-        # For correlation, we often need 'inner' or forward fill.
-        # concat axis=1 matches indexes
         full_df = pd.concat(dfs, axis=1)
         
         return full_df
@@ -68,6 +132,7 @@ def query_influx_to_df(client, tags, start_time, end_time):
     except Exception as e:
         logger.error(f"Error querying influx: {e}")
         return pd.DataFrame()
+
 
 @analytics_bp.route('/analyze/stats', methods=['POST'])
 def analyze_stats():

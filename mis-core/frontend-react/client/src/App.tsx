@@ -9,6 +9,7 @@ import LineManagement from "./pages/LineManagement.tsx";
 import LineDeepView from "./pages/LineDeepView";
 import FactoryManagementPanel from "./pages/FactoryManagementPanel";
 import LineAnalytics from "./pages/LineAnalytics";
+import WasteAnalysisDashboard from "./pages/WasteAnalysisDashboard";
 
 import React, { useState } from "react";
 import SplashScreen from "./components/SplashScreen";
@@ -31,6 +32,7 @@ function App() {
             <Route path="diagnosticos" element={<DiagnosticosLogs />} />
             <Route path="linha-management/:linhaId" element={<LineManagement />} />
             <Route path="analytics" element={<LineAnalytics />} />
+            <Route path="descartes" element={<WasteAnalysisDashboard />} />
           </Route>
         </Routes>
       )}

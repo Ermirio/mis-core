@@ -170,6 +170,7 @@ class ProductionEngine:
             self._cache[equipment_code] = {
                 # Acumuladores de produção
                 'last_raw': None,
+                'last_raw_input': None, # Counter de Entrada
                 'last_waste': None,
                 'op_code': None,
                 'acc_op': 0,
@@ -220,6 +221,9 @@ class ProductionEngine:
                 raw_val = d.get('contagem_saida')
                 if raw_val is not None: state['last_raw'] = int(raw_val)
                 
+                raw_in_val = d.get('contagem_entrada')
+                if raw_in_val is not None: state['last_raw_input'] = int(raw_in_val)
+                
                 waste_val = d.get('descarte')
                 if waste_val is not None: state['last_waste'] = int(waste_val)
                 
@@ -242,7 +246,7 @@ class ProductionEngine:
             logger.error(f"Erro load state: {e}")
             state['initialized'] = True
 
-    def processar_dados(self, equipamento, op_atual, contagem_bruta, descarte, formato_gramas, planejado, velocidade_atual, estado_maquina, extra_context=None):
+    def processar_dados(self, equipamento, op_atual, contagem_bruta, descarte, formato_gramas, planejado, velocidade_atual, estado_maquina, extra_context=None, contagem_entrada=0):
         # 1. Contexto
         now_timestamp = time.time()
         turno_info = self.shift_manager.get_turno_info()
@@ -295,18 +299,16 @@ class ProductionEngine:
                 time_delta = 0.0
         
         # 5. Acumula Tempo Parado
-        # Somente acumula se o ESTADO ANTERIOR era diferente de 1 (Produzindo)
         if state['last_estado'] is not None and time_delta > 0:
             if state['last_estado'] != 1:  # 1 = Produzindo
                 state['acc_time_stop_shift'] += time_delta
-                logger.debug(f"{equipamento}: +{time_delta:.1f}s parado (total: {state['acc_time_stop_shift']:.1f}s)")
         
         # Atualiza referências temporais
         state['last_timestamp'] = now_timestamp
         state['last_estado'] = estado_maquina
 
-        # 6. Deltas de Produção e Refugo com Detecção Inteligente de Reset
-        delta = 0
+        # 6. Deltas de Produção com Detecção Inteligente de Reset e MASS BALANCE
+        # --- DELTA PRODUCTION (SAÍDA) ---
         if state['last_raw'] is not None:
             delta = contagem_bruta - state['last_raw']
             
@@ -315,41 +317,55 @@ class ProductionEngine:
                 logger.info(f"{equipamento}: Reset físico detectado (contador diminuiu: {state['last_raw']} -> {contagem_bruta})")
                 delta = contagem_bruta  # Usa valor atual como delta
             
-            # Detecção de "Início Impossível" (valor alto no início do turno)
-            # Se mudou de turno recentemente E delta é muito alto (> 1000), pode ser lixo
+            # Reset Lógico (Turno)
             elif shift_changed and delta > 1000:
-                logger.warning(f"{equipamento}: Delta suspeito após mudança de turno ({delta}), ignorando e usando valor atual")
-                delta = 0  # Ignora este delta, começa do zero
-            
-            delta = max(0, delta)  # Garante que nunca seja negativo
-        else:
-            # Primeira medição: se valor é muito alto (> 500), pode ser lixo de turno anterior
-            if contagem_bruta > 500:
-                logger.warning(f"{equipamento}: Primeira medição com valor alto ({contagem_bruta}), considerando como 0")
                 delta = 0
-            else:
-                delta = contagem_bruta
+            
+            delta = max(0, delta)
+        else:
+            # Primeira medição após restart:
+            # NÃO calcula delta (assume que o que passou, passou), apenas sincroniza o last_raw
+            # Isso evita que o primeiro pacote gere um pico falso ou zero indevido.
+            if contagem_bruta > 0:
+                 logger.info(f"{equipamento}: Sincronizando contador inicial: {contagem_bruta}")
+            delta = 0
+            # Se fosse necessário recuperar "o que perdeu enquanto estava off", precisaríamos do last_raw salvo no DB.
+            # O _load_state_from_db já tentou recuperar. Se ainda é None, é porque não tem histórico ou falhou.
         
         state['last_raw'] = contagem_bruta
 
-        delta_waste = 0
-        if state['last_waste'] is not None:
-            delta_waste = descarte - state['last_waste']
-            
-            if delta_waste < 0:
-                logger.info(f"{equipamento}: Reset físico de descarte detectado ({state['last_waste']} -> {descarte})")
-                delta_waste = descarte
-            
-            delta_waste = max(0, delta_waste)
+        # --- DELTA INPUT (ENTRADA) ---
+        delta_input = 0
+        if state['last_raw_input'] is not None:
+            delta_input = contagem_entrada - state['last_raw_input']
+            if delta_input < 0: # Reset
+                delta_input = contagem_entrada
+            elif shift_changed and delta_input > 1000:
+                delta_input = 0
+            delta_input = max(0, delta_input)
         else:
-            # Primeira medição de descarte
-            if descarte > 100:
-                logger.warning(f"{equipamento}: Primeira medição de descarte com valor alto ({descarte}), considerando como 0")
-                delta_waste = 0
-            else:
-                delta_waste = descarte
+            # Init Check
+            if contagem_entrada > 0:
+                 logger.info(f"{equipamento}: Sincronizando contador entrada inicial: {contagem_entrada}")
+            delta_input = 0
         
-        state['last_waste'] = descarte
+        state['last_raw_input'] = contagem_entrada
+
+        # --- WASTE CALCULATION (MASS BALANCE) ---
+        # Waste = (Input - Output)
+        # We calculate delta_waste based on deltas
+        
+        delta_waste_calc = delta_input - delta
+        
+        # DEBUG LOGGING (Optional - too verbose?)
+        # if delta_input > 0 or delta > 0:
+        #    logger.debug(f"{equipamento} Mass Balance: In={delta_input}, Out={delta}, Waste={delta_waste_calc}")
+
+        # Accumulate Waste
+        # Allows negative delta_waste (buffer clearing) but keeps total accumulated waste >= 0
+        state['acc_waste_op'] += delta_waste_calc
+        if state['acc_waste_op'] < 0:
+            state['acc_waste_op'] = 0 # Cannot have negative total waste
 
         # 7. Acumuladores de Produção
         if delta > 0:
@@ -359,9 +375,6 @@ class ProductionEngine:
                 state['acc_shift'] += delta
             else:
                 pass # Ignora acumulação fora de turno
-        
-        if delta_waste > 0:
-            state['acc_waste_op'] += delta_waste
         
         # 8. CÁLCULO DE OEE
         # === DISPONIBILIDADE TEMPORAL ===

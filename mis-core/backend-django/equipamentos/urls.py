@@ -3,6 +3,7 @@ from rest_framework.routers import DefaultRouter
 from . import views
 from . import tonnage_views
 from . import loss_analysis_views
+from . import waste_dashboard_views
 
 router = DefaultRouter()
 router.register(r'linhas', views.LinhaProducaoViewSet, basename='linha')
@@ -69,4 +70,8 @@ urlpatterns = [
     
     # Endpoint de KPIs de Produção da Fábrica (Novo)
     path('production/window/throughput/', views.FactoryProductionView.as_view({'get': 'throughput'}), name='factory-production-throughput'),
+    
+    # === Dashboard de Análise de Descartes ===
+    path('descartes/resumo/', waste_dashboard_views.WasteDashboardSummaryView.as_view(), name='waste-dashboard-summary'),
+    path('descartes/linhas/', waste_dashboard_views.WasteLinhasDisponiveisView.as_view(), name='waste-linhas-disponiveis'),
 ]

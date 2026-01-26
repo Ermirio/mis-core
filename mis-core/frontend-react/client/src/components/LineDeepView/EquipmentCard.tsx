@@ -29,7 +29,7 @@ const EquipmentCard: React.FC<EquipmentCardProps> = (props) => {
     // Cálculos de descarte
     const totalProduzido = boas + ruins;
     const percentualDescarte = totalProduzido > 0 ? (ruins / totalProduzido) * 100 : 0;
-    
+
     // Determina cor do badge de descarte
     const getDescarteBadgeColor = (perc: number) => {
         if (perc < 2) return 'bg-green-100 text-green-700 border-green-300';
@@ -82,14 +82,11 @@ const EquipmentCard: React.FC<EquipmentCardProps> = (props) => {
                             <span className="font-bold text-red-600">{ruins.toLocaleString()}</span>
                         </div>
                     </div>
-                    
+
                     {/* Descarte com Percentual */}
                     <div className="flex justify-between items-center">
                         <span className="text-xs text-gray-500">Descarte</span>
-                        <div className="flex items-center gap-2">
-                            <span className="text-xs font-semibold text-gray-700">
-                                {ruins.toLocaleString()} un
-                            </span>
+                        <div className="flex items-center justify-end">
                             <span className={`px-2 py-0.5 rounded-full text-xs font-bold border ${getDescarteBadgeColor(percentualDescarte)}`}>
                                 {percentualDescarte.toFixed(2)}%
                             </span>

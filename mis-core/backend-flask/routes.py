@@ -293,10 +293,20 @@ def get_operacao(eq_code):
         metrics = state.get('latest_metrics', {})
         d_influx = state.get('last_payload', {}) 
 
-        prod_op = metrics.get('producao_op', 0)
-        refugo_op = metrics.get('refugo_op_acumulado', 0)
-        pecas_boas = max(0, prod_op - refugo_op)
+        prod_op = float(metrics.get('producao_op', 0))
+        refugo_op = float(metrics.get('refugo_op_acumulado', 0))
         
+        # Lógica Defensiva: Se Refugo > Produção, assume que o contador de saída é LÍQUIDO (Boas)
+        # e não BRUTO (Total). Isso evita "0 Peças Boas" e OEE 0%.
+        if refugo_op > prod_op:
+            pecas_boas = prod_op
+            # Ajusta o total produzido para ser a soma (Boas + Ruins)
+            # Nota: Isso afeta apenas a visualização deste endpoint, não o banco de dados
+            prod_op_total_real = prod_op + refugo_op
+        else:
+            pecas_boas = max(0, prod_op - refugo_op)
+            prod_op_total_real = prod_op
+
         # Tags de contexto
         op = str(state.get('last_op_atual', 'N/A'))
         sku = str(d_influx.get('sku_codigo', 'N/A'))
@@ -455,6 +465,7 @@ def inserir_dados():
                     sku = str(m.get('sku_codigo', 'N/A'))
                     plan = int(float(m.get('planejado_op', 0)))
                     fmt = float(m.get('formato_gramas') or m.get('formato') or 0)
+                    cont_in = int(float(m.get('contagem_entrada', 0))) # New Input Counter
                     
                     vel_real = m.get('velocidade_atual') or m.get('velocidade_real')
                     if vel_real is not None:
@@ -471,6 +482,7 @@ def inserir_dados():
                         planejado=plan,
                         velocidade_atual=vel_calc,
                         estado_maquina=est,
+                        contagem_entrada=cont_in, # Pass Input Counter
                          extra_context={
                             'sku_codigo': sku,
                             'descricao': str(m.get('descricao', 'N/A')),
@@ -486,10 +498,23 @@ def inserir_dados():
                         "ordem_producao": op,
                         "sku_codigo": sku,
                         "contagem_saida": cont,
+                        "contagem_entrada": cont_in, # Persist Input
                         "descarte": desc,
                         "planejado_op": plan,
                         "oee_realtime": res['oee_realtime'],
-                        "timestamp_medicao": time.time()
+                        "timestamp_medicao": time.time(),
+                        # Campos que faltavam (agora consistentes com o bloco Single):
+                        "refugo_op_acumulado": res.get('refugo_op_acumulado', 0),
+                        "producao_op_acumulada": res.get('producao_op', 0),
+                        "toneladas_op": res.get('toneladas_op', 0),
+                        "producao_turno_acumulada": res.get('producao_turno', 0),
+                        "toneladas_turno": res.get('toneladas_turno', 0),
+                        "diferenca_op": res.get('diferenca_op', 0),
+                        "performance_realtime": res.get('performance_realtime', 0),
+                        "quality_realtime": res.get('quality_realtime', 0),
+                        "availability_realtime": res.get('availability_realtime', 0),
+                        "tempo_parado_turno": res.get('tempo_parado_segundos', 0),
+                        "tempo_planejado_turno": res.get('tempo_planejado_segundos', 0),
                     }
                     
                     for k, v in m.items():
@@ -548,6 +573,7 @@ def inserir_dados():
         sku = str(m.get('sku_codigo', 'N/A'))
         plan = int(float(m.get('planejado_op', 0)))
         fmt = float(m.get('formato_gramas') or m.get('formato') or 0)
+        cont_in = int(float(m.get('contagem_entrada', 0))) # New Input Counter
 
         # Debug incoming keys
         # logger.info(f"Ingestion {eq}: {list(m.keys())}")
@@ -568,6 +594,7 @@ def inserir_dados():
             planejado=plan,
             velocidade_atual=vel_calc,
             estado_maquina=est,
+            contagem_entrada=cont_in, # Pass Input Counter
             extra_context={
                 'sku_codigo': sku,
                 'descricao': str(m.get('descricao', 'N/A')),
@@ -583,6 +610,7 @@ def inserir_dados():
             "ordem_producao_field": op,
             "sku_codigo_field": sku,
             "producao_op_acumulada": res['producao_op'],
+            "contagem_entrada": cont_in, # Persist Input
             "toneladas_op": res['toneladas_op'],
             "diferenca_op": res['diferenca_op'],
             "producao_turno_acumulada": res['producao_turno'],
@@ -1176,11 +1204,32 @@ def get_linha_kpis(linha_nome):
             avg_perf = 0.0
             avg_qual = 0.0
 
+        # Tentar buscar metricas de descarte persistidas
+        total_descarte_tons = 0.0
+        perc_descarte = 0.0
+        
+        try:
+            from services.influx_data_provider import get_influx_client
+            client = current_app.extensions.get('influx_client')
+            if client:
+                # Query ultimo ponto da measurement line_metrics
+                # Ajuste: busca por type='waste_agg'
+                q_waste = "SELECT last(waste_tons), last(waste_percent) FROM line_metrics WHERE \"type\"='waste_agg'" 
+                rs_waste = client.query(q_waste)
+                pts_waste = list(rs_waste.get_points())
+                if pts_waste:
+                    total_descarte_tons = float(pts_waste[0].get('last', 0))
+                    perc_descarte = float(pts_waste[0].get('last_1', 0))
+        except Exception as e:
+            logger.error(f"Erro fetch waste metrics: {e}")
+
         return jsonify({
             'kpis': {
                 'disponibilidade': round(avg_avail, 1),
                 'performance': round(avg_perf, 1),
-                'qualidade': round(avg_qual, 1)
+                'qualidade': round(avg_qual, 1),
+                'descarte_ton': round(total_descarte_tons, 3),     # Novo field
+                'descarte_percent': round(perc_descarte, 2)        # Novo field
             },
             'gargalo': {
                 'nome': gargalo_nome,

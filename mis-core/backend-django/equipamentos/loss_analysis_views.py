@@ -9,6 +9,8 @@ from rest_framework.response import Response
 from rest_framework import status
 from django.utils import timezone
 from datetime import timedelta
+import datetime
+import requests
 from decimal import Decimal
 
 from equipamentos.models import (
@@ -245,8 +247,29 @@ def perdas_analise(request, linha_id):
                          c_atual = float(rt_metrics.get('contagem_atual') or 0.0)
                          c_inicio = float(rt_metrics.get('contagem_inicio_turno') or 0.0)
                          pecas_boas_rt = max(0, c_atual - c_inicio)
-                         # Refugo realtime se houver logic
-                         pecas_ref_rt = 0.0
+                         
+                         # Refugo realtime (Fallback Flask se Influx vazio ou para complementar)
+                         # Como get_realtime_metrics nao traz refugo, buscamos no Flask
+                         try:
+                             flask_url = f"http://mis-core-flask:5000/api/operacao/dados/{gargalo.codigo}"
+                             resp = requests.get(flask_url, timeout=1)
+                             if resp.status_code == 200:
+                                 d_flask = resp.json()
+                                 # Refugo direto
+                                 pecas_ref_rt = float(d_flask.get('pecas_ruins', 0))
+                                 
+                                 # Fallback também para produção se Influx retornar 0
+                                 if pecas_boas_rt == 0:
+                                     # pecas_boas no flask já considera (prod - ref) ou contagem bruta
+                                     # Usando 'produzido_turno' - 'pecas_ruins' ou 'pecas_boas' direto se existir
+                                     if 'pecas_boas' in d_flask:
+                                         pecas_boas_rt = float(d_flask['pecas_boas'])
+                                     else:
+                                         prod_turno = float(d_flask.get('produzido_turno', 0))
+                                         pecas_boas_rt = max(0, prod_turno - pecas_ref_rt)
+                         except Exception as e:
+                             print(f"Erro fallback perdas_analise: {e}")
+                             pecas_ref_rt = 0.0
 
         # Soma Total
         pecas_boas = pecas_boas_history + pecas_boas_rt
@@ -656,60 +679,34 @@ def monthly_op_history(request, linha_id):
         logging.error(f"Erro em monthly_op_history: {e}", exc_info=True)
         return Response({'error': str(e)}, status=500)
 @api_view(['GET'])
-def strategic_waste_analysis(request, linha_id):
+def strategic_waste_analysis(request, linha_id=None):
     """
-    GET /api/linhas/{linha_id}/waste-analysis/
+    GET /api/linhas/{linha_id}/waste-analysis/ ou /api/analise-perdas/waste-analysis/
     
-    Retorna análise detalhada de perdas (refugo) por Equipamento e por Contexto (Estado).
+    Análise de Descarte usando dados do Flask como fonte única de verdade.
+    Isso garante sincronismo com os cards de equipamento no frontend.
     """
-    from equipamentos.influx_helpers import get_influx_client
-    
     try:
-        # 1. Setup Básico
-        try:
-            linha = LinhaProducao.objects.get(id=linha_id)
-        except LinhaProducao.DoesNotExist:
-            return Response({'error': 'Linha não encontrada'}, status=404)
+        import requests as http_requests
+        
+        # Suporte para linha_id via URL ou Query Param
+        if not linha_id:
+            linha_id = request.query_params.get('linha')
             
-        client = get_influx_client()
-        if not client:
-            return Response({'error': 'InfluxDB unavailable'}, status=503)
-
-        # 2. Definição de Período
         periodo = request.query_params.get('periodo', 'TURNO')
-        # ... Lógica de Datas igual a perdas_analise ...
-        agora = timezone.now()
-        data_inicio_param = request.query_params.get('data_inicio')
-        data_fim_param = request.query_params.get('data_fim')
         
-        if data_inicio_param and data_fim_param:
-            data_inicio = timezone.datetime.fromisoformat(data_inicio_param.replace('Z', '+00:00'))
-            data_fim = timezone.datetime.fromisoformat(data_fim_param.replace('Z', '+00:00'))
-        elif periodo == 'MES':
-            data_inicio = agora.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-            data_fim = agora
-        elif periodo == 'DIA':
-            data_inicio = agora.replace(hour=0, minute=0, second=0, microsecond=0)
-            data_fim = agora
-        else: # TURNO
-            turno_atual = obter_turno_atual()
-            data_inicio = calcular_inicio_turno(turno_atual)
-            data_fim = agora
-
-        # Resolução Temporal para evitar query pesada
-        # Para Turno/Hora = 1 minuto
-        # Para Dia/Mes = 10 minutos (perde precisão mas ganha performance)
-        group_time = '10m' if periodo in ['MES', 'SEMANA'] else '1m'
+        # Filtra equipamentos da linha
+        equipamentos = Equipamento.objects.filter(status='ATIVO')
+        if linha_id:
+            equipamentos = equipamentos.filter(linha__id=linha_id)
         
-        start_influx = data_inicio.isoformat()
-        end_influx = data_fim.isoformat()
-
-        # 3. Equipamentos Ativos
-        equipamentos = Equipamento.objects.filter(linha=linha, status='ATIVO')
+        total_waste_units = 0
+        total_good_units = 0
+        total_waste_tons = 0.0
+        total_prod_tons = 0.0
         
-        waste_by_equipment = {}
-        waste_by_state = {}
-        total_line_waste = 0
+        waste_by_equipment = {}  # {nome: {units, tons, state}}
+        waste_by_state = {}  # {state_id: {units, tons}}
         
         MAPEAMENTO_ESTADOS = {
             1: 'Produzindo', 2: 'Aguardando', 3: 'Bloqueado', 4: 'Falha/Quebra',
@@ -718,100 +715,107 @@ def strategic_waste_analysis(request, linha_id):
             11: 'Partindo', 12: 'Aguardando Condições', 13: 'Parando'
         }
 
-        # 4. Processamento via InfluxDB (Raw Stream Processor)
         for eq in equipamentos:
-            # 4.1 Buscar Estado Inicial (Seed)
-            # Fundamental: Se o período começa e a máquina já está rodando, não teremos ponto de estado.
-            # Precisamos buscar o último estado ANTES do início do período.
-            seed_query = f"""
-                SELECT last("estado_maquina") as state 
-                FROM "production" 
-                WHERE "equipment" = '{eq.codigo}' 
-                AND time < '{start_influx}'
-            """
             try:
-                seed_rs = client.query(seed_query)
-                seed_points = list(seed_rs.get_points())
-                current_state_code = 0
-                if seed_points:
-                     current_state_code = int(seed_points[0].get('state', 0) or 0)
-            except Exception as e:
-                print(f"Erro seed state {eq.codigo}: {e}")
-                current_state_code = 1 # Default seguro: Se não sabemos, assume que estava PRODUZINDO se houver descarte.
-
-            # 4.2 Buscando dados do período
-            query = f"""
-                SELECT "descarte", "estado_maquina" 
-                FROM "production" 
-                WHERE "equipment" = '{eq.codigo}' 
-                AND time >= '{start_influx}' AND time <= '{end_influx}' 
-                ORDER BY time ASC
-            """
-            
-            try:
-                rs = client.query(query)
-                points = list(rs.get_points())
+                # Buscar dados diretamente do Flask (fonte única de verdade)
+                flask_url = f"http://mis-core-flask:5000/api/operacao/dados/{eq.codigo}"
+                resp = http_requests.get(flask_url, timeout=3)
                 
-                eq_total = 0
-                last_waste_val = None
-                # current_state_code já inicializado pelo Seed ou Default 1
-                
-                for p in points:
-                    # Atualiza Estado Atual (se disponível no ponto)
-                    if 'estado_maquina' in p and p['estado_maquina'] is not None:
-                         state_val = int(p['estado_maquina'])
-                         # Só atualiza para 0 se realmente confiarmos. 
-                         # Mas vamos ser fiéis ao banco:
-                         current_state_code = state_val
+                if resp.status_code != 200:
+                    continue
                     
-                    # Processa Descarte
-                    if 'descarte' in p and p['descarte'] is not None:
-                        curr_waste = p['descarte']
-                        
-                        if last_waste_val is not None:
-                            delta = curr_waste - last_waste_val
-                            
-                            if delta > 0 and delta < 1000:
-                                eq_total += delta
-                                total_line_waste += delta
-                                # HEURÍSTICA DE CORREÇÃO:
-                                # Se a máquina diz que está parada (0) mas gerou descarte, assumimos Produzindo (1).
-                                # Isso corrige delay de sensores ou setup manual.
-                                effective_state = current_state_code
-                                if current_state_code == 0:
-                                    effective_state = 1
-                                
-                                state_name = MAPEAMENTO_ESTADOS.get(effective_state, 'Outro')
-                                if state_name not in waste_by_state:
-                                    waste_by_state[state_name] = 0
-                                waste_by_state[state_name] += delta
-                                
-                        last_waste_val = curr_waste
+                data = resp.json()
                 
-                if eq_total > 0:
-                    waste_by_equipment[eq.nome] = eq_total
+                # Extrair dados
+                pecas_ruins = float(data.get('pecas_ruins', 0) or 0)
+                pecas_boas = float(data.get('pecas_boas', 0) or 0)
+                formato_gramas = float(data.get('formato_gramas', 0) or 0)
+                
+                # Para atribuição por estado, buscar estado atual do equipamento
+                try:
+                    flask_eq_url = f"http://mis-core-flask:5000/api/equipamento/dados/{eq.codigo}"
+                    resp_eq = http_requests.get(flask_eq_url, timeout=2)
+                    if resp_eq.status_code == 200:
+                        eq_data = resp_eq.json()
+                        estado_atual = int(eq_data.get('estado_maquina', eq_data.get('estado_atual_id', 1)) or 1)
+                    else:
+                        estado_atual = 1
+                except:
+                    estado_atual = 1
+                
+                # Acumular
+                total_waste_units += pecas_ruins
+                total_good_units += pecas_boas
+                
+                if formato_gramas > 0:
+                    waste_tons = (pecas_ruins * formato_gramas) / 1000000.0
+                    prod_tons = ((pecas_boas + pecas_ruins) * formato_gramas) / 1000000.0
+                else:
+                    waste_tons = 0.0
+                    prod_tons = 0.0
+                
+                total_waste_tons += waste_tons
+                total_prod_tons += prod_tons
+                
+                # Por equipamento
+                if pecas_ruins > 0:
+                    waste_by_equipment[eq.nome] = {
+                        'units': pecas_ruins,
+                        'tons': waste_tons,
+                        'state': estado_atual
+                    }
+                
+                # Por estado
+                if pecas_ruins > 0:
+                    state_key = str(estado_atual)
+                    if state_key not in waste_by_state:
+                        waste_by_state[state_key] = {'units': 0, 'tons': 0.0}
+                    waste_by_state[state_key]['units'] += pecas_ruins
+                    waste_by_state[state_key]['tons'] += waste_tons
                     
             except Exception as e:
-                print(f"Erro processando waste eq {eq.codigo}: {e}")
+                print(f"Erro ao buscar dados do equipamento {eq.codigo}: {e}")
                 continue
 
-        # 5. Formatação para Frontend
-        
-        # Ranking Equipamentos (Top 5)
+        # Calcular percentual
+        total_massa = total_prod_tons
+        waste_percentage = (total_waste_tons / total_massa * 100.0) if total_massa > 0 else 0.0
+
+        # Formatação - Ranking por equipamento (em UNIDADES para sincronizar com cards)
         ranking_list = [
-            {'name': k, 'value': v, 'share': round((v/total_line_waste)*100, 1)} 
-            for k, v in sorted(waste_by_equipment.items(), key=lambda item: item[1], reverse=True)
+            {
+                'name': k, 
+                'value': int(v['units']),  # UNIDADES, não toneladas
+                'tons': round(v['tons'], 4),  # Toneladas como campo adicional
+                'share': round((v['units']/total_waste_units)*100, 1) if total_waste_units > 0 else 0
+            } 
+            for k, v in sorted(waste_by_equipment.items(), key=lambda item: item[1]['units'], reverse=True)[:5]
         ]
         
-        # Breakdown por Estado
-        state_list = [
-            {'id': k, 'label': k, 'value': v, 'share': round((v/total_line_waste)*100, 1)}
-            for k, v in sorted(waste_by_state.items(), key=lambda item: item[1], reverse=True)
-        ]
+        # Por estado (para o donut - PERCENTUAL por estado)
+        state_list = []
+        for k, v in sorted(waste_by_state.items(), key=lambda item: item[1]['units'], reverse=True):
+            try:
+                k_int = int(k)
+                label = MAPEAMENTO_ESTADOS.get(k_int, str(k))
+            except:
+                label = str(k)
+            
+            state_list.append({
+                'id': str(k), 
+                'label': label, 
+                'value': int(v['units']),  # UNIDADES
+                'tons': round(v['tons'], 4),  # Toneladas como campo adicional
+                'share': round((v['units']/total_waste_units)*100, 1) if total_waste_units > 0 else 0
+            })
         
         return Response({
             'periodo': periodo,
-            'total_waste': int(total_line_waste),
+            'total_waste': int(total_waste_units),  # UNIDADES
+            'total_waste_tons': round(total_waste_tons, 4),  # Toneladas como campo adicional
+            'unit': 'unidades',  # Indicar que valores primários estão em unidades
+            'waste_percentage': round(waste_percentage, 2),
+            'total_production': round(total_prod_tons, 4),  # Este ainda é em toneladas
             'by_equipment': ranking_list,
             'by_state': state_list
         })
@@ -820,6 +824,7 @@ def strategic_waste_analysis(request, linha_id):
         import logging
         logging.error(f"Erro em strategic_waste_analysis: {e}", exc_info=True)
         return Response({'error': str(e)}, status=500)
+
 
 @api_view(['GET'])
 def factory_loss_analysis(request):
@@ -996,7 +1001,9 @@ def factory_waste_analysis(request):
 
         equipamentos = Equipamento.objects.filter(status='ATIVO')
         
-        total_waste = 0.0
+        total_waste_tons = 0.0
+        total_production_tons = 0.0
+        
         by_equipment = {}
         by_state = {}
         
@@ -1025,58 +1032,104 @@ def factory_waste_analysis(request):
                 if s_pts: curr_state = int(s_pts[0]['state'])
             except: curr_state = 1
             
-            query = f"SELECT \"descarte\", \"estado_maquina\", \"formato_gramas\" FROM \"production\" WHERE \"equipment\" = '{eq.codigo}' AND time >= '{start_influx}' AND time <= '{end_influx}' ORDER BY time ASC"
+            # Query ajustada: busca refugo_op_acumulado e contagem_saida
+            query = f"SELECT \"refugo_op_acumulado\", \"contagem_saida\", \"estado_maquina\", \"formato_gramas\" FROM \"production\" WHERE \"equipment\" = '{eq.codigo}' AND time >= '{start_influx}' AND time <= '{end_influx}' ORDER BY time ASC"
             try:
                 rs = client.query(query)
                 points = list(rs.get_points())
-                last_waste = None
-                eq_total = 0.0
                 
+                last_waste = None
+                last_prod = None
+                
+                eq_waste_ton = 0.0
+                eq_prod_ton = 0.0
+                
+                # Para evitar picos falsos no início da query (se o primeiro ponto já for alto)
+                # tentamos pegar o last antes do período, ou assumimos o primeiro ponto como base.
+                first_point = True
+
                 for p in points:
                     try:
+                        # Atualiza estado e formato se disponíveis
                         if 'estado_maquina' in p and p['estado_maquina'] is not None:
                             curr_state = int(p['estado_maquina'])
+                        
                         if 'formato_gramas' in p and p['formato_gramas'] is not None:
                             try:
                                 current_fmt = float(p['formato_gramas'])
                             except: pass
                         
-                        if 'descarte' in p and p['descarte'] is not None:
-                            val = p['descarte']
+                        # Processamento de Refugo (Delta)
+                        val_waste = p.get('refugo_op_acumulado')
+                        if val_waste is not None:
+                            val_waste = float(val_waste)
                             if last_waste is not None:
-                                delta = val - last_waste
-                                if delta > 0 and delta < 1000:
+                                delta = val_waste - last_waste
+                                # Filtra spikes e resets
+                                if delta > 0 and delta < 2000:
                                     delta_ton = (delta * current_fmt) / 1000000.0
+                                    eq_waste_ton += delta_ton
                                     
-                                    eq_total += delta_ton
-                                    total_waste += delta_ton
-                                    
+                                    # Atribuição ao estado
                                     eff_state = curr_state
-                                    if curr_state == 0: eff_state = 1
-                                    
+                                    if curr_state == 0: eff_state = 1 # Heurística: se tem descarte, não tá parado
                                     st_name = MAPEAMENTO_ESTADOS.get(eff_state, 'Outro')
                                     by_state[st_name] = by_state.get(st_name, 0.0) + delta_ton
-                            last_waste = val
+                            
+                            last_waste = val_waste
+
+                        # Processamento de Produção (Delta)
+                        val_prod = p.get('contagem_saida')
+                        if val_prod is not None:
+                            val_prod = float(val_prod)
+                            if last_prod is not None:
+                                delta_p = val_prod - last_prod
+                                if delta_p > 0 and delta_p < 20000: # Limite seguro para produção
+                                    delta_p_ton = (delta_p * current_fmt) / 1000000.0
+                                    eq_prod_ton += delta_p_ton
+                            
+                            last_prod = val_prod
+                            
+                        # Inicializa 'last' no primeiro ponto para evitar contar acumulado passado como delta
+                        if first_point:
+                             # Se quisermos ser muito precisos, deveríamos buscar o last() ANTES do periodo.
+                             # Mas, como estamos iterando, o primeiro delta será 0 pois last_waste será setado agora.
+                             # Correto.
+                             first_point = False
+                             
                     except: continue
                 
-                if eq_total > 0:
-                    by_equipment[f"{eq.nome} ({eq.linha.nome})"] = eq_total
+                if eq_waste_ton > 0 or eq_prod_ton > 0:
+                    total_waste_tons += eq_waste_ton
+                    total_production_tons += eq_prod_ton
+                    
+                    if eq_waste_ton > 0:
+                        by_equipment[f"{eq.nome} ({eq.linha.nome})"] = eq_waste_ton
                     
             except: continue
 
-        total_waste = max(0.0, total_waste)
+        total_waste_tons = max(0.0, total_waste_tons)
+        total_production_tons = max(0.0, total_production_tons)
         
-        rank_list = [{'name': k, 'value': round(v, 4), 'share': round((v/total_waste)*100, 1) if total_waste > 0 else 0} for k, v in sorted(by_equipment.items(), key=lambda x:x[1], reverse=True)[:10]]
-        st_list = [{'id': k, 'label': k, 'value': round(v, 4), 'share': round((v/total_waste)*100, 1) if total_waste > 0 else 0} for k, v in sorted(by_state.items(), key=lambda x:x[1], reverse=True)]
+        # Cálculo do Percentual Global
+        # Formula: Descarte / (Produção Boa + Descarte)
+        total_massa = total_production_tons + total_waste_tons
+        waste_percentage = (total_waste_tons / total_massa * 100.0) if total_massa > 0 else 0.0
+        
+        rank_list = [{'name': k, 'value': round(v, 4), 'share': round((v/total_waste_tons)*100, 1) if total_waste_tons > 0 else 0} for k, v in sorted(by_equipment.items(), key=lambda x:x[1], reverse=True)[:10]]
+        
+        st_list = [{'id': k, 'label': k, 'value': round(v, 4), 'share': round((v/total_waste_tons)*100, 1) if total_waste_tons > 0 else 0} for k, v in sorted(by_state.items(), key=lambda x:x[1], reverse=True)]
 
         return Response({
             'periodo': periodo,
-            'total_waste': round(total_waste, 4),
+            'total_waste': round(total_waste_tons, 4),
+            'waste_percentage': round(waste_percentage, 2), # Novo campo
+            'total_production': round(total_production_tons, 4), # Debug info
             'unit': 'ton',
             'by_equipment': rank_list,
             'by_state': st_list
         })
     except Exception as e:
         import logging
-        logging.error(f"Erro factory_waste: {e}")
+        logging.error(f"Erro factory_waste: {e}", exc_info=True)
         return Response({'error': str(e)}, status=500)

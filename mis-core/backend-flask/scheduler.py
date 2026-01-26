@@ -115,6 +115,67 @@ def job_continuous_optimization():
     except Exception as e:
         logger.error(f"Error in Optimization Job: {e}")
 
+def job_aggregate_line_metrics():
+    """
+    Calcula e persiste métricas consolidadas da linha (ex: Descarte Total, OLE Médio).
+    Executa a cada 1 minuto.
+    """
+    try:
+        from services.influx_data_provider import get_influx_client
+        influx_client = current_app.extensions.get('influx_client')
+        if not influx_client: return
+
+        # 1. Totalizar Descarte e Produção de todos equipamentos
+        # Query pega o último valor de acumuladores do turno
+        query = "SELECT last(descarte) as descarte, last(contagem_saida) as producao, last(formato_gramas) as formato FROM production WHERE time > now() - 1h GROUP BY \"equipment\""
+        rs = influx_client.query(query)
+        
+        total_descarte_tons = 0.0
+        total_producao_pcs = 0.0
+        total_descarte_pcs = 0.0
+        
+        for (name, tags), points in rs.items():
+            if points:
+                p = points[0]
+                desc = float(p.get('descarte', 0) or 0)
+                prod = float(p.get('producao', 0) or 0)
+                fmt = float(p.get('formato', 0) or 0)
+                
+                # Descarte em Tons
+                descarte_kg = (desc * fmt) / 1000.0
+                total_descarte_tons += descarte_kg / 1000.0
+                
+                total_producao_pcs += prod
+                total_descarte_pcs += desc
+        
+        # Percentual de Descarte da Linha
+        perc_descarte = 0.0
+        total_processado = total_producao_pcs + total_descarte_pcs
+        if total_processado > 0:
+            perc_descarte = (total_descarte_pcs / total_processado) * 100.0
+            
+        # Persistir em nova measurement 'line_metrics'
+        points = [{
+            "measurement": "line_metrics",
+            "tags": {
+                "line": "L01", # TODO: Tornar dinâmico se houver mais linhas
+                "type": "waste_agg"
+            },
+            "fields": {
+                "waste_tons": float(total_descarte_tons),
+                "waste_percent": float(perc_descarte),
+                "total_production_pcs": int(total_producao_pcs),
+                "total_waste_pcs": int(total_descarte_pcs)
+            },
+            "time": datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ')
+        }]
+        
+        influx_client.write_points(points)
+        # logger.info(f"📊 Descarte Agregado: {total_descarte_tons:.3f} t ({perc_descarte:.2f}%)")
+        
+    except Exception as e:
+        logger.error(f"Erro job aggregate metrics: {e}")
+
 def start_scheduler(app):
     """
     Starts the background scheduler.
@@ -142,6 +203,9 @@ def start_scheduler(app):
         
         # 4. Waste Backoff (1 min)
         scheduler.add_job(check_waste_backoff, 'interval', minutes=1, args=[app], id='watcher_waste')
+        
+        # 5. Agregação de Métricas da Linha (Descarte, etc)
+        scheduler.add_job(job_aggregate_line_metrics, 'interval', minutes=1, id='line_metrics_agg')
         
         scheduler.start()
         logger.info("🚀 Scheduler Started (Golden State Optimization: 5 min)")

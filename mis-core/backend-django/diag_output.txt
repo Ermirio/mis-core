@@ -1,0 +1,67 @@
+============================================================
+FLASK API (Mem¾ria)
+============================================================
+
+E001:
+  pecas_ruins: 13.0
+  produzido_op: 14034.0
+  pecas_boas: 14021.0
+  formato_gramas: 3500.0
+
+E002:
+  pecas_ruins: 1.0
+  produzido_op: 14046.0
+  pecas_boas: 14045.0
+  formato_gramas: 3500.0
+
+============================================================
+INFLUXDB (PersistÛncia)
+============================================================
+
+E001 (·ltimos 5 pontos):
+  [0] descarte=0, saida=22852, entrada=22864, refugo_op=13, prod_op=14034
+  [1] descarte=0, saida=22847, entrada=22859, refugo_op=13, prod_op=14029
+  [2] descarte=0, saida=22843, entrada=22855, refugo_op=13, prod_op=14025
+  [3] descarte=0, saida=22839, entrada=22851, refugo_op=13, prod_op=14021
+  [4] descarte=0, saida=22834, entrada=22846, refugo_op=13, prod_op=14016
+
+E002 (·ltimos 5 pontos):
+  [0] descarte=0, saida=22864, entrada=22864, refugo_op=1, prod_op=14046
+  [1] descarte=0, saida=22859, entrada=22859, refugo_op=1, prod_op=14041
+  [2] descarte=0, saida=22855, entrada=22855, refugo_op=1, prod_op=14037
+  [3] descarte=0, saida=22851, entrada=22851, refugo_op=1, prod_op=14033
+  [4] descarte=0, saida=22846, entrada=22846, refugo_op=1, prod_op=14028
+
+============================================================
+DJANGO API (AgregaþÒo)
+============================================================
+total_waste: 0.5635 (unidade: provßvel toneladas)
+total_production: 173.8765
+waste_percentage: 0.32%
+
+by_equipment:
+  - ACMA: 0.3045 ton (54.0%)
+  - ZUCHINNI: 0.259 ton (46.0%)
+
+by_state:
+  - Produzindo: 0.5635 ton
+
+============================================================
+AN┴LISE COMPARATIVA
+============================================================
+
+E001:
+  Flask pecas_ruins: 13.0
+  Flask formato: 3500.0g
+  Flask calc tons: 0.045500
+  InfluxDB descarte (raw): 0
+  InfluxDB refugo_op_acum: 13
+  >>> ALERTA: descarte raw=0, mas refugo_op_acum pode estar correto
+
+E002:
+  Flask pecas_ruins: 1.0
+  Flask formato: 3500.0g
+  Flask calc tons: 0.003500
+  InfluxDB descarte (raw): 0
+  InfluxDB refugo_op_acum: 1
+  >>> ALERTA: descarte raw=0, mas refugo_op_acum pode estar correto

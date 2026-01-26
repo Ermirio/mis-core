@@ -16,7 +16,8 @@ import { Input } from "@/components/ui/input";
 import {
     CalendarIcon, Loader2, RefreshCw,
     BarChart2, TrendingUp, Activity, ScatterChart as ScatterIcon, Grid,
-    Settings, Filter, Download, ChevronsRight, Info, Plus, Trash2, Edit
+    Settings, Filter, Download, ChevronsRight, Info, Plus, Trash2, Edit,
+    Box, Layers
 } from "lucide-react";
 import { format, subHours } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -167,7 +168,32 @@ const LineAnalytics: React.FC = () => {
         }
     };
 
-    // Tag generation helper
+    // Tag generation helper - Métricas consolidadas da LINHA
+    const getLineConsolidatedTags = (linha: Linha) => {
+        const consolidatedMetrics = [
+            { nome: 'Produção Total (tons)', tag: 'producao_linha_tons', desc: 'Produção acumulada da linha' },
+            { nome: 'Descarte Total (tons)', tag: 'descarte_linha_tons', desc: 'Descarte acumulado da linha' },
+            { nome: 'Descarte (%)', tag: 'descarte_linha_perc', desc: 'Percentual de descarte' },
+            { nome: 'OEE Linha', tag: 'oee_linha', desc: 'OEE agregado da linha' },
+            { nome: 'Disponibilidade', tag: 'disponibilidade_linha', desc: 'Disponibilidade da linha' },
+            { nome: 'Performance', tag: 'performance_linha', desc: 'Performance da linha' },
+            { nome: 'Qualidade', tag: 'qualidade_linha', desc: 'Qualidade da linha' },
+            { nome: 'Vazão Real (ton/h)', tag: 'vazao_linha_ton_h', desc: 'Taxa de produção' }
+        ];
+
+        return consolidatedMetrics.map(m => ({
+            id: `linha-${linha.codigo}-${m.tag}`,
+            nome: m.nome,
+            tag_influxdb: m.tag,
+            equipamento_nome: '📊 Consolidado',
+            equipamento_code: linha.codigo,  // Usa código da linha para query especial
+            linha_nome: linha.nome,
+            isConsolidated: true,
+            isStandard: false
+        }));
+    };
+
+    // Tag generation helper - Métricas por EQUIPAMENTO
     const getEquipmentTags = (linha: Linha, eq: Equipamento) => {
         let tags: any[] = [];
         // Standard Metrics
@@ -332,6 +358,44 @@ const LineAnalytics: React.FC = () => {
                                             </AccordionTrigger>
                                             <AccordionContent>
                                                 <div className="pl-2 flex flex-col gap-1">
+                                                    {/* === CONSOLIDADO DA LINHA === */}
+                                                    {(() => {
+                                                        const consolidatedTags = getLineConsolidatedTags(linha);
+                                                        const visibleConsolidated = searchTerm
+                                                            ? consolidatedTags.filter(t => filterMatch(t.nome) || filterMatch('consolidado'))
+                                                            : consolidatedTags;
+
+                                                        if (visibleConsolidated.length === 0) return null;
+
+                                                        return (
+                                                            <div className="mb-3 pb-2 border-b border-dashed border-slate-300">
+                                                                <div className="text-xs font-bold text-emerald-600 mb-1 flex items-center gap-1">
+                                                                    <Layers className="w-3 h-3" />
+                                                                    📊 Consolidado da Linha
+                                                                </div>
+                                                                <div className="pl-3 space-y-1">
+                                                                    {visibleConsolidated.map(tag => (
+                                                                        <div
+                                                                            key={tag.id}
+                                                                            className="flex items-center space-x-2 p-1.5 rounded hover:bg-emerald-50 dark:hover:bg-emerald-900/20 transition-colors cursor-pointer border border-transparent hover:border-emerald-200 dark:hover:border-emerald-800 bg-emerald-50/30"
+                                                                        >
+                                                                            <Checkbox
+                                                                                id={`tag-${tag.id}`}
+                                                                                checked={!!selectedTags.find(t => t.id === tag.id)}
+                                                                                onCheckedChange={() => toggleTag(tag)}
+                                                                            />
+                                                                            <label htmlFor={`tag-${tag.id}`} className="text-xs cursor-pointer flex-1 font-medium text-emerald-700 dark:text-emerald-300">
+                                                                                {tag.nome}
+                                                                                <Badge variant="outline" className="ml-2 text-[10px] h-4 px-1 py-0 border-emerald-400 text-emerald-600">Linha</Badge>
+                                                                            </label>
+                                                                        </div>
+                                                                    ))}
+                                                                </div>
+                                                            </div>
+                                                        );
+                                                    })()}
+
+                                                    {/* === EQUIPAMENTOS === */}
                                                     {linha.equipamentos.map(eq => {
                                                         const tags = getEquipmentTags(linha, eq);
                                                         // If searching, filter tags
@@ -389,10 +453,13 @@ const LineAnalytics: React.FC = () => {
                     {/* ... Same Tabs content as before ... */}
                     <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full h-full flex flex-col">
                         <div className="flex justify-between items-center mb-4 bg-white dark:bg-slate-900 p-2 rounded-lg shadow-sm border">
-                            <TabsList className="grid grid-cols-5 gap-2 w-[600px]">
+                            <TabsList className="grid grid-cols-6 gap-2 w-[720px]">
                                 {/* ... Triggers ... */}
                                 <TabsTrigger value="stats" className="flex items-center gap-2">
                                     <BarChart2 className="h-4 w-4" /> Stats
+                                </TabsTrigger>
+                                <TabsTrigger value="boxplot" className="flex items-center gap-2">
+                                    <Box className="h-4 w-4" /> Boxplot
                                 </TabsTrigger>
                                 <TabsTrigger value="trend" className="flex items-center gap-2">
                                     <TrendingUp className="h-4 w-4" /> Tendência
@@ -482,6 +549,93 @@ const LineAnalytics: React.FC = () => {
                             {statsData.length === 0 && !loading && (
                                 <div className="flex items-center justify-center h-64 border-2 border-dashed rounded-lg text-gray-400">
                                     Selecione variáveis na árvore e clique em Analisar
+                                </div>
+                            )}
+                        </TabsContent>
+
+                        {/* === BOXPLOT TAB === */}
+                        <TabsContent value="boxplot">
+                            {timeseriesData ? (
+                                <div className="space-y-4">
+                                    <Card>
+                                        <CardHeader>
+                                            <CardTitle className="flex items-center gap-2">
+                                                <Box className="h-5 w-5 text-purple-600" />
+                                                Análise de Distribuição (Boxplot)
+                                            </CardTitle>
+                                            <CardDescription>
+                                                Visualização de quartis, mediana e outliers para cada variável selecionada
+                                            </CardDescription>
+                                        </CardHeader>
+                                        <CardContent>
+                                            <Plot
+                                                data={Object.entries(timeseriesData).map(([alias, d]: [string, any]) => ({
+                                                    y: d.values,
+                                                    type: 'box',
+                                                    name: alias.split(' - ').pop() || alias, // Usar nome curto
+                                                    boxpoints: 'outliers',
+                                                    jitter: 0.3,
+                                                    pointpos: -1.8,
+                                                    marker: { size: 4, opacity: 0.6 },
+                                                    hovertext: alias
+                                                }))}
+                                                layout={{
+                                                    title: { text: 'Comparação de Distribuições' },
+                                                    autosize: true,
+                                                    height: 500,
+                                                    showlegend: true,
+                                                    boxmode: 'group',
+                                                    yaxis: { title: { text: 'Valor' } }
+                                                }}
+                                                useResizeHandler={true}
+                                                className="w-full"
+                                            />
+                                        </CardContent>
+                                    </Card>
+
+                                    {/* Boxplots individuais */}
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        {Object.entries(timeseriesData).map(([alias, d]: [string, any]) => (
+                                            <Card key={alias} className="border-l-4 border-l-purple-500">
+                                                <CardHeader className="pb-2">
+                                                    <CardTitle className="text-sm truncate" title={alias}>{alias}</CardTitle>
+                                                </CardHeader>
+                                                <CardContent>
+                                                    <Plot
+                                                        data={[{
+                                                            y: d.values,
+                                                            type: 'box',
+                                                            name: 'Distribuição',
+                                                            boxpoints: 'all',
+                                                            jitter: 0.5,
+                                                            pointpos: 0,
+                                                            marker: { color: 'rgb(107, 70, 193)', size: 4, opacity: 0.5 },
+                                                            line: { color: 'rgb(107, 70, 193)' },
+                                                            fillcolor: 'rgba(107, 70, 193, 0.3)'
+                                                        }]}
+                                                        layout={{
+                                                            autosize: true,
+                                                            height: 250,
+                                                            margin: { l: 40, r: 20, t: 20, b: 30 },
+                                                            showlegend: false
+                                                        }}
+                                                        useResizeHandler={true}
+                                                        className="w-full"
+                                                    />
+                                                    <div className="flex justify-between text-xs text-gray-500 mt-2">
+                                                        <span>Min: {d.values.length > 0 ? Math.min(...d.values).toFixed(2) : 'N/A'}</span>
+                                                        <span>Mediana: {d.values.length > 0 ? d.values.sort((a: number, b: number) => a - b)[Math.floor(d.values.length / 2)]?.toFixed(2) : 'N/A'}</span>
+                                                        <span>Max: {d.values.length > 0 ? Math.max(...d.values).toFixed(2) : 'N/A'}</span>
+                                                    </div>
+                                                </CardContent>
+                                            </Card>
+                                        ))}
+                                    </div>
+                                </div>
+                            ) : (
+                                <div className="flex flex-col items-center justify-center h-64 border-2 border-dashed rounded-lg text-gray-400 gap-2">
+                                    <Box className="h-8 w-8 opacity-50" />
+                                    <span>Clique em "Gerar Gráficos" para visualizar os Boxplots</span>
                                 </div>
                             )}
                         </TabsContent>

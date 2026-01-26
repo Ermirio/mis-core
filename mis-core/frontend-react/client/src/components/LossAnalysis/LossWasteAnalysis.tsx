@@ -75,7 +75,8 @@ export function LossWasteAnalysis({ lineId, mode = 'line' }: LossWasteProps) {
 
     const formatValue = (val: number) => {
         if (data?.unit === 'ton') return `${val.toFixed(3)} t`;
-        return `${val.toFixed(0)} un`;
+        // Default: unidades (inteiro)
+        return `${Math.round(val)} un`;
     };
 
     if (error) {
@@ -101,7 +102,7 @@ export function LossWasteAnalysis({ lineId, mode = 'line' }: LossWasteProps) {
                     </div>
                     <div>
                         <CardTitle className="text-lg font-bold text-white">
-                            {mode === 'factory' ? 'Análise Global de Perdas (Toneladas)' : 'Análise de Quebra & Descarte'}
+                            {mode === 'factory' ? 'Análise Global de Perdas (Toneladas)' : 'Análise de Descarte'}
                         </CardTitle>
                         <p className="text-xs text-gray-400 mt-1">
                             Refugo acumulado por equipamento e correlação de estados
@@ -116,8 +117,8 @@ export function LossWasteAnalysis({ lineId, mode = 'line' }: LossWasteProps) {
                             onClick={() => setPeriodo(p)}
                             disabled={loading}
                             className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${periodo === p
-                                    ? 'bg-red-600 text-white shadow-lg shadow-red-900/20'
-                                    : 'text-gray-400 hover:text-white hover:bg-gray-800'
+                                ? 'bg-red-600 text-white shadow-lg shadow-red-900/20'
+                                : 'text-gray-400 hover:text-white hover:bg-gray-800'
                                 }`}
                         >
                             {p}

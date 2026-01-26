@@ -464,7 +464,7 @@ const LineDeepView: React.FC = () => {
                     <KPIs
                         availability={safeNumber(kpisData?.kpis?.disponibilidade, 0)}
                         performance={safeNumber(kpisData?.kpis?.performance, 0)}
-                        quality={safeNumber(kpisData?.kpis?.qualidade, 0)}
+                        quality={safeNumber(kpisData?.kpis?.quality ?? kpisData?.kpis?.qualidade, 0)}
                         bottleneck={{
                             name: safeString(kpisData?.gargalo?.nome, 'N/A'),
                             oee: safeNumber(kpisData?.gargalo?.oee, 0)
@@ -474,6 +474,44 @@ const LineDeepView: React.FC = () => {
                         desvioProjetado={calculations.desvioProjetado}
                         equipamentos={equipamentosConfig}
                     />
+
+                    {/* Descarte da Linha (Agregado) */}
+                    <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 mb-6">
+                        <h3 className="text-sm font-semibold text-gray-700 mb-3">Descarte da Linha</h3>
+                        <div className="grid grid-cols-2 gap-4">
+                            <div className="bg-red-50 p-3 rounded border border-red-100">
+                                <span className="text-xs text-red-600 font-medium bloque">Total (Tons)</span>
+                                <span className="text-lg font-bold text-red-800">
+                                    {(equipamentosDetalhados.reduce((acc, eq) => acc + (safeNumber(eq.medicoes?.pecas_ruins, 0) * safeNumber(eq.medicoes?.formato_gramas, 0) / 1000000), 0)).toFixed(3)} t
+                                </span>
+                            </div>
+                            <div className="bg-red-50 p-3 rounded border border-red-100">
+                                <span className="text-xs text-red-600 font-medium block">Percentual</span>
+                                <span className="text-lg font-bold text-red-800">
+                                    {(() => {
+                                        // Descarte total = soma de todos os equipamentos
+                                        let totalWasteTons = 0;
+
+                                        equipamentosDetalhados.forEach(eq => {
+                                            const fmt = safeNumber(eq.medicoes?.formato_gramas, 0);
+                                            const ruins = safeNumber(eq.medicoes?.pecas_ruins, 0);
+                                            if (fmt > 0) {
+                                                totalWasteTons += (ruins * fmt) / 1000000;
+                                            }
+                                        });
+
+                                        // Produção real da linha (do OLE/backend) - já em toneladas
+                                        const producaoRealTons = productionData.producaoReal;
+
+                                        // Percentual = Descarte / Produção Real × 100
+                                        return producaoRealTons > 0
+                                            ? ((totalWasteTons / producaoRealTons) * 100).toFixed(2)
+                                            : '0.00';
+                                    })()}%
+                                </span>
+                            </div>
+                        </div>
+                    </div>
 
                     <Diagnostics alerts={diagnosticAlerts} />
 
