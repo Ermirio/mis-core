@@ -10,7 +10,9 @@ import {
     TrendingUp,
     BarChart3,
     Search,
-    Zap
+    Zap,
+    Gauge,
+    RefreshCw
 } from 'lucide-react'
 import './Sidebar.css'
 
@@ -109,6 +111,27 @@ const Sidebar = ({ collapsed, onToggle }) => {
                 >
                     <Database size={20} />
                     {!collapsed && <span>Coleta de Dados</span>}
+                </NavLink>
+
+                <div className="sidebar-divider"></div>
+                {!collapsed && <p className="sidebar-section-title">Automação</p>}
+
+                <NavLink
+                    to="/predictive-control"
+                    className={({ isActive }) => isActive ? "sidebar-link active" : "sidebar-link"}
+                    title="Controle Preditivo"
+                >
+                    <Gauge size={20} />
+                    {!collapsed && <span>Controle Preditivo</span>}
+                </NavLink>
+
+                <NavLink
+                    to="/auto-training"
+                    className={({ isActive }) => isActive ? "sidebar-link active" : "sidebar-link"}
+                    title="Treinamento Automático"
+                >
+                    <RefreshCw size={20} />
+                    {!collapsed && <span>Treinamento Auto</span>}
                 </NavLink>
 
                 <div className="sidebar-footer">

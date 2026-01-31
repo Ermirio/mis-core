@@ -109,8 +109,16 @@ const OPCConfiguration = ({ selectedLine }) => {
     variable_name: '',
     type: 'Float',
     type_category: 'read',
-    description: ''
+    description: '',
+    target_id: null,
+    control_config: {
+      control_logic: 'direct',
+      relation_factor: 1.0,
+      min_adjustment: null,
+      max_adjustment: null
+    }
   })
+  const [targets, setTargets] = useState([])
   const { toast } = useToast()
 
   // --- NOVO: Carregar Configuração Global ---
@@ -119,7 +127,26 @@ const OPCConfiguration = ({ selectedLine }) => {
 
   useEffect(() => {
     loadGlobalConfig()
+    if (selectedLine) {
+      loadTargets()
+    }
   }, [])
+
+  useEffect(() => {
+    if (selectedLine) {
+      loadTargets()
+    }
+  }, [selectedLine])
+
+  const loadTargets = async () => {
+    if (!selectedLine) return
+    try {
+      const data = await api.getTargets(selectedLine)
+      setTargets(data || [])
+    } catch (error) {
+      console.error("Erro ao carregar targets:", error)
+    }
+  }
 
   const loadGlobalConfig = async () => {
     try {
@@ -175,7 +202,14 @@ const OPCConfiguration = ({ selectedLine }) => {
         variable_name: '',
         type: 'Float',
         type_category: 'read',
-        description: ''
+        description: '',
+        target_id: null,
+        control_config: {
+          control_logic: 'direct',
+          relation_factor: 1.0,
+          min_adjustment: null,
+          max_adjustment: null
+        }
       })
     }
   }
@@ -188,7 +222,13 @@ const OPCConfiguration = ({ selectedLine }) => {
     e.preventDefault()
     setLoading(true)
     try {
-      const payload = { ...formData, line: selectedLine }
+      // Preparar payload baseado no tipo de variável
+      const payload = { 
+        ...formData, 
+        line: selectedLine,
+        target_id: formData.type_category === 'reference' ? formData.target_id : null,
+        control_config: formData.type_category === 'control' ? formData.control_config : null
+      }
       if (editingVariable) {
         await api.updateOPCVariable(editingVariable.id, payload)
         toast({ title: "Sucesso", description: "Variável atualizada" })
@@ -198,7 +238,20 @@ const OPCConfiguration = ({ selectedLine }) => {
       }
       setDialogOpen(false)
       setEditingVariable(null)
-      setFormData({ node_id: '', variable_name: '', type: 'Float', type_category: 'read', description: '' })
+      setFormData({
+        node_id: '',
+        variable_name: '',
+        type: 'Float',
+        type_category: 'read',
+        description: '',
+        target_id: null,
+        control_config: {
+          control_logic: 'direct',
+          relation_factor: 1.0,
+          min_adjustment: null,
+          max_adjustment: null
+        }
+      })
       loadVariables()
     } catch (error) {
       toast({
@@ -218,7 +271,14 @@ const OPCConfiguration = ({ selectedLine }) => {
       variable_name: variable.variable_name,
       type: variable.type,
       type_category: variable.type_category || 'read',
-      description: variable.description || ''
+      description: variable.description || '',
+      target_id: variable.target_id || null,
+      control_config: variable.control_config || {
+        control_logic: 'direct',
+        relation_factor: 1.0,
+        min_adjustment: null,
+        max_adjustment: null
+      }
     })
     setDialogOpen(true)
   }
@@ -365,15 +425,17 @@ const OPCConfiguration = ({ selectedLine }) => {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="read">Leitura (Input)</SelectItem>
-                      <SelectItem value="write">Escrita (Target/Output)</SelectItem>
+                      <SelectItem value="read">🔵 Leitura (Input)</SelectItem>
+                      <SelectItem value="write">🟢 Escrita (Target/Output)</SelectItem>
+                      <SelectItem value="reference">🟡 Referência (Treinamento Auto)</SelectItem>
+                      <SelectItem value="control">🟠 Controle (Ajuste Preditivo)</SelectItem>
                     </SelectContent>
                   </Select>
                   <p className="text-xs text-muted-foreground mt-1">
-                    {formData.type_category === 'read'
-                      ? 'Variável para leitura de dados (sensores, medições)'
-                      : 'Variável para escrita de predições (targets, setpoints)'
-                    }
+                    {formData.type_category === 'read' && 'Variável para leitura de dados (sensores, medições)'}
+                    {formData.type_category === 'write' && 'Variável para escrita de predições (targets, setpoints)'}
+                    {formData.type_category === 'reference' && 'Variável de referência - captura automática de valores medidos para treinamento contínuo'}
+                    {formData.type_category === 'control' && 'Variável de controle - recebe recomendações de ajuste baseadas em predições'}
                   </p>
                 </div>
                 <div>
@@ -393,6 +455,114 @@ const OPCConfiguration = ({ selectedLine }) => {
                     </SelectContent>
                   </Select>
                 </div>
+
+                {/* Campo condicional para variável REFERENCE */}
+                {formData.type_category === 'reference' && (
+                  <div className="p-4 border-2 border-yellow-300 dark:border-yellow-700 rounded-lg bg-yellow-50 dark:bg-yellow-950/20">
+                    <Label htmlFor="target_id" className="flex items-center space-x-2 mb-2">
+                      <span className="text-yellow-700 dark:text-yellow-400 font-semibold">🟡 Configuração de Referência</span>
+                    </Label>
+                    <Select
+                      value={formData.target_id?.toString() || ''}
+                      onValueChange={(value) => handleInputChange('target_id', parseInt(value))}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Selecione o Target associado" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {targets.map(target => (
+                          <SelectItem key={target.id} value={target.id.toString()}>
+                            {target.target_name} ({target.target_unit})
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-yellow-700 dark:text-yellow-400 mt-2">
+                      Esta variável capturará automaticamente valores medidos e associará aos dados de treinamento do target selecionado.
+                    </p>
+                  </div>
+                )}
+
+                {/* Campos condicionais para variável CONTROL */}
+                {formData.type_category === 'control' && (
+                  <div className="p-4 border-2 border-orange-300 dark:border-orange-700 rounded-lg bg-orange-50 dark:bg-orange-950/20 space-y-4">
+                    <Label className="flex items-center space-x-2 mb-2">
+                      <span className="text-orange-700 dark:text-orange-400 font-semibold">🟠 Configuração de Controle Preditivo</span>
+                    </Label>
+                    
+                    <div>
+                      <Label htmlFor="control_logic">Lógica de Controle</Label>
+                      <Select
+                        value={formData.control_config.control_logic}
+                        onValueChange={(value) => handleInputChange('control_config', { ...formData.control_config, control_logic: value })}
+                      >
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="direct">⬆️ Direta (erro+ → aumenta controle)</SelectItem>
+                          <SelectItem value="reverse">⬇️ Reversa (erro+ → diminui controle)</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <p className="text-xs text-orange-700 dark:text-orange-400 mt-1">
+                        {formData.control_config.control_logic === 'direct' 
+                          ? 'Ex: Temperatura - aumentar aquecimento quando temperatura está baixa'
+                          : 'Ex: Velocidade - diminuir velocidade quando peso está alto'}
+                      </p>
+                    </div>
+
+                    <div>
+                      <Label htmlFor="relation_factor">Fator de Relação (0-100%)</Label>
+                      <div className="flex items-center space-x-3">
+                        <Input
+                          id="relation_factor"
+                          type="number"
+                          min="0"
+                          max="1"
+                          step="0.01"
+                          value={formData.control_config.relation_factor}
+                          onChange={(e) => handleInputChange('control_config', { ...formData.control_config, relation_factor: parseFloat(e.target.value) })}
+                          className="flex-1"
+                        />
+                        <span className="text-sm font-mono bg-orange-200 dark:bg-orange-900 px-3 py-2 rounded">
+                          {(formData.control_config.relation_factor * 100).toFixed(0)}%
+                        </span>
+                      </div>
+                      <p className="text-xs text-orange-700 dark:text-orange-400 mt-1">
+                        Controla a intensidade do ajuste. 1.0 = 100% (ajuste total), 0.5 = 50% (ajuste moderado)
+                      </p>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <Label htmlFor="min_adjustment">Ajuste Mínimo</Label>
+                        <Input
+                          id="min_adjustment"
+                          type="number"
+                          step="0.01"
+                          value={formData.control_config.min_adjustment || ''}
+                          onChange={(e) => handleInputChange('control_config', { ...formData.control_config, min_adjustment: e.target.value ? parseFloat(e.target.value) : null })}
+                          placeholder="Opcional"
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor="max_adjustment">Ajuste Máximo</Label>
+                        <Input
+                          id="max_adjustment"
+                          type="number"
+                          step="0.01"
+                          value={formData.control_config.max_adjustment || ''}
+                          onChange={(e) => handleInputChange('control_config', { ...formData.control_config, max_adjustment: e.target.value ? parseFloat(e.target.value) : null })}
+                          placeholder="Opcional"
+                        />
+                      </div>
+                    </div>
+                    <p className="text-xs text-orange-700 dark:text-orange-400">
+                      Limites de segurança para o ajuste sugerido (deixe em branco para sem limite)
+                    </p>
+                  </div>
+                )}
+
                 <div>
                   <Label htmlFor="description">Descrição</Label>
                   <Textarea

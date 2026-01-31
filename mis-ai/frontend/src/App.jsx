@@ -15,6 +15,8 @@ import DataCollection from '@/pages/DataCollection'
 import PredictionView from '@/pages/PredictionView'
 import DetailedAnalysis from '@/pages/DetailedAnalysis'
 import OPCConfiguration from '@/pages/OPCConfiguration'
+import PredictiveControl from '@/pages/PredictiveControl'
+import AutoTraining from '@/pages/AutoTraining'
 import './App.css'
 
 // Defina o basename aqui (corresponde ao 'base' do Vite e 'location' do Nginx)
@@ -136,6 +138,22 @@ function App() {
                   path="/opc"
                   element={
                     <OPCConfiguration
+                      selectedLine={selectedLine}
+                    />
+                  }
+                />
+                <Route
+                  path="/predictive-control"
+                  element={
+                    <PredictiveControl
+                      selectedLine={selectedLine}
+                    />
+                  }
+                />
+                <Route
+                  path="/auto-training"
+                  element={
+                    <AutoTraining
                       selectedLine={selectedLine}
                     />
                   }
