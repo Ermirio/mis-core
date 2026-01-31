@@ -47,6 +47,7 @@ class PredictionTarget(Base):
     line_obj = relationship('Line', back_populates='prediction_targets')
     prediction_data = relationship('PredictionData', back_populates='target_obj')
     prediction_models = relationship('PredictionModel', back_populates='target_obj')
+    opc_variables = relationship('OPCVariables', back_populates='target_obj')
 
     def to_dict(self):
         return {
@@ -113,10 +114,14 @@ class PredictionData(Base):
     
     timestamp = Column(DateTime, default=datetime.utcnow)
     opc_values = Column(JSON, nullable=True)  # Valores das variáveis OPC no momento
-    data_source = Column(String(20), default='manual')  # 'manual' ou 'opc'
+    data_source = Column(String(20), default='manual')  # 'manual', 'opc', 'auto_reference'
+    
+    # NOVO: Indicar se foi gerado automaticamente por referência
+    auto_generated = Column(Boolean, default=False)
     
     # Relacionamentos
     target_obj = relationship('PredictionTarget', back_populates='prediction_data')
+    control_recommendations = relationship('ControlRecommendation', back_populates='prediction_data_obj')
 
     def to_dict(self):
         return {
@@ -128,7 +133,8 @@ class PredictionData(Base):
             'confidence_std_dev': self.confidence_std_dev,
             'timestamp': self.timestamp.isoformat() if self.timestamp else None,
             'opc_values': self.opc_values,
-            'data_source': self.data_source
+            'data_source': self.data_source,
+            'auto_generated': self.auto_generated
         }
 
 class OPCVariables(Base):
@@ -139,11 +145,26 @@ class OPCVariables(Base):
     node_id = Column(String(100), nullable=False)
     variable_name = Column(String(50), nullable=False)
     type = Column(String(20), nullable=False)
-    type_category = Column(String(10), default='read')  # 'read' ou 'write'
+    type_category = Column(String(10), default='read')  # 'read', 'write', 'reference', 'control'
     description = Column(String(255), nullable=True)
     is_active = Column(Boolean, default=True)
     
+    # NOVO: Associação com target (para reference e control)
+    target_id = Column(Integer, ForeignKey('prediction_targets.id'), nullable=True)
+    
+    # NOVO: Configurações de controle (apenas para type_category='control')
+    control_config = Column(JSON, nullable=True)
+    # Estrutura do JSON:
+    # {
+    #   "control_logic": "direct" | "reverse",
+    #   "relation_factor": 0.0 - 1.0,
+    #   "min_adjustment": float,
+    #   "max_adjustment": float,
+    #   "adjustment_unit": string
+    # }
+    
     line_obj = relationship('Line', back_populates='opc_variables')
+    target_obj = relationship('PredictionTarget', back_populates='opc_variables')
 
     def to_dict(self):
         return {
@@ -154,7 +175,9 @@ class OPCVariables(Base):
             'type': self.type,
             'type_category': self.type_category,
             'description': self.description,
-            'is_active': self.is_active
+            'is_active': self.is_active,
+            'target_id': self.target_id,
+            'control_config': self.control_config
         }
 
 class OPCLogs(Base):
@@ -191,6 +214,92 @@ class OPCServerConfig(Base):
             'opc_url': self.opc_url,
             'is_active': self.is_active,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None
+        }
+
+class ControlRecommendation(Base):
+    """Histórico de recomendações de controle"""
+    __tablename__ = 'control_recommendations'
+    id = Column(Integer, primary_key=True)
+    
+    # Relacionamentos
+    control_variable_id = Column(Integer, ForeignKey('opc_variables.id'), nullable=False)
+    prediction_data_id = Column(Integer, ForeignKey('prediction_data.id'), nullable=False)
+    
+    # Valores da recomendação
+    target_value = Column(Float, nullable=False)        # Valor alvo desejado
+    predicted_value = Column(Float, nullable=False)     # Valor predito
+    error_value = Column(Float, nullable=False)         # Erro absoluto
+    error_percentage = Column(Float, nullable=False)    # Erro percentual
+    
+    # Ajuste recomendado
+    current_control_value = Column(Float, nullable=True)  # Valor atual do controle
+    recommended_adjustment = Column(Float, nullable=False) # Ajuste sugerido (%)
+    recommended_value = Column(Float, nullable=True)      # Novo valor sugerido
+    
+    # Metadados
+    timestamp = Column(DateTime, default=datetime.utcnow)
+    applied = Column(Boolean, default=False)              # Se foi aplicado
+    applied_at = Column(DateTime, nullable=True)
+    
+    # Configuração usada
+    control_logic = Column(String(10), nullable=False)    # 'direct' ou 'reverse'
+    relation_factor = Column(Float, nullable=False)       # 0.0 - 1.0
+    
+    # Relacionamentos
+    control_variable_obj = relationship('OPCVariables', foreign_keys=[control_variable_id])
+    prediction_data_obj = relationship('PredictionData', back_populates='control_recommendations')
+    
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'control_variable_id': self.control_variable_id,
+            'prediction_data_id': self.prediction_data_id,
+            'target_value': self.target_value,
+            'predicted_value': self.predicted_value,
+            'error_value': self.error_value,
+            'error_percentage': self.error_percentage,
+            'current_control_value': self.current_control_value,
+            'recommended_adjustment': self.recommended_adjustment,
+            'recommended_value': self.recommended_value,
+            'timestamp': self.timestamp.isoformat() if self.timestamp else None,
+            'applied': self.applied,
+            'applied_at': self.applied_at.isoformat() if self.applied_at else None,
+            'control_logic': self.control_logic,
+            'relation_factor': self.relation_factor
+        }
+
+class RetrainingPolicy(Base):
+    """Política de retreinamento automático"""
+    __tablename__ = 'retraining_policies'
+    id = Column(Integer, primary_key=True)
+    target_id = Column(Integer, ForeignKey('prediction_targets.id'), nullable=False)
+    model_id = Column(Integer, ForeignKey('prediction_models.id'), nullable=False)
+    
+    # Gatilhos de retreinamento
+    trigger_type = Column(String(20), nullable=False)  # 'record_count', 'time_interval', 'performance'
+    trigger_value = Column(Integer, nullable=True)     # Ex: 100 registros, 24 horas
+    
+    # Controle
+    is_active = Column(Boolean, default=True)
+    last_retrain_at = Column(DateTime, nullable=True)
+    next_retrain_at = Column(DateTime, nullable=True)
+    records_since_retrain = Column(Integer, default=0)
+    
+    # Relacionamentos
+    target_obj = relationship('PredictionTarget')
+    model_obj = relationship('PredictionModel')
+    
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'target_id': self.target_id,
+            'model_id': self.model_id,
+            'trigger_type': self.trigger_type,
+            'trigger_value': self.trigger_value,
+            'is_active': self.is_active,
+            'last_retrain_at': self.last_retrain_at.isoformat() if self.last_retrain_at else None,
+            'next_retrain_at': self.next_retrain_at.isoformat() if self.next_retrain_at else None,
+            'records_since_retrain': self.records_since_retrain
         }
 
 # Configuração do banco de dados

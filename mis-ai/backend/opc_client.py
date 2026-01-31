@@ -166,6 +166,21 @@ class OPCClient:
     # --- Métodos Públicos Seguros para Threads ---
     def get_opc_values(self, line):
         return self.schedule_task_safely(self._get_opc_values(line))
+    
+    async def read_variable(self, node_path: str) -> Optional[Any]:
+        """
+        Lê o valor de uma variável OPC de forma assíncrona.
+        
+        Args:
+            node_path: Caminho do nó OPC (ex: 'ns=2;s=Balanca.Peso')
+            
+        Returns:
+            Valor lido ou None se houver erro
+        """
+        value, quality = await self._read_variable_value(node_path)
+        if quality == "good":
+            return value
+        return None
         
     # =============================================================================
     # NOVO MÉTODO: Função pública segura para escrever um valor.

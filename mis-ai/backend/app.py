@@ -12,9 +12,12 @@ from sqlalchemy import func, exc
 
 from ml_model import generic_predictor
 from models import (Line, PredictionTarget, PredictionModel, PredictionData, 
-                    OPCLogs, OPCVariables, OPCServerConfig, create_default_data, create_tables, get_db)
+                    OPCLogs, OPCVariables, OPCServerConfig, ControlRecommendation, RetrainingPolicy,
+                    create_default_data, create_tables, get_db)
 from opc_client import opc_client, OPCClient
 from influx_client import influx_client
+from reference_sync import reference_sync_manager
+from control_manager import control_manager
 
 # ==================== CONFIGURAÇÕES INICIAIS ====================
 load_dotenv()
@@ -120,6 +123,14 @@ def initialize_opc():
         background_thread.start()
         
         logging.info("🔌 Loop OPC iniciado com sucesso em thread separada.")
+        
+        # Inicializar sincronização de variáveis de referência
+        if is_connected:
+            asyncio.run_coroutine_threadsafe(
+                reference_sync_manager.start(),
+                main_loop
+            )
+            logging.info("🔄 ReferenceSyncManager iniciado com sucesso.")
         
     except Exception as e:
         logging.error(f"❌ Erro ao inicializar OPC: {e}", exc_info=True)
@@ -714,15 +725,29 @@ def create_opc_variable():
         if existing:
             return jsonify({'error': f'Variável com node_id {data["node_id"]} já existe para a linha {data["line"]}'}), 409
         
+        # Validações adicionais para reference e control
+        type_category = data.get('type_category', 'read')
+        
+        if type_category in ['reference', 'control']:
+            if 'target_id' not in data or not data['target_id']:
+                return jsonify({'error': f'Campo target_id é obrigatório para variáveis do tipo {type_category}'}), 400
+            
+            # Verificar se o target existe
+            target = db.query(PredictionTarget).filter_by(id=data['target_id']).first()
+            if not target:
+                return jsonify({'error': f'Target com ID {data["target_id"]} não encontrado'}), 404
+        
         # Criar nova variável
         new_variable = OPCVariables(
             line_name=data['line'],
             node_id=data['node_id'],
             variable_name=data['variable_name'],
             type=data['type'],
-            type_category=data.get('type_category', 'read'),
+            type_category=type_category,
             description=data.get('description', ''),
-            is_active=True
+            is_active=True,
+            target_id=data.get('target_id'),
+            control_config=data.get('control_config')
         )
         
         db.add(new_variable)
@@ -763,6 +788,10 @@ def update_opc_variable(variable_id):
             variable.description = data['description']
         if 'is_active' in data:
             variable.is_active = data['is_active']
+        if 'target_id' in data:
+            variable.target_id = data['target_id']
+        if 'control_config' in data:
+            variable.control_config = data['control_config']
         
         db.commit()
         db.refresh(variable)
@@ -1073,6 +1102,129 @@ def read_opc_variable():
     except Exception as e:
         logging.error(f"❌ Erro ao ler do OPC: {e}", exc_info=True)
         return jsonify({'error': str(e)}), 500
+
+# ==================== ROTAS DE CONTROLE PREDITIVO ====================
+
+@app.route('/api/control/recommendations/calculate', methods=['POST'])
+def calculate_control_recommendations():
+    """Calcula recomendações de ajuste para uma predição"""
+    data = request.get_json()
+    
+    if not data or 'prediction_data_id' not in data or 'target_value' not in data:
+        return jsonify({'error': 'Campos obrigatórios: prediction_data_id, target_value'}), 400
+    
+    try:
+        recommendations = control_manager.calculate_recommendations(
+            prediction_data_id=data['prediction_data_id'],
+            target_value=float(data['target_value'])
+        )
+        
+        return jsonify({
+            'message': f'{len(recommendations)} recomendações calculadas',
+            'recommendations': recommendations
+        }), 200
+        
+    except Exception as e:
+        logging.error(f"❌ Erro ao calcular recomendações: {e}", exc_info=True)
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/control/recommendations/<int:recommendation_id>/apply', methods=['POST'])
+def apply_control_recommendation(recommendation_id):
+    """Aplica uma recomendação de controle, escrevendo o valor no OPC"""
+    try:
+        success, message = control_manager.apply_recommendation(recommendation_id)
+        
+        if success:
+            return jsonify({'message': message}), 200
+        else:
+            return jsonify({'error': message}), 400
+            
+    except Exception as e:
+        logging.error(f"❌ Erro ao aplicar recomendação: {e}", exc_info=True)
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/control/recommendations/active', methods=['GET'])
+def get_active_recommendations():
+    """Retorna recomendações ativas (não aplicadas)"""
+    target_id = request.args.get('target_id', type=int)
+    line_name = request.args.get('line')
+    
+    try:
+        recommendations = control_manager.get_active_recommendations(
+            target_id=target_id,
+            line_name=line_name
+        )
+        
+        return jsonify(recommendations), 200
+        
+    except Exception as e:
+        logging.error(f"❌ Erro ao buscar recomendações ativas: {e}", exc_info=True)
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/control/recommendations/history', methods=['GET'])
+def get_recommendation_history():
+    """Retorna histórico de recomendações"""
+    control_variable_id = request.args.get('control_variable_id', type=int)
+    limit = request.args.get('limit', default=100, type=int)
+    
+    try:
+        recommendations = control_manager.get_recommendation_history(
+            control_variable_id=control_variable_id,
+            limit=limit
+        )
+        
+        return jsonify(recommendations), 200
+        
+    except Exception as e:
+        logging.error(f"❌ Erro ao buscar histórico: {e}", exc_info=True)
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/control/recommendations', methods=['GET'])
+def get_all_recommendations():
+    """Lista todas as recomendações com filtros opcionais"""
+    target_id = request.args.get('target_id', type=int)
+    limit = request.args.get('limit', default=50, type=int)
+    applied = request.args.get('applied')
+    
+    db = next(get_db())
+    try:
+        query = db.query(ControlRecommendation)
+        
+        if target_id:
+            query = query.join(PredictionData).filter(
+                PredictionData.target_id == target_id
+            )
+        
+        if applied is not None:
+            applied_bool = applied.lower() in ['true', '1', 'yes']
+            query = query.filter(ControlRecommendation.applied == applied_bool)
+        
+        recommendations = query.order_by(
+            ControlRecommendation.timestamp.desc()
+        ).limit(limit).all()
+        
+        # Enriquecer com informações da variável de controle
+        result = []
+        for rec in recommendations:
+            control_var = db.query(OPCVariables).filter(
+                OPCVariables.id == rec.control_variable_id
+            ).first()
+            
+            rec_dict = rec.to_dict()
+            if control_var:
+                rec_dict['control_variable_name'] = control_var.variable_name
+                rec_dict['control_variable_node_id'] = control_var.node_id
+                rec_dict['line_name'] = control_var.line_name
+            
+            result.append(rec_dict)
+        
+        return jsonify(result), 200
+        
+    except Exception as e:
+        logging.error(f"❌ Erro ao listar recomendações: {e}", exc_info=True)
+        return jsonify({'error': str(e)}), 500
+    finally:
+        db.close()
 
 # ==================== FIM DAS ROTAS ====================
 
