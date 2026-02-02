@@ -136,7 +136,8 @@ const AutoTraining = ({ selectedLine }) => {
             <CardTitle className="text-sm font-medium text-blue-700 dark:text-blue-400 flex items-center space-x-2">
               <Database className="h-4 w-4" />
               <span>Variáveis Reference</span>
-            </CardTitle
+            </CardTitle>
+          </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-blue-600">
               {syncStatus?.reference_variables_count || 0}
@@ -174,7 +175,7 @@ const AutoTraining = ({ selectedLine }) => {
                 : 'N/A'}
             </div>
             <p className="text-xs text-muted-foreground mt-1">
-              {syncStatus?.last_sync_time 
+              {syncStatus?.last_sync_time
                 ? `${Math.floor((Date.now() - new Date(syncStatus.last_sync_time)) / 1000)}s atrás`
                 : 'Aguardando...'}
             </p>

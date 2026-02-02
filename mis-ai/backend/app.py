@@ -8,6 +8,13 @@ from dateutil import parser as date_parser
 from dotenv import load_dotenv
 from flask import Flask, jsonify, request
 from flask_cors import CORS
+import logging
+
+# Configuração de Logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
 from sqlalchemy import func, exc
 
 from ml_model import generic_predictor
@@ -131,6 +138,10 @@ def initialize_opc():
                 main_loop
             )
             logging.info("🔄 ReferenceSyncManager iniciado com sucesso.")
+
+            # Restaurar workers de predição ativos (Threading)
+            logging.info("⏳ Restaurando workers de predição ativos...")
+            generic_predictor.restore_active_predictions()
         
     except Exception as e:
         logging.error(f"❌ Erro ao inicializar OPC: {e}", exc_info=True)
@@ -449,7 +460,8 @@ def get_last_prediction(model_id):
         ).order_by(PredictionData.timestamp.desc()).first()
         
         if not last_pred:
-            return jsonify({'error': 'Nenhuma predição encontrada'}), 404
+            # RETORNAR 200 com null é melhor que 404 para o frontend não acusar erro
+            return jsonify(None), 200
             
         return jsonify(last_pred.to_dict()), 200
     except Exception as e:
@@ -519,9 +531,53 @@ def get_data():
     
     db = next(get_db())
     try:
-        data = db.query(PredictionData).filter(
+        query = db.query(PredictionData).filter(
             PredictionData.target_id == target_id
-        ).order_by(PredictionData.timestamp.desc()).limit(100).all()
+        )
+        
+        # --- FILTRO DE MODELO (Novo) ---
+        model_id = request.args.get('model_id')
+        if model_id:
+            try:
+                m_id = int(model_id)
+                # Retorna dados deste modelo OU dados sem modelo (Manual/Referência)
+                query = query.filter((PredictionData.model_id == m_id) | (PredictionData.model_id == None))
+            except ValueError:
+                pass # Ignora se não for int
+
+        # --- FILTROS DE TEMPO (Corrigido para GMT-3) ---
+        start_time_str = request.args.get('start_time')
+        end_time_str = request.args.get('end_time')
+        
+        # Offset fixo de -3h (Para alinhar UTC do Frontend com Local do DB)
+        local_offset = timedelta(hours=-3)
+
+        if start_time_str:
+            try:
+                start_dt = date_parser.parse(start_time_str)
+                # Converte para Tempo Local se tiver timezone info
+                if start_dt.tzinfo:
+                    start_dt = start_dt.astimezone(timezone(local_offset))
+                # Remove info de timezone para comparar com MySQL (Naive)
+                start_dt = start_dt.replace(tzinfo=None)
+                query = query.filter(PredictionData.timestamp >= start_dt)
+            except Exception as e:
+                logging.warning(f"Erro ao filtrar start_time: {e}")
+
+        if end_time_str:
+            try:
+                end_dt = date_parser.parse(end_time_str)
+                if end_dt.tzinfo:
+                    end_dt = end_dt.astimezone(timezone(local_offset))
+                end_dt = end_dt.replace(tzinfo=None)
+                query = query.filter(PredictionData.timestamp <= end_dt)
+            except Exception as e:
+                 logging.warning(f"Erro ao filtrar end_time: {e}")
+            
+        # Limite padrão ou customizado
+        limit = request.args.get('limit', 1000) # Aumentado default para 1000
+        
+        data = query.order_by(PredictionData.timestamp.desc()).limit(int(limit)).all()
         
         return jsonify([d.to_dict() for d in data]), 200
     finally:
@@ -728,7 +784,7 @@ def create_opc_variable():
         # Validações adicionais para reference e control
         type_category = data.get('type_category', 'read')
         
-        if type_category in ['reference', 'control']:
+        if type_category in ['reference', 'control', 'target']:
             if 'target_id' not in data or not data['target_id']:
                 return jsonify({'error': f'Campo target_id é obrigatório para variáveis do tipo {type_category}'}), 400
             
@@ -1033,6 +1089,67 @@ def get_opc_logs_by_date():
     except ValueError:
         return jsonify({'error': 'Formato de data inválido. Use YYYY-MM-DD.'}), 400
 # ==========================================================
+# NOVAS ROTAS - SYNC E AUTO DATA
+# ==========================================================
+
+@app.route('/api/reference/sync/status', methods=['GET'])
+def get_reference_sync_status():
+    """Retorna o status do gerenciador de sincronização"""
+    return jsonify({
+        'running': reference_sync_manager.running,
+        'interval': reference_sync_manager.sync_interval
+    }), 200
+
+@app.route('/api/reference/sync/start', methods=['POST'])
+def start_reference_sync():
+    try:
+        if not opc_client.loop:
+             return jsonify({'error': 'Loop OPC não inicializado'}), 500
+
+        asyncio.run_coroutine_threadsafe(
+            reference_sync_manager.start(),
+            opc_client.loop
+        )
+        return jsonify({'message': 'Sincronização iniciada'}), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/reference/sync/stop', methods=['POST'])
+def stop_reference_sync():
+    try:
+        if not opc_client.loop:
+             return jsonify({'error': 'Loop OPC não inicializado'}), 500
+             
+        asyncio.run_coroutine_threadsafe(
+            reference_sync_manager.stop(),
+            opc_client.loop
+        )
+        return jsonify({'message': 'Sincronização parada'}), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/data/auto-generated', methods=['GET'])
+def get_auto_generated_data():
+    """Retorna dados gerados automaticamente pela sincronização"""
+    line_name = request.args.get('line')
+    limit = request.args.get('limit', default=100, type=int)
+
+    db = next(get_db())
+    try:
+        query = db.query(PredictionData).filter(PredictionData.auto_generated == True)
+        
+        if line_name:
+            query = query.join(PredictionTarget).filter(PredictionTarget.line_name == line_name)
+        
+        data = query.order_by(PredictionData.timestamp.desc()).limit(limit).all()
+        return jsonify([d.to_dict() for d in data]), 200
+    except Exception as e:
+        logging.error(f"Erro ao buscar dados automáticos: {e}")
+        return jsonify({'error': str(e)}), 500
+    finally:
+        db.close()
+
+# ==========================================================
 # FIM DA NOVA ROTA
 # ==========================================================
 
@@ -1165,19 +1282,42 @@ def get_active_recommendations():
 def get_recommendation_history():
     """Retorna histórico de recomendações"""
     control_variable_id = request.args.get('control_variable_id', type=int)
+    line = request.args.get('line', type=str)  # <-- NOVO: Filtro por linha
     limit = request.args.get('limit', default=100, type=int)
     
+    db = next(get_db())
     try:
-        recommendations = control_manager.get_recommendation_history(
-            control_variable_id=control_variable_id,
-            limit=limit
-        )
+        query = db.query(ControlRecommendation)
         
-        return jsonify(recommendations), 200
+        if control_variable_id:
+            query = query.filter(ControlRecommendation.control_variable_id == control_variable_id)
+        
+        # Filtrar por linha (via OPCVariables join)
+        if line:
+            query = query.join(OPCVariables, ControlRecommendation.control_variable_id == OPCVariables.id).filter(
+                OPCVariables.line_name == line
+            )
+        
+        recommendations = query.order_by(ControlRecommendation.timestamp.desc()).limit(limit).all()
+        
+        # Enriquecer com control_variable_name (como /recommendations faz)
+        result = []
+        for rec in recommendations:
+            control_var = db.query(OPCVariables).filter(OPCVariables.id == rec.control_variable_id).first()
+            rec_dict = rec.to_dict()
+            if control_var:
+                rec_dict['control_variable_name'] = control_var.variable_name
+                rec_dict['line_name'] = control_var.line_name
+            result.append(rec_dict)
+        
+        return jsonify(result), 200
         
     except Exception as e:
         logging.error(f"❌ Erro ao buscar histórico: {e}", exc_info=True)
         return jsonify({'error': str(e)}), 500
+    finally:
+        db.close()
+
 
 @app.route('/api/control/recommendations', methods=['GET'])
 def get_all_recommendations():

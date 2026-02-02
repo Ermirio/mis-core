@@ -1,12 +1,12 @@
 # opc_client.py
 import asyncio
 import logging
-from typing import Any, Optional, Tuple, Dict
-from asyncua import Client, ua  # <--- IMPORTAÇÃO ADICIONADA
+from typing import Any, Optional, Tuple, Dict, Callable
+from asyncua import Client, ua 
 from models import OPCLogs, OPCVariables, get_db
-from datetime import datetime, timezone
-import os
 from datetime import datetime, timezone, timedelta
+import os
+
 logger = logging.getLogger(__name__)
 
 class OPCClient:
@@ -40,29 +40,45 @@ class OPCClient:
         future = asyncio.run_coroutine_threadsafe(coro, self.loop)
         return future.result()
 
+    async def _execute_with_retry(self, operation: Callable, *args, **kwargs):
+        """Executa uma operação com retry automático"""
+        try:
+            return await operation(*args, **kwargs)
+        except (OSError, ConnectionError, asyncio.TimeoutError) as e:
+            logger.warning(f"⚠️ Erro de conexão OPC: {e}. Tentando reconectar...")
+            try:
+                await self.disconnect()
+                await asyncio.sleep(1)
+                await self.connect()
+                return await operation(*args, **kwargs)
+            except Exception as retry_err:
+                logger.error(f"❌ Retry falhou: {retry_err}")
+                raise retry_err
+        except Exception as e:
+            raise e
+
     async def _read_variable_value(self, node_path: str) -> Tuple[Any, str]:
         if not self.connected: return None, "OPC client is not connected."
-        try:
+        
+        async def _do_read():
             node = self._client.get_node(node_path)
             data_value = await node.read_data_value()
             if data_value.StatusCode.is_good():
                 return data_value.Value.Value, "good"
             return None, f"bad_quality_{data_value.StatusCode}"
+
+        try:
+            return await self._execute_with_retry(_do_read)
         except Exception as e:
             return None, "error_reading_node"
 
-    # =============================================================================
-    # NOVO MÉTODO: Lógica assíncrona para escrever um valor em um nó OPC.
-    # =============================================================================
     async def _write_variable_value(self, node_path: str, value: Any, value_type: str = "Float") -> Tuple[bool, str]:
         if not self.connected: 
             return False, "OPC client is not connected."
         
-        # Este é o 'try' principal que estava faltando o 'except'
-        try:
+        async def _do_write():
             node = self._client.get_node(node_path)
             
-            # --- CORREÇÃO: Conversão de tipo interna (com seu próprio try/except) ---
             try:
                 if value_type == "Float":
                     value_to_write = float(value)
@@ -71,50 +87,58 @@ class OPCClient:
                 elif value_type == "Boolean":
                     value_to_write = bool(value)
                 else:
-                    value_to_write = str(value) # Padrão para string
+                    value_to_write = str(value)
             except (ValueError, TypeError) as e:
                 logger.error(f"Erro ao converter valor {value} para o tipo {value_type}")
                 return False, f"Type_conversion_error: {e}"
-            # --- FIM DA CORREÇÃO ---
             
-            # Mapeia o tipo de dado do nosso banco (String) para o tipo da biblioteca asyncua
             variant_type_map = {
                 "Float": ua.VariantType.Float,
+                "Double": ua.VariantType.Double, # <--- ADICIONADO SUPORTE A DOUBLE (64-bit)
                 "Integer": ua.VariantType.Int64, 
                 "Boolean": ua.VariantType.Boolean,
                 "String": ua.VariantType.String,
             }
             variant_type = variant_type_map.get(value_type, ua.VariantType.Float)
             
-            # Constrói o objeto DataValue que será enviado
             data_value_to_write = ua.DataValue(ua.Variant(value_to_write, variant_type))
-            
             status_code = await node.write_value(data_value_to_write)
+            
+            logger.info(f"Write Return Type: {type(status_code)} Val: {status_code}")
 
-            if status_code.is_good():
+            is_good = False
+            if hasattr(status_code, 'is_good'):
+                is_good = status_code.is_good()
+            elif hasattr(status_code, 'is_good_value'): 
+                is_good = status_code.is_good_value()
+            elif isinstance(status_code, (list, tuple)):
+                is_good = any(s.is_good() for s in status_code if hasattr(s, 'is_good'))
+            else:
+                is_good = str(status_code) == "Good" or "Good" in str(status_code)
+
+            if status_code is None: is_good = True
+
+            if is_good:
                 logger.info(f"Sucesso ao escrever valor {value_to_write} no nó {node_path}")
                 return True, "good"
             else:
                 logger.error(f"Falha ao escrever no nó {node_path}. StatusCode: {status_code}")
                 return False, f"bad_quality_{status_code}"
 
-        # --- ESTE É O BLOCO QUE FALTAVA ---
+        try:
+            return await self._execute_with_retry(_do_write)
         except Exception as e:
-            logger.error(f"Erro EXCEPCIONAL ao tentar escrever no nó {node_path}", exc_info=True)
-            return False, "error_writing_node"
-
+            logger.error(f"Erro ao escrever variável {node_path}: {e}")
+            return False, str(e)
 
     async def _get_opc_values(self, line):
         if not self.connected: return None, "OPC client is not connected."
         db = next(get_db())
         try:
-            # --- CORREÇÃO ---
             variables = db.query(OPCVariables).filter(
                 OPCVariables.line_name == line,
                 OPCVariables.is_active == True
-                # OPCVariables.type_category == 'read' <-- REMOVIDO: Agora lê read e write para logar tudo
             ).all()
-            # --- FIM DA CORREÇÃO ---
             
             if not variables: return {}, None
             opc_values = {}
@@ -163,28 +187,20 @@ class OPCClient:
                 logger.error(f"Erro inesperado no worker para a linha {line}: {e}", exc_info=True)
                 await asyncio.sleep(interval_seconds)
 
-    # --- Métodos Públicos Seguros para Threads ---
     def get_opc_values(self, line):
         return self.schedule_task_safely(self._get_opc_values(line))
     
     async def read_variable(self, node_path: str) -> Optional[Any]:
-        """
-        Lê o valor de uma variável OPC de forma assíncrona.
-        
-        Args:
-            node_path: Caminho do nó OPC (ex: 'ns=2;s=Balanca.Peso')
-            
-        Returns:
-            Valor lido ou None se houver erro
-        """
-        value, quality = await self._read_variable_value(node_path)
-        if quality == "good":
-            return value
+        """Wrapper Público"""
+        val, qual = await self._read_variable_value(node_path)
+        if qual == "good": return val
         return None
         
-    # =============================================================================
-    # NOVO MÉTODO: Função pública segura para escrever um valor.
-    # =============================================================================
+    async def write_value(self, node_path: str, value: Any) -> bool:
+        """Alias para _write_variable_value para compatibilidade com app.py"""
+        success, _ = await self._write_variable_value(node_path, value)
+        return success
+        
     def write_variable_value(self, node_path, value, value_type="Float"):
         return self.schedule_task_safely(self._write_variable_value(node_path, value, value_type))
 
@@ -193,7 +209,6 @@ class OPCClient:
             if line in self.logging_tasks and not self.logging_tasks[line].done():
                 return False, "Logging já está ativo para esta linha."
             
-            # Busca as variáveis antes de iniciar para garantir que existam
             db = next(get_db())
             try:
                 variables = db.query(OPCVariables).filter(OPCVariables.line_name == line).all()
@@ -235,22 +250,16 @@ class OPCClient:
                 logger.info("OPCClient desconectado com sucesso.")
             except Exception as e:
                 logger.error(f"Erro ao desconectar OPCClient: {e}", exc_info=True)
-                # Mesmo com erro, consideramos desconectado para evitar loops
                 self.connected = False 
 
     async def configure(self, new_url: str):
         """Atualiza a URL de conexão e força reconexão"""
         logger.info(f"Reconfigurando OPCClient para nova URL: {new_url}")
         
-        # 1. Desconectar se estiver conectado
         if self.connected:
             await self.disconnect()
             
-        # 2. Atualizar URL
         self.url = new_url
-        
-        # 3. Reconectar (a reconexão automática ou manual fará o resto)
-        # O cliente chamador (API) deve chamar .connect() explicitamente após .configure()
         logger.info("OPCClient reconfigurado. Chame .connect() para estabelecer conexão.")
 
     def get_logging_status_for_line(self, line):

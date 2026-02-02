@@ -302,6 +302,22 @@ class RetrainingPolicy(Base):
             'records_since_retrain': self.records_since_retrain
         }
 
+class MetricsConfig(Base):
+    """Configurações globais de métricas e controle"""
+    __tablename__ = 'metrics_config'
+    id = Column(Integer, primary_key=True)
+    kwh_cost_brl = Column(Float, default=0.85)
+    auto_apply = Column(Boolean, default=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'kwh_cost_brl': self.kwh_cost_brl,
+            'auto_apply': self.auto_apply,
+            'updated_at': self.updated_at.isoformat() if self.updated_at else None
+        }
+
 # Configuração do banco de dados
 DATABASE_URL = os.getenv('DATABASE_URL', 'sqlite:///prediction_app.db')
 

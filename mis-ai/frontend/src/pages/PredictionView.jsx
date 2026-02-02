@@ -71,8 +71,6 @@ const PredictionView = ({ selectedLine, selectedTarget, selectedModel }) => {
   // Estado que reflete o status de predições contínuas vindo da API.
   const [continuousStatus, setContinuousStatus] = useState(false)
 
-  // Novo estado para o Modo Tempo Real
-  const [realTimeMode, setRealTimeMode] = useState(false)
 
   // Estado para o filtro de data inicial.
   const [startDate, setStartDate] = useState(() => {
@@ -148,7 +146,10 @@ const PredictionView = ({ selectedLine, selectedTarget, selectedModel }) => {
     if (selectedTarget) {
       loadChartData()
     }
-  }, [selectedTarget, startDate, endDate, startTime, endTime, realTimeMode]) // Adicionado realTimeMode
+    if (selectedTarget) {
+      loadChartData()
+    }
+  }, [selectedTarget, startDate, endDate, startTime, endTime])
 
   // Efeito para gerenciar o `setInterval` de auto-refresh do gráfico.
   // Inicia ou para o intervalo baseado na flag `autoRefresh`.
@@ -173,7 +174,7 @@ const PredictionView = ({ selectedLine, selectedTarget, selectedModel }) => {
         clearInterval(autoRefreshInterval.current)
       }
     }
-  }, [autoRefresh, selectedTarget, realTimeMode]) // Adicionado realTimeMode
+  }, [autoRefresh, selectedTarget, selectedModel, startDate, endDate, startTime, endTime])
 
   // Efeito de limpeza geral, executado quando o componente é desmontado.
   // Garante que todos os intervalos sejam limpos para evitar vazamento de memória.
@@ -220,7 +221,6 @@ const PredictionView = ({ selectedLine, selectedTarget, selectedModel }) => {
 
   // Função para os botões de filtro rápido de dias (1d, 7d, 30d).
   const setQuickDateRange = (days) => {
-    if (realTimeMode) return // Desabilita se estiver em modo tempo real
 
     const end = new Date()
     const start = new Date()
@@ -235,7 +235,6 @@ const PredictionView = ({ selectedLine, selectedTarget, selectedModel }) => {
 
   // Função para os botões de filtro rápido de horas (1h, 6h, 12h).
   const setQuickTimeRange = (hours) => {
-    if (realTimeMode) return // Desabilita se estiver em modo tempo real
 
     const end = new Date()
     const start = new Date()
@@ -258,14 +257,12 @@ const PredictionView = ({ selectedLine, selectedTarget, selectedModel }) => {
   // Função para gerenciar o clique no seletor de data.
   // Função para gerenciar o clique no seletor de data inicial.
   const handleStartDateChange = (e) => {
-    if (realTimeMode) return // Desabilita se estiver em modo tempo real
     setStartDate(e.target.value);
     setShowTimeFilters(true);
   };
 
   // Função para gerenciar o clique no seletor de data final.
   const handleEndDateChange = (e) => {
-    if (realTimeMode) return // Desabilita se estiver em modo tempo real
     setEndDate(e.target.value);
     setShowTimeFilters(true);
   };
@@ -289,21 +286,17 @@ const PredictionView = ({ selectedLine, selectedTarget, selectedModel }) => {
     try {
       let startDateTime, endDateTime
 
-      if (realTimeMode) {
-        // Modo Tempo Real: Últimos 30 minutos
-        endDateTime = new Date()
-        startDateTime = new Date(endDateTime.getTime() - 30 * 60000)
-      } else {
-        // Modo Histórico: Usa os filtros
-        startDateTime = new Date(startDate + 'T' + startTime + ':00')
-        endDateTime = new Date(endDate + 'T' + endTime + ':59')
-      }
+      // Modo Histórico: Usa os filtros
+      startDateTime = new Date(startDate + 'T' + startTime + ':00')
+      endDateTime = new Date(endDate + 'T' + endTime + ':59')
 
       const data = await api.getData({
         target_id: selectedTarget.id,
         start_time: startDateTime.toISOString(),
         end_time: endDateTime.toISOString(),
-        data_type: 'prediction'
+        data_type: 'prediction',
+        model_id: selectedModel?.id,
+        limit: 2000 // Aumentado para melhor visualização
       })
 
       const transformedData = data
@@ -408,7 +401,7 @@ const PredictionView = ({ selectedLine, selectedTarget, selectedModel }) => {
         })
       } else {
         // --- INICIAR ---
-        await api.startContinuousPredictions({ model_id: selectedModel.id })
+        await api.startContinuousPredictions({ model_id: selectedModel.id, interval: 5 })
         setContinuousPredictions(true) // Atualiza o estado visual do botão
         setContinuousStatus(true)      // Atualiza o status real
 
@@ -618,15 +611,15 @@ const PredictionView = ({ selectedLine, selectedTarget, selectedModel }) => {
                 <div className="flex items-center space-x-1">
                   {showTimeFilters ? (
                     <>
-                      <Button variant="outline" size="sm" onClick={() => setQuickTimeRange(1)} className="text-xs px-2 py-1 h-7" disabled={realTimeMode}>1h</Button>
-                      <Button variant="outline" size="sm" onClick={() => setQuickTimeRange(6)} className="text-xs px-2 py-1 h-7" disabled={realTimeMode}>6h</Button>
-                      <Button variant="outline" size="sm" onClick={() => setQuickTimeRange(12)} className="text-xs px-2 py-1 h-7" disabled={realTimeMode}>12h</Button>
+                      <Button variant="outline" size="sm" onClick={() => setQuickTimeRange(1)} className="text-xs px-2 py-1 h-7">1h</Button>
+                      <Button variant="outline" size="sm" onClick={() => setQuickTimeRange(6)} className="text-xs px-2 py-1 h-7">6h</Button>
+                      <Button variant="outline" size="sm" onClick={() => setQuickTimeRange(12)} className="text-xs px-2 py-1 h-7">12h</Button>
                     </>
                   ) : (
                     <>
-                      <Button variant="outline" size="sm" onClick={() => setQuickDateRange(1)} className="text-xs px-2 py-1 h-7" disabled={realTimeMode}>1d</Button>
-                      <Button variant="outline" size="sm" onClick={() => setQuickDateRange(7)} className="text-xs px-2 py-1 h-7" disabled={realTimeMode}>7d</Button>
-                      <Button variant="outline" size="sm" onClick={() => setQuickDateRange(30)} className="text-xs px-2 py-1 h-7" disabled={realTimeMode}>30d</Button>
+                      <Button variant="outline" size="sm" onClick={() => setQuickDateRange(1)} className="text-xs px-2 py-1 h-7">1d</Button>
+                      <Button variant="outline" size="sm" onClick={() => setQuickDateRange(7)} className="text-xs px-2 py-1 h-7">7d</Button>
+                      <Button variant="outline" size="sm" onClick={() => setQuickDateRange(30)} className="text-xs px-2 py-1 h-7">30d</Button>
                     </>
                   )}
                 </div>
@@ -642,7 +635,6 @@ const PredictionView = ({ selectedLine, selectedTarget, selectedModel }) => {
                     value={startDate}
                     onChange={handleStartDateChange}
                     className="w-auto text-sm cursor-pointer"
-                    disabled={realTimeMode}
                   />
                   <Label htmlFor="end-date" className="text-sm whitespace-nowrap">
                     Até:
@@ -653,7 +645,6 @@ const PredictionView = ({ selectedLine, selectedTarget, selectedModel }) => {
                     value={endDate}
                     onChange={handleEndDateChange}
                     className="w-auto text-sm cursor-pointer"
-                    disabled={realTimeMode}
                   />
                   {showTimeFilters && (
                     <>
@@ -662,7 +653,6 @@ const PredictionView = ({ selectedLine, selectedTarget, selectedModel }) => {
                         value={startTime}
                         onChange={(e) => setStartTime(e.target.value)}
                         className="w-auto text-sm"
-                        disabled={realTimeMode}
                       />
                       <Label className="text-sm whitespace-nowrap">até</Label>
                       <Input
@@ -670,38 +660,20 @@ const PredictionView = ({ selectedLine, selectedTarget, selectedModel }) => {
                         value={endTime}
                         onChange={(e) => setEndTime(e.target.value)}
                         className="w-auto text-sm"
-                        disabled={realTimeMode}
                       />
                     </>
                   )}
                 </div>
 
                 {/* Botão para alternar a visibilidade do filtro de hora */}
-                <Button variant={showTimeFilters ? "default" : "outline"} size="sm" onClick={() => setShowTimeFilters(!showTimeFilters)} className="text-xs px-2 py-1 h-7" title="Filtrar por hora" disabled={realTimeMode}>
+                <Button variant={showTimeFilters ? "default" : "outline"} size="sm" onClick={() => setShowTimeFilters(!showTimeFilters)} className="text-xs px-2 py-1 h-7" title="Filtrar por hora">
                   <Clock className="h-3 w-3" />
                 </Button>
 
                 {/* Switch de Auto-Refresh */}
                 <div className="flex items-center space-x-2">
-                  <Switch id="auto-refresh" checked={autoRefresh} onCheckedChange={handleAutoRefreshToggle} disabled={realTimeMode} />
+                  <Switch id="auto-refresh" checked={autoRefresh} onCheckedChange={handleAutoRefreshToggle} />
                   <Label htmlFor="auto-refresh" className="text-sm">Auto-atualizar</Label>
-                </div>
-
-                {/* Switch de Modo Tempo Real */}
-                <div className="flex items-center space-x-2 border-l pl-4 ml-2">
-                  <Switch
-                    id="real-time-mode"
-                    checked={realTimeMode}
-                    onCheckedChange={(checked) => {
-                      setRealTimeMode(checked)
-                      if (checked) {
-                        setAutoRefresh(true) // Força auto-refresh
-                      }
-                    }}
-                  />
-                  <Label htmlFor="real-time-mode" className="text-sm font-semibold text-blue-600 dark:text-blue-400">
-                    Tempo Real (30m)
-                  </Label>
                 </div>
 
                 {/* Botão para forçar a atualização */}
@@ -734,8 +706,8 @@ const PredictionView = ({ selectedLine, selectedTarget, selectedModel }) => {
                     <YAxis tick={{ fontSize: 12 }} label={{ value: selectedTarget.target_unit || 'Valor', angle: -90, position: 'insideLeft' }} />
                     <Tooltip formatter={formatTooltipValue} labelStyle={{ color: '#333' }} />
                     <Legend />
-                    <Line type="monotone" dataKey="measured" stroke="#2563eb" strokeWidth={2} dot={{ r: 4 }} name="measured" connectNulls={false} />
-                    <Line type="monotone" dataKey="predicted" stroke="#dc2626" strokeWidth={2} strokeDasharray="5 5" dot={{ r: 4 }} name="predicted" connectNulls={false} />
+                    <Line type="monotone" dataKey="measured" stroke="#2563eb" strokeWidth={2} dot={{ r: 4 }} name="measured" connectNulls={true} />
+                    <Line type="monotone" dataKey="predicted" stroke="#dc2626" strokeWidth={3} strokeDasharray="5 5" dot={{ r: 4 }} name="predicted" connectNulls={true} />
                   </LineChart>
                 </ResponsiveContainer>
               </div>

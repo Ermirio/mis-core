@@ -2,9 +2,10 @@
 // IMPORTANTE: Este arquivo deve substituir o src/lib/api.js do frontend
 
 // Detecta automaticamente se está em desenvolvimento ou produção
-const API_BASE_URL = process.env.NODE_ENV === 'production'
-  ? '/mis-ai-api/api'  // Em produção, usa o proxy do Nginx
-  : 'http://localhost:5004/api'  // Em desenvolvimento, acessa diretamente
+// Em produção (Vite), import.meta.env.MODE será 'production'
+const API_BASE_URL = import.meta.env.MODE === 'production'
+  ? '/mis-ai-api/api'  // Em produção, usa o proxy do Nginx (porta 3000)
+  : 'http://localhost:5004/api'  // Em desenvolvimento local, acessa diretamente
 
 class ApiClient {
   async request(endpoint, options = {}) {

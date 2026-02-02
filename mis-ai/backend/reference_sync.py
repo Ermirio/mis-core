@@ -1,7 +1,7 @@
 # reference_sync.py - Sincronização automática de variáveis de referência
 import logging
 import asyncio
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from models import OPCVariables, PredictionData, get_db
 from opc_client import opc_client
 
@@ -139,11 +139,14 @@ class ReferenceSyncManager:
             return
         
         # 4. Criar registro em PredictionData
+        # Define o fuso GMT-3 (America/Sao_Paulo)
+        local_timezone = timezone(timedelta(hours=-3))
+        
         new_data = PredictionData(
             target_id=ref_var.target_id,
             measured_value=float(ref_value),
             opc_values=opc_values,
-            timestamp=datetime.now(timezone.utc),
+            timestamp=datetime.now(local_timezone), # <--- AGORA USA LOCAL TIME
             data_source='auto_reference',
             auto_generated=True
         )

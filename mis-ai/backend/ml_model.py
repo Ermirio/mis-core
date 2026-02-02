@@ -13,6 +13,7 @@ from datetime import datetime, timedelta, timezone
 from models import PredictionData, PredictionTarget, PredictionModel, OPCVariables, get_db
 from opc_client import opc_client
 from influx_client import influx_client
+from control_manager import control_manager
 
 class GenericPredictor:
     """Preditor genérico que suporta múltiplos targets e modelos"""
@@ -312,12 +313,49 @@ class GenericPredictor:
             feature_vector = {feature: opc_values.get(feature, 0.0) for feature in required_features}
             X_pred = pd.DataFrame([feature_vector])[required_features]
             prediction = model.predict(X_pred)[0]
+            logging.info(f"🔮 [PREDICT-DEBUG] Modelo {model_id} output: {prediction} (Type: {type(prediction)})")
+            
+            # Check for NaN/Inf
+            if np.isnan(prediction) or np.isinf(prediction):
+                 logging.warning(f"⚠️ [PREDICT-DEBUG] Predição inválida detectada (NaN/Inf): {prediction}")
+                 prediction = 0.0 # Fallback temporário para evitar NULL no DB
+
             
             # =============================================================================
             # INÍCIO DA NOVA LÓGICA DE ESCRITA NO OPC
             # =============================================================================
             db = next(get_db())
             try:
+                # 1. TENTATIVA DE ENCONTRAR O VALOR MEDIDO (REFERENCE)
+                # O dashboard precisa do 'measured_value' para comparar com 'predicted_value'.
+                # Vamos tentar encontrar uma variável de leitura que corresponda ao target.
+                # Heurística: Variável com mesmo nome do Target ou marcada como 'reference'.
+                
+                measured_value = None
+                
+                # Tenta encontrar variável de referência
+                reference_variable = db.query(OPCVariables).filter(
+                    OPCVariables.target_id == model_record.target_id, # Match by ID (Mais confiável)
+                    OPCVariables.type_category == 'reference',
+                    OPCVariables.is_active == True
+                ).first()
+
+                if reference_variable and reference_variable.node_id in opc_values:
+                    measured_value = opc_values[reference_variable.node_id]
+                    logging.info(f"✅ [PREDICT] Valor medido encontrado para target_id {model_record.target_id}: {measured_value}")
+                else:
+                    logging.warning(f"⚠️ [PREDICT] Valor medido (Reference) não encontrado via target_id {model_record.target_id}.")
+                    # Fallback: Tentar match por nome só se falhar ID
+                    reference_variable = db.query(OPCVariables).filter(
+                         OPCVariables.line_name == line_name_for_opc,
+                         OPCVariables.variable_name == target.target_name,
+                         OPCVariables.is_active == True
+                    ).first()
+                    if reference_variable and reference_variable.node_id in opc_values:
+                        measured_value = opc_values[reference_variable.node_id]
+                        logging.info(f"✅ [PREDICT] Valor medido encontrado por NOME para {target.target_name}: {measured_value}")
+
+                # ... (Lógica de Escrita anterior) ...
                 # Encontra a variável OPC configurada como 'write' para a linha atual
                 write_variable = db.query(OPCVariables).filter(
                     OPCVariables.line_name == line_name_for_opc,
@@ -353,8 +391,6 @@ class GenericPredictor:
                 confidence_std_dev = np.std(tree_predictions)
             
             # Etapa 6: Salvar a predição no banco de dados (lógica existente)
-            # ...
-            # Etapa 6: Salvar a predição no banco de dados (lógica existente)
             db = next(get_db())
             try:
                 # --- CORREÇÃO ---
@@ -364,14 +400,14 @@ class GenericPredictor:
                 new_prediction = PredictionData(
                     target_id=model_record.target_id,
                     model_id=model_id,
-                    predicted_value=prediction,
+                    predicted_value=float(prediction),
+                    measured_value=float(measured_value) if measured_value is not None else None, # <--- POPULADO AGORA
                     confidence_std_dev=confidence_std_dev,
                     timestamp=datetime.now(local_timezone), # <--- SALVA A HORA LOCAL
                     opc_values=opc_values,
                     data_source='opc'
                 )
                 db.add(new_prediction)
-            # ...
                 db.commit()
                 db.refresh(new_prediction)
             except Exception as e:
@@ -379,6 +415,21 @@ class GenericPredictor:
                 db.rollback()
             finally:
                 db.close()
+
+            # =============================================================================
+            # TRIGGER CONTROL LOOP (NOVO)
+            # =============================================================================
+            try:
+                # Aciona o cálculo de recomendações de controle
+                # Passamos 0.0 como target padrão, pois o control_manager vai buscar
+                # o Target Dinâmico configurado no banco.
+                control_manager.calculate_recommendations(
+                    prediction_data_id=new_prediction.id, 
+                    target_value=0.0
+                )
+                logging.info(f"✅ [CONTROL] Loop de controle executado para Predição ID {new_prediction.id}")
+            except Exception as e_ctrl:
+                logging.error(f"❌ [CONTROL] Falha ao executar loop de controle: {e_ctrl}", exc_info=True)
 
             # =============================================================================
             # PERSISTÊNCIA NO INFLUXDB (NOVO)
@@ -593,5 +644,52 @@ class GenericPredictor:
             return model.is_active
         finally:
             db.close()
+            
+    def restore_active_predictions(self):
+        """Restaurar workers para todas as linhas com modelos ativos ao iniciar a aplicação."""
+        db = next(get_db())
+        try:
+            # 1. Encontrar linhas distintas com modelos ativos
+            active_lines = db.query(PredictionTarget.line_name).join(PredictionModel).filter(
+                PredictionModel.is_active == True,
+                PredictionModel.trained_at != None
+            ).distinct().all()
+            
+            lines_to_start = [r[0] for r in active_lines]
+            
+            if not lines_to_start:
+                logging.info("ℹ️ [RESTORE] Nenhum modelo ativo encontrado para restaurar.")
+                return
+
+            logging.info(f"🔄 [RESTORE] Restaurando workers de predição para {len(lines_to_start)} linhas: {lines_to_start}")
+
+            for line_name in lines_to_start:
+                # Inicia worker se não existir
+                if line_name in self.line_prediction_workers:
+                    continue
+                
+                stop_event = threading.Event()
+                # Intervalo padrão de 5s, ou idealmente ler de config
+                interval = 5 
+                
+                thread = threading.Thread(
+                    target=self._continuous_prediction_worker, 
+                    args=(line_name, stop_event, interval), 
+                    daemon=True
+                )
+                thread.start()
+                
+                self.line_prediction_workers[line_name] = {
+                    'thread': thread,
+                    'stop_event': stop_event,
+                    'interval': interval
+                }
+                logging.info(f"✅ [RESTORE] Worker restaurado para a linha: {line_name}")
+
+        except Exception as e:
+            logging.error(f"❌ [RESTORE] Erro ao restaurar predições: {e}", exc_info=True)
+        finally:
+            db.close()
+
 # Instância global do preditor
 generic_predictor = GenericPredictor()

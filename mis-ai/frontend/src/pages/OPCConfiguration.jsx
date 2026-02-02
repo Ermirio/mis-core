@@ -36,6 +36,30 @@ import { api } from '@/lib/api'
 import { useToast } from '@/hooks/use-toast'
 
 
+
+const getBadgeColor = (category) => {
+  switch (category) {
+    case 'read': return 'bg-blue-100 text-blue-800 dark:bg-blue-900/50 dark:text-blue-300 border-blue-200 dark:border-blue-800'
+    case 'write': return 'bg-red-100 text-red-800 dark:bg-red-900/50 dark:text-red-300 border-red-200 dark:border-red-800'
+    case 'control': return 'bg-orange-100 text-orange-800 dark:bg-orange-900/50 dark:text-orange-300 border-orange-200 dark:border-orange-800'
+    case 'reference': return 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/50 dark:text-yellow-300 border-yellow-200 dark:border-yellow-800'
+    case 'target': return 'bg-purple-100 text-purple-800 dark:bg-purple-900/50 dark:text-purple-300 border-purple-200 dark:border-purple-800'
+    default: return 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-300 border-gray-200 dark:border-gray-700'
+  }
+}
+
+const getBadgeLabel = (category) => {
+  switch (category) {
+    case 'read': return '📥 Leitura (Input)'
+    case 'write': return '📤 Escrita (Output)'
+    case 'control': return '🟠 Controle'
+    case 'reference': return '🟡 Referência'
+    case 'target': return '🟣 Target (Setpoint)'
+    default: return category
+  }
+}
+
+
 const ConnectionSection = ({ opcConfig, setOpcConfig }) => {
   const [connectionLoading, setConnectionLoading] = useState(false)
   const { toast } = useToast()
@@ -223,10 +247,10 @@ const OPCConfiguration = ({ selectedLine }) => {
     setLoading(true)
     try {
       // Preparar payload baseado no tipo de variável
-      const payload = { 
-        ...formData, 
+      const payload = {
+        ...formData,
         line: selectedLine,
-        target_id: formData.type_category === 'reference' ? formData.target_id : null,
+        target_id: (formData.type_category === 'reference' || formData.type_category === 'control') ? formData.target_id : null,
         control_config: formData.type_category === 'control' ? formData.control_config : null
       }
       if (editingVariable) {
@@ -426,9 +450,10 @@ const OPCConfiguration = ({ selectedLine }) => {
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="read">🔵 Leitura (Input)</SelectItem>
-                      <SelectItem value="write">🟢 Escrita (Target/Output)</SelectItem>
+                      <SelectItem value="write">🔴 Escrita (Output)</SelectItem>
                       <SelectItem value="reference">🟡 Referência (Treinamento Auto)</SelectItem>
                       <SelectItem value="control">🟠 Controle (Ajuste Preditivo)</SelectItem>
+                      <SelectItem value="target">🟣 Target (Setpoint Dinâmico)</SelectItem>
                     </SelectContent>
                   </Select>
                   <p className="text-xs text-muted-foreground mt-1">
@@ -483,13 +508,62 @@ const OPCConfiguration = ({ selectedLine }) => {
                   </div>
                 )}
 
+                {/* Campo condicional para variável TARGET */}
+                {formData.type_category === 'target' && (
+                  <div className="p-4 border-2 border-purple-300 dark:border-purple-700 rounded-lg bg-purple-50 dark:bg-purple-950/20">
+                    <Label htmlFor="target_target_id" className="flex items-center space-x-2 mb-2">
+                      <span className="text-purple-700 dark:text-purple-400 font-semibold">🟣 Configuração de Setpoint Dinâmico</span>
+                    </Label>
+                    <Select
+                      value={formData.target_id?.toString() || ''}
+                      onValueChange={(value) => handleInputChange('target_id', parseInt(value))}
+                    >
+                      <SelectTrigger id="target_target_id">
+                        <SelectValue placeholder="Selecione qual Target esta variável controla" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {targets.map(target => (
+                          <SelectItem key={target.id} value={target.id.toString()}>
+                            {target.target_name} ({target.target_unit})
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-purple-700 dark:text-purple-400 mt-2">
+                      O valor lido desta variável OPC será usado como <strong>Setpoint</strong> (Meta) para o Target selecionado.
+                    </p>
+                  </div>
+                )}
+
                 {/* Campos condicionais para variável CONTROL */}
                 {formData.type_category === 'control' && (
                   <div className="p-4 border-2 border-orange-300 dark:border-orange-700 rounded-lg bg-orange-50 dark:bg-orange-950/20 space-y-4">
                     <Label className="flex items-center space-x-2 mb-2">
                       <span className="text-orange-700 dark:text-orange-400 font-semibold">🟠 Configuração de Controle Preditivo</span>
                     </Label>
-                    
+
+                    <div className="bg-white dark:bg-black/20 p-3 rounded-md mb-3 border border-orange-200 dark:border-orange-800">
+                      <Label htmlFor="control_target" className="mb-2 block">Target ALvo (Obrigatório)</Label>
+                      <Select
+                        value={formData.target_id?.toString() || ''}
+                        onValueChange={(value) => handleInputChange('target_id', parseInt(value))}
+                      >
+                        <SelectTrigger id="control_target">
+                          <SelectValue placeholder="Selecione o Target que esta variável controla" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {targets.map(target => (
+                            <SelectItem key={target.id} value={target.id.toString()}>
+                              {target.target_name} ({target.target_unit})
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        A variável de controle ajustará o processo para atingir o valor ideal deste target.
+                      </p>
+                    </div>
+
                     <div>
                       <Label htmlFor="control_logic">Lógica de Controle</Label>
                       <Select
@@ -505,7 +579,7 @@ const OPCConfiguration = ({ selectedLine }) => {
                         </SelectContent>
                       </Select>
                       <p className="text-xs text-orange-700 dark:text-orange-400 mt-1">
-                        {formData.control_config.control_logic === 'direct' 
+                        {formData.control_config.control_logic === 'direct'
                           ? 'Ex: Temperatura - aumentar aquecimento quando temperatura está baixa'
                           : 'Ex: Velocidade - diminuir velocidade quando peso está alto'}
                       </p>
@@ -677,8 +751,8 @@ const OPCConfiguration = ({ selectedLine }) => {
                         <div className="flex items-center space-x-2">
                           <h4 className="font-medium">{variable.variable_name}</h4>
                           <Badge variant="outline">{variable.type}</Badge>
-                          <Badge variant={variable.type_category === 'write' ? 'destructive' : 'default'}>
-                            {variable.type_category === 'write' ? '📤 Escrita' : '📥 Leitura'}
+                          <Badge className={`${getBadgeColor(variable.type_category)} border`}>
+                            {getBadgeLabel(variable.type_category)}
                           </Badge>
                           <Badge variant={variable.is_active ? 'default' : 'secondary'}>
                             {variable.is_active ? 'Ativa' : 'Inativa'}

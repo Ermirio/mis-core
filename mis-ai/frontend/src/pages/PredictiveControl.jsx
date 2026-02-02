@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import {
   Table,
@@ -11,16 +10,6 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog'
-import {
   Activity,
   AlertCircle,
   CheckCircle,
@@ -29,98 +18,50 @@ import {
   Gauge,
   Clock,
   Target,
-  Settings,
-  Play,
-  History
+  Zap
 } from 'lucide-react'
 import { api } from '@/lib/api'
-import { useToast } from '@/hooks/use-toast'
 
 const PredictiveControl = ({ selectedLine }) => {
-  const [activeRecommendations, setActiveRecommendations] = useState([])
-  const [history, setHistory] = useState([])
+  const [recentActions, setRecentActions] = useState([])  // Últimas 10 ações
+  const [liveData, setLiveData] = useState(null)  // Valores em tempo real
   const [loading, setLoading] = useState(false)
-  const [applyDialogOpen, setApplyDialogOpen] = useState(false)
-  const [selectedRecommendation, setSelectedRecommendation] = useState(null)
-  const [viewMode, setViewMode] = useState('active') // 'active' ou 'history'
-  const { toast } = useToast()
 
   useEffect(() => {
     if (selectedLine) {
       loadData()
-      // Auto-refresh a cada 10 segundos
-      const interval = setInterval(loadData, 10000)
+      // Auto-refresh a cada 5 segundos
+      const interval = setInterval(loadData, 5000)
       return () => clearInterval(interval)
     }
-  }, [selectedLine, viewMode])
+  }, [selectedLine])
 
   const loadData = async () => {
     if (!selectedLine) return
     try {
-      if (viewMode === 'active') {
-        const data = await api.getActiveControlRecommendations()
-        setActiveRecommendations(data || [])
-      } else {
-        const data = await api.getControlRecommendationsHistory({ line: selectedLine, limit: 50 })
-        setHistory(data || [])
+      // Buscar últimas 10 ações aplicadas
+      const historyData = await api.getControlRecommendationsHistory({ line: selectedLine, limit: 10 })
+      setRecentActions(historyData || [])
+
+      // O primeiro item é o mais recente (última ação aplicada)
+      if (historyData && historyData.length > 0) {
+        setLiveData(historyData[0])
       }
     } catch (error) {
       console.error("Erro ao carregar dados:", error)
     }
   }
 
-  const handleApplyClick = (recommendation) => {
-    setSelectedRecommendation(recommendation)
-    setApplyDialogOpen(true)
+  const getAdjustmentColor = (value) => {
+    if (value > 0) return 'text-green-600'
+    if (value < 0) return 'text-red-600'
+    return 'text-gray-600'
   }
 
-  const handleApplyConfirm = async () => {
-    if (!selectedRecommendation) return
-    setLoading(true)
-    try {
-      await api.applyControlRecommendation(selectedRecommendation.id)
-      toast({
-        title: "✅ Ajuste Aplicado",
-        description: `Controle "${selectedRecommendation.control_variable_name}" ajustado para ${selectedRecommendation.recommended_value.toFixed(2)}`,
-      })
-      setApplyDialogOpen(false)
-      setSelectedRecommendation(null)
-      loadData()
-    } catch (error) {
-      toast({
-        title: "Erro ao Aplicar",
-        description: error.message || "Falha ao aplicar ajuste no OPC",
-        variant: "destructive"
-      })
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const getStatusBadge = (status) => {
-    const variants = {
-      pending: { variant: 'default', icon: Clock, label: 'Pendente', color: 'text-yellow-600' },
-      applied: { variant: 'default', icon: CheckCircle, label: 'Aplicado', color: 'text-green-600' },
-      rejected: { variant: 'destructive', icon: AlertCircle, label: 'Rejeitado', color: 'text-red-600' },
-    }
-    const config = variants[status] || variants.pending
-    const Icon = config.icon
-    return (
-      <Badge variant={config.variant} className="flex items-center space-x-1">
-        <Icon className={`h-3 w-3 ${config.color}`} />
-        <span>{config.label}</span>
-      </Badge>
-    )
-  }
-
-  const getErrorIndicator = (error) => {
-    if (Math.abs(error) < 1) {
-      return <Badge className="bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">Baixo</Badge>
-    } else if (Math.abs(error) < 5) {
-      return <Badge className="bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200">Médio</Badge>
-    } else {
-      return <Badge className="bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200">Alto</Badge>
-    }
+  const getAdjustmentIcon = (value) => {
+    if (value > 0) return <TrendingUp className="h-4 w-4 text-green-600" />
+    if (value < 0) return <TrendingDown className="h-4 w-4 text-red-600" />
+    return null
   }
 
   if (!selectedLine) {
@@ -137,7 +78,7 @@ const PredictiveControl = ({ selectedLine }) => {
             <AlertCircle className="h-12 w-12 mx-auto mb-4 text-muted-foreground opacity-50" />
             <h3 className="text-lg font-semibold mb-2">Nenhuma linha selecionada</h3>
             <p className="text-muted-foreground">
-              Selecione uma linha na barra de navegação para visualizar recomendações de controle.
+              Selecione uma linha na barra de navegação para visualizar o controle preditivo.
             </p>
           </CardContent>
         </Card>
@@ -148,291 +89,139 @@ const PredictiveControl = ({ selectedLine }) => {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold flex items-center space-x-3">
-            <Gauge className="h-8 w-8 text-orange-600" />
-            <span>Controle Preditivo</span>
-          </h1>
-          <p className="text-muted-foreground mt-1">
-            Linha: <strong>{selectedLine}</strong> | Ajustes automáticos baseados em predições
-          </p>
-        </div>
-
-        <div className="flex items-center space-x-2">
-          <Button
-            variant={viewMode === 'active' ? 'default' : 'outline'}
-            onClick={() => setViewMode('active')}
-            className="flex items-center space-x-2"
-          >
-            <Activity className="h-4 w-4" />
-            <span>Ativas</span>
-          </Button>
-          <Button
-            variant={viewMode === 'history' ? 'default' : 'outline'}
-            onClick={() => setViewMode('history')}
-            className="flex items-center space-x-2"
-          >
-            <History className="h-4 w-4" />
-            <span>Histórico</span>
-          </Button>
-        </div>
+      <div>
+        <h1 className="text-3xl font-bold flex items-center space-x-3">
+          <Gauge className="h-8 w-8 text-orange-600" />
+          <span>Controle Preditivo</span>
+        </h1>
+        <p className="text-muted-foreground mt-1">
+          Linha: <strong>{selectedLine}</strong> | Ajustes automáticos em tempo real
+        </p>
       </div>
 
-      {/* Status Card - ISA-101 Style */}
-      <Card className="border-2 border-orange-300 dark:border-orange-700 bg-gradient-to-r from-orange-50 to-amber-50 dark:from-orange-950/20 dark:to-amber-950/20">
+      {/* Live Values Card - Destaque */}
+      {liveData && (
+        <Card className="border-2 border-green-400 dark:border-green-600 bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-950/30 dark:to-emerald-950/30">
+          <CardHeader className="pb-2">
+            <CardTitle className="flex items-center space-x-2 text-green-700 dark:text-green-400">
+              <Zap className="h-5 w-5" />
+              <span>Valores em Tempo Real</span>
+              <Badge variant="outline" className="ml-2 animate-pulse">LIVE</Badge>
+            </CardTitle>
+            <CardDescription>Última ação aplicada automaticamente</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+              <div className="text-center p-3 bg-white dark:bg-gray-900 rounded-lg border">
+                <p className="text-xs text-muted-foreground mb-1">Variável</p>
+                <p className="font-bold text-lg">{liveData.control_variable_name || 'N/A'}</p>
+              </div>
+              <div className="text-center p-3 bg-white dark:bg-gray-900 rounded-lg border">
+                <p className="text-xs text-muted-foreground mb-1">Predição</p>
+                <p className="font-mono text-lg font-bold text-blue-600">
+                  {(liveData.predicted_value ?? 0).toFixed(2)}
+                </p>
+              </div>
+              <div className="text-center p-3 bg-white dark:bg-gray-900 rounded-lg border">
+                <p className="text-xs text-muted-foreground mb-1">Alvo</p>
+                <p className="font-mono text-lg font-bold text-purple-600">
+                  {(liveData.target_value ?? 0).toFixed(2)}
+                </p>
+              </div>
+              <div className="text-center p-3 bg-white dark:bg-gray-900 rounded-lg border">
+                <p className="text-xs text-muted-foreground mb-1">Ajuste</p>
+                <div className={`font-mono text-lg font-bold flex items-center justify-center space-x-1 ${getAdjustmentColor(liveData.recommended_adjustment)}`}>
+                  {getAdjustmentIcon(liveData.recommended_adjustment)}
+                  <span>{liveData.recommended_adjustment > 0 ? '+' : ''}{(liveData.recommended_adjustment ?? 0).toFixed(2)}%</span>
+                </div>
+              </div>
+              <div className="text-center p-3 bg-white dark:bg-gray-900 rounded-lg border border-orange-300">
+                <p className="text-xs text-muted-foreground mb-1">Valor Aplicado</p>
+                <p className="font-mono text-lg font-bold text-orange-600">
+                  {(liveData.recommended_value ?? 0).toFixed(2)}
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Últimas 10 Ações */}
+      <Card>
         <CardHeader>
-          <CardTitle className="flex items-center space-x-2 text-orange-700 dark:text-orange-400">
-            <Settings className="h-5 w-5" />
-            <span>Status do Sistema</span>
+          <CardTitle className="flex items-center space-x-2">
+            <Clock className="h-5 w-5 text-blue-600" />
+            <span>Últimas 10 Ações Aplicadas</span>
           </CardTitle>
+          <CardDescription>
+            Fila de ajustes automáticos - A primeira linha é a ação mais recente
+          </CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div className="flex items-center space-x-3 p-3 bg-white dark:bg-gray-900 rounded-lg border">
-              <Activity className="h-8 w-8 text-blue-600" />
-              <div>
-                <p className="text-xs text-muted-foreground">Recomendações Ativas</p>
-                <p className="text-2xl font-bold">{activeRecommendations.length}</p>
-              </div>
+          {recentActions.length === 0 ? (
+            <div className="text-center py-8 text-muted-foreground">
+              <Activity className="h-12 w-12 mx-auto mb-3 opacity-50" />
+              <p>Aguardando ações do sistema de controle...</p>
             </div>
-            <div className="flex items-center space-x-3 p-3 bg-white dark:bg-gray-900 rounded-lg border">
-              <CheckCircle className="h-8 w-8 text-green-600" />
-              <div>
-                <p className="text-xs text-muted-foreground">Aplicadas Hoje</p>
-                <p className="text-2xl font-bold">
-                  {history.filter(h => h.status === 'applied' && new Date(h.created_at).toDateString() === new Date().toDateString()).length}
-                </p>
-              </div>
-            </div>
-            <div className="flex items-center space-x-3 p-3 bg-white dark:bg-gray-900 rounded-lg border">
-              <Target className="h-8 w-8 text-purple-600" />
-              <div>
-                <p className="text-xs text-muted-foreground">Taxa de Sucesso</p>
-                <p className="text-2xl font-bold">
-                  {history.length > 0 
-                    ? ((history.filter(h => h.status === 'applied').length / history.length) * 100).toFixed(0) 
-                    : 0}%
-                </p>
-              </div>
-            </div>
-          </div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-12">#</TableHead>
+                  <TableHead>Hora</TableHead>
+                  <TableHead>Variável</TableHead>
+                  <TableHead>Predição</TableHead>
+                  <TableHead>Alvo</TableHead>
+                  <TableHead>Ajuste</TableHead>
+                  <TableHead>Valor Aplicado</TableHead>
+                  <TableHead>Status</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {recentActions.map((action, index) => (
+                  <TableRow
+                    key={action.id}
+                    className={index === 0 ? 'bg-green-50 dark:bg-green-950/20 border-l-4 border-l-green-500' : ''}
+                  >
+                    <TableCell className="font-mono text-sm text-muted-foreground">
+                      {index === 0 ? <Badge className="bg-green-600">NOVA</Badge> : index + 1}
+                    </TableCell>
+                    <TableCell className="font-mono text-xs">
+                      {new Date(action.timestamp).toLocaleTimeString('pt-BR')}
+                    </TableCell>
+                    <TableCell className="font-medium">
+                      {action.control_variable_name || 'N/A'}
+                    </TableCell>
+                    <TableCell className="font-mono text-sm">
+                      {(action.predicted_value ?? 0).toFixed(2)}
+                    </TableCell>
+                    <TableCell className="font-mono text-sm font-bold text-purple-600">
+                      {(action.target_value ?? 0).toFixed(2)}
+                    </TableCell>
+                    <TableCell>
+                      <div className={`flex items-center space-x-1 ${getAdjustmentColor(action.recommended_adjustment)}`}>
+                        {getAdjustmentIcon(action.recommended_adjustment)}
+                        <span className="font-mono text-sm font-bold">
+                          {action.recommended_adjustment > 0 ? '+' : ''}{(action.recommended_adjustment ?? 0).toFixed(2)}%
+                        </span>
+                      </div>
+                    </TableCell>
+                    <TableCell className="font-mono text-sm font-bold text-orange-600">
+                      {(action.recommended_value ?? 0).toFixed(2)}
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant="outline" className="text-green-600 border-green-300 bg-green-50">
+                        <CheckCircle className="h-3 w-3 mr-1" />
+                        Aplicado
+                      </Badge>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
         </CardContent>
       </Card>
-
-      {/* Recomendações Ativas */}
-      {viewMode === 'active' && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center space-x-2">
-              <Activity className="h-5 w-5 text-orange-600" />
-              <span>Recomendações Pendentes</span>
-            </CardTitle>
-            <CardDescription>
-              Ajustes sugeridos aguardando aprovação do operador
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            {activeRecommendations.length === 0 ? (
-              <div className="text-center py-8 text-muted-foreground">
-                <CheckCircle className="h-12 w-12 mx-auto mb-3 opacity-50" />
-                <p>Nenhuma recomendação pendente no momento</p>
-              </div>
-            ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Variável de Controle</TableHead>
-                    <TableHead>Predição</TableHead>
-                    <TableHead>Alvo</TableHead>
-                    <TableHead>Erro</TableHead>
-                    <TableHead>Valor Atual</TableHead>
-                    <TableHead>Ajuste Sugerido</TableHead>
-                    <TableHead>Novo Valor</TableHead>
-                    <TableHead>Lógica</TableHead>
-                    <TableHead>Ações</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {activeRecommendations.map((rec) => (
-                    <TableRow key={rec.id} className="hover:bg-orange-50 dark:hover:bg-orange-950/20">
-                      <TableCell className="font-medium">{rec.control_variable_name}</TableCell>
-                      <TableCell>
-                        <span className="font-mono text-sm">{rec.predicted_value.toFixed(2)}</span>
-                      </TableCell>
-                      <TableCell>
-                        <span className="font-mono text-sm font-bold text-blue-600">{rec.target_value.toFixed(2)}</span>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center space-x-2">
-                          <span className="font-mono text-sm">{rec.error_absolute.toFixed(2)}</span>
-                          {getErrorIndicator(rec.error_absolute)}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <span className="font-mono text-sm">{rec.current_value.toFixed(2)}</span>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center space-x-1">
-                          {rec.recommended_adjustment > 0 ? (
-                            <TrendingUp className="h-4 w-4 text-green-600" />
-                          ) : (
-                            <TrendingDown className="h-4 w-4 text-red-600" />
-                          )}
-                          <span className={`font-mono text-sm font-bold ${rec.recommended_adjustment > 0 ? 'text-green-600' : 'text-red-600'}`}>
-                            {rec.recommended_adjustment > 0 ? '+' : ''}{rec.recommended_adjustment.toFixed(2)}
-                          </span>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <span className="font-mono text-sm font-bold text-orange-600">
-                          {rec.recommended_value.toFixed(2)}
-                        </span>
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant={rec.control_logic === 'direct' ? 'default' : 'secondary'}>
-                          {rec.control_logic === 'direct' ? '⬆️ Direta' : '⬇️ Reversa'}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        <Button
-                          size="sm"
-                          onClick={() => handleApplyClick(rec)}
-                          className="bg-orange-600 hover:bg-orange-700 text-white flex items-center space-x-1"
-                        >
-                          <Play className="h-3 w-3" />
-                          <span>Aplicar</span>
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            )}
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Histórico */}
-      {viewMode === 'history' && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center space-x-2">
-              <History className="h-5 w-5 text-gray-600" />
-              <span>Histórico de Recomendações</span>
-            </CardTitle>
-            <CardDescription>
-              Últimas 50 recomendações processadas
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            {history.length === 0 ? (
-              <div className="text-center py-8 text-muted-foreground">
-                <History className="h-12 w-12 mx-auto mb-3 opacity-50" />
-                <p>Nenhum histórico disponível</p>
-              </div>
-            ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Data/Hora</TableHead>
-                    <TableHead>Variável</TableHead>
-                    <TableHead>Ajuste</TableHead>
-                    <TableHead>Novo Valor</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Aplicado Por</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {history.map((rec) => (
-                    <TableRow key={rec.id}>
-                      <TableCell className="font-mono text-xs">
-                        {new Date(rec.created_at).toLocaleString('pt-BR')}
-                      </TableCell>
-                      <TableCell className="font-medium">{rec.control_variable_name}</TableCell>
-                      <TableCell>
-                        <div className="flex items-center space-x-1">
-                          {rec.recommended_adjustment > 0 ? (
-                            <TrendingUp className="h-4 w-4 text-green-600" />
-                          ) : (
-                            <TrendingDown className="h-4 w-4 text-red-600" />
-                          )}
-                          <span className="font-mono text-sm">
-                            {rec.recommended_adjustment > 0 ? '+' : ''}{rec.recommended_adjustment.toFixed(2)}
-                          </span>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <span className="font-mono text-sm">{rec.recommended_value.toFixed(2)}</span>
-                      </TableCell>
-                      <TableCell>{getStatusBadge(rec.status)}</TableCell>
-                      <TableCell className="text-sm text-muted-foreground">
-                        {rec.applied_by || '-'}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            )}
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Dialog de Confirmação - ISA-101 Style */}
-      <AlertDialog open={applyDialogOpen} onOpenChange={setApplyDialogOpen}>
-        <AlertDialogContent className="border-2 border-orange-400">
-          <AlertDialogHeader>
-            <AlertDialogTitle className="flex items-center space-x-2 text-orange-700 dark:text-orange-400">
-              <AlertCircle className="h-6 w-6" />
-              <span>Confirmar Aplicação de Ajuste</span>
-            </AlertDialogTitle>
-            <AlertDialogDescription className="space-y-3">
-              {selectedRecommendation && (
-                <>
-                  <p className="text-base">
-                    Você está prestes a aplicar o seguinte ajuste no processo:
-                  </p>
-                  <div className="bg-orange-50 dark:bg-orange-950/30 p-4 rounded-lg space-y-2 border border-orange-200 dark:border-orange-800">
-                    <div className="flex justify-between">
-                      <span className="font-semibold">Variável de Controle:</span>
-                      <span className="font-mono">{selectedRecommendation.control_variable_name}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="font-semibold">Valor Atual:</span>
-                      <span className="font-mono">{selectedRecommendation.current_value.toFixed(2)}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="font-semibold">Ajuste:</span>
-                      <span className={`font-mono font-bold ${selectedRecommendation.recommended_adjustment > 0 ? 'text-green-600' : 'text-red-600'}`}>
-                        {selectedRecommendation.recommended_adjustment > 0 ? '+' : ''}{selectedRecommendation.recommended_adjustment.toFixed(2)}
-                      </span>
-                    </div>
-                    <div className="flex justify-between border-t pt-2">
-                      <span className="font-semibold">Novo Valor:</span>
-                      <span className="font-mono text-lg font-bold text-orange-600">
-                        {selectedRecommendation.recommended_value.toFixed(2)}
-                      </span>
-                    </div>
-                  </div>
-                  <p className="text-sm text-muted-foreground">
-                    Este valor será escrito diretamente no OPC. Confirme se deseja prosseguir.
-                  </p>
-                </>
-              )}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancelar</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleApplyConfirm}
-              disabled={loading}
-              className="bg-orange-600 hover:bg-orange-700 text-white"
-            >
-              {loading ? 'Aplicando...' : 'Confirmar e Aplicar'}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </div>
   )
 }
