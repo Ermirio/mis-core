@@ -99,7 +99,43 @@ class LinhaProducaoSerializer(serializers.ModelSerializer):
         fields = '__all__'
 
 
+
 # ===== NOVOS SERIALIZERS =====
+
+class ProdutoSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Produto
+        fields = '__all__'
+
+
+class OrdemProducaoSerializer(serializers.ModelSerializer):
+    linha_nome = serializers.CharField(source='linha.nome', read_only=True)
+    linha_codigo = serializers.CharField(source='linha.codigo', read_only=True)
+    produto_codigo = serializers.CharField(source='produto.codigo', read_only=True)
+    produto_descricao = serializers.CharField(source='produto.descricao', read_only=True)
+    status_display = serializers.CharField(source='get_status_display', read_only=True)
+    
+    # Computed fields
+    producao_total = serializers.DecimalField(
+        source='producao_total_realizada', 
+        max_digits=12, 
+        decimal_places=3, 
+        read_only=True
+    )
+    percentual_conclusao = serializers.FloatField(read_only=True)
+
+    class Meta:
+        model = OrdemProducao
+        fields = [
+            'id', 'codigo', 'linha', 'linha_nome', 'linha_codigo',
+            'produto', 'produto_codigo', 'produto_descricao',
+            'meta_total', 'formato_gramas', 'cuc', 'eficiencia_planejada',
+            'status', 'status_display',
+            'data_planejada_inicio', 'data_inicio_real', 'data_fim_real',
+            'producao_realizada', 'producao_total', 'percentual_conclusao',
+            'descricao', 'observacoes',
+            'criado_em', 'atualizado_em'
+        ]
 
 class TurnoProducaoSerializer(serializers.ModelSerializer):
     """Serializer para turnos de produção"""

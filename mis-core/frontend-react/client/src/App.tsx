@@ -12,6 +12,14 @@ import LineAnalytics from "./pages/LineAnalytics";
 import WasteAnalysisDashboard from "./pages/WasteAnalysisDashboard";
 import GiveAwayDashboard from "./pages/GiveAwayDashboard";
 
+// Admin Imports
+import AdminLayout from "./pages/admin/AdminLayout";
+import AdminDashboard from "./pages/admin/AdminDashboard";
+import EquipmentsAdmin from "./pages/admin/EquipmentsAdmin";
+import TagsAdmin from "./pages/admin/TagsAdmin";
+import ProductsAdmin from "./pages/admin/ProductsAdmin";
+import ProductionOrdersAdmin from "./pages/admin/ProductionOrdersAdmin";
+
 import React, { useState } from "react";
 import SplashScreen from "./components/SplashScreen";
 
@@ -35,6 +43,16 @@ function App() {
             <Route path="analytics" element={<LineAnalytics />} />
             <Route path="descartes" element={<WasteAnalysisDashboard />} />
             <Route path="giveaway" element={<GiveAwayDashboard />} />
+          </Route>
+
+          {/* Admin Routes (Standalone Layout) */}
+          <Route path="/admin" element={<AdminLayout />}>
+            <Route index element={<AdminDashboard />} />
+            <Route path="equipamentos" element={<EquipmentsAdmin />} />
+            <Route path="tags" element={<TagsAdmin />} />
+            <Route path="produtos" element={<ProductsAdmin />} />
+            <Route path="ordens" element={<ProductionOrdersAdmin />} />
+            {/* Future: Users */}
           </Route>
         </Routes>
       )}

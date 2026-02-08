@@ -120,8 +120,9 @@ const ConnectionSection = ({ opcConfig, setOpcConfig }) => {
   )
 }
 
-const OPCConfiguration = ({ selectedLine }) => {
+const OPCConfiguration = ({ selectedLine, selectedTarget, selectedModel }) => {
   const [variables, setVariables] = useState([])
+  const [modelVariables, setModelVariables] = useState([]) // [NOVO] Variáveis do modelo selecionado
   const [loggingStatus, setLoggingStatus] = useState(null)
   const [loading, setLoading] = useState(false)
   const [dialogOpen, setDialogOpen] = useState(false)
@@ -144,6 +145,9 @@ const OPCConfiguration = ({ selectedLine }) => {
   })
   const [targets, setTargets] = useState([])
   const { toast } = useToast()
+
+  // Estado para role no formulário
+  // const [modelRole, setModelRole] = useState('') // Removido em favor da inferência automática
 
   // --- NOVO: Carregar Configuração Global ---
   const [opcConfig, setOpcConfig] = useState({ opc_url: '', is_active: false })
@@ -181,13 +185,13 @@ const OPCConfiguration = ({ selectedLine }) => {
     }
   }
 
-  // Load variables when line changes
+  // Load variables when line or model changes
   useEffect(() => {
     if (selectedLine) {
       loadVariables()
       loadLoggingStatus()
     }
-  }, [selectedLine])
+  }, [selectedLine, selectedModel])
 
   const loadVariables = async () => {
     if (!selectedLine) return
@@ -195,6 +199,16 @@ const OPCConfiguration = ({ selectedLine }) => {
     try {
       const data = await api.getOPCVariables(selectedLine)
       setVariables(data || [])
+
+      // [NOVO] Carregar variáveis do modelo se houver modelo selecionado
+      if (selectedModel) {
+        // Garantir que temos o ID do modelo
+        const modelId = typeof selectedModel === 'object' ? selectedModel.id : selectedModel;
+        const mvData = await api.getModelVariables(modelId)
+        setModelVariables(mvData || [])
+      } else {
+        setModelVariables([])
+      }
     } catch (error) {
       console.error("Erro ao carregar variáveis:", error)
       toast({
@@ -235,6 +249,7 @@ const OPCConfiguration = ({ selectedLine }) => {
           max_adjustment: null
         }
       })
+      // setModelRole('') // [NOVO] Resetar role removed
     }
   }
 
@@ -250,16 +265,55 @@ const OPCConfiguration = ({ selectedLine }) => {
       const payload = {
         ...formData,
         line: selectedLine,
-        target_id: (formData.type_category === 'reference' || formData.type_category === 'control') ? formData.target_id : null,
+        // Fix: Incluir target_id para tipo 'target' também
+        target_id: (formData.type_category === 'reference' || formData.type_category === 'control' || formData.type_category === 'target') ? formData.target_id : null,
         control_config: formData.type_category === 'control' ? formData.control_config : null
       }
+
+      let savedVariableId = null;
+
       if (editingVariable) {
         await api.updateOPCVariable(editingVariable.id, payload)
+        savedVariableId = editingVariable.id
         toast({ title: "Sucesso", description: "Variável atualizada" })
       } else {
-        await api.createOPCVariable(payload)
+        const newVar = await api.createOPCVariable(payload)
+        savedVariableId = newVar.id
         toast({ title: "Sucesso", description: "Variável criada" })
       }
+
+      // [NOVO] ASSOCIAÇÃO AUTOMÁTICA AO MODELO
+      if (selectedModel && savedVariableId) {
+        // Garantir que temos o ID do modelo (se for objeto ou string)
+        const modelId = typeof selectedModel === 'object' ? selectedModel.id : selectedModel;
+
+        // Inferir Role baseado na categoria
+        let autoRole = null;
+        switch (formData.type_category) {
+          case 'read': autoRole = 'input'; break;
+          case 'write': autoRole = 'write'; break;
+          case 'control': autoRole = 'control'; break;
+          case 'reference': autoRole = 'reference'; break;
+          case 'target': autoRole = 'write'; break; // Target é um output do modelo (setpoint)
+          default: autoRole = null;
+        }
+
+        if (autoRole) {
+          const existingAssoc = modelVariables.find(mv => mv.opc_variable_id === savedVariableId)
+          if (existingAssoc) {
+            if (existingAssoc.role !== autoRole) {
+              await api.updateModelVariable(modelId, existingAssoc.id, { role: autoRole })
+            }
+          } else {
+            await api.addModelVariable(modelId, {
+              opc_variable_id: savedVariableId,
+              role: autoRole,
+              control_config: formData.type_category === 'control' ? formData.control_config : null
+            })
+          }
+        }
+      }
+
       setDialogOpen(false)
       setEditingVariable(null)
       setFormData({
@@ -276,6 +330,7 @@ const OPCConfiguration = ({ selectedLine }) => {
           max_adjustment: null
         }
       })
+      // setModelRole('') // Removido
       loadVariables()
     } catch (error) {
       toast({
@@ -305,6 +360,12 @@ const OPCConfiguration = ({ selectedLine }) => {
       }
     })
     setDialogOpen(true)
+
+    // [NOVO] Carregar role do modelo (Não precisa mais setar estado, pois é inferido)
+    // if (selectedModel) {
+    //   const assoc = modelVariables.find(mv => mv.opc_variable_id === variable.id)
+    //   setModelRole(assoc ? assoc.role : '')
+    // }
   }
 
   const handleDeleteClick = (variable) => {
@@ -316,8 +377,23 @@ const OPCConfiguration = ({ selectedLine }) => {
     if (!variableToDelete) return
     setLoading(true)
     try {
-      await api.deleteOPCVariable(variableToDelete.id)
-      toast({ title: "Sucesso", description: "Variável excluída" })
+      if (selectedModel) {
+        // [NOVO] Lógica de Dissociação (Remover do Modelo)
+        const modelId = typeof selectedModel === 'object' ? selectedModel.id : selectedModel;
+        const association = modelVariables.find(mv => mv.opc_variable_id === variableToDelete.id)
+
+        if (association) {
+          await api.deleteModelVariable(modelId, association.id)
+          toast({ title: "Sucesso", description: "Variável removida do modelo (mantida na linha)" })
+        } else {
+          throw new Error("Associação não encontrada para este modelo")
+        }
+      } else {
+        // Lógica Original (Exclusão Global)
+        await api.deleteOPCVariable(variableToDelete.id)
+        toast({ title: "Sucesso", description: "Variável excluída definitivamente" })
+      }
+
       setDeleteDialogOpen(false)
       setVariableToDelete(null)
       loadVariables()
@@ -399,7 +475,7 @@ const OPCConfiguration = ({ selectedLine }) => {
           <DialogTrigger asChild>
             <Button className="flex items-center space-x-2 bg-blue-600 text-white hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600 transition-all duration-200 hover:scale-105 hover:shadow-lg">
               <Plus className="h-4 w-4 transition-transform duration-200 hover:rotate-90" />
-              <span>Nova Variável</span>
+              <span>Nova Variável (+)</span>
             </Button>
           </DialogTrigger>
           <DialogContent>
@@ -429,6 +505,9 @@ const OPCConfiguration = ({ selectedLine }) => {
                     Identificador único do nó OPC
                   </p>
                 </div>
+
+                {/* [REMOVIDO] Seletor de Role do Modelo (Agora automático) */}
+
                 <div>
                   <Label htmlFor="variable_name">Nome da Variável *</Label>
                   <Input
@@ -734,16 +813,19 @@ const OPCConfiguration = ({ selectedLine }) => {
         <CardHeader>
           <CardTitle className="flex items-center space-x-2">
             <Settings className="h-5 w-5" />
-            <span>Variáveis Registradas</span>
+            <span>{selectedModel ? 'Variáveis do Modelo' : 'Todas as Variáveis Registradas'}</span>
           </CardTitle>
           <CardDescription>
-            Lista de variáveis OPC configuradas para esta linha
+            {selectedModel
+              ? 'Variáveis associadas especificamente a este modelo (Excluir aqui apenas remove a associação)'
+              : 'Lista meste de todas as variáveis OPC configuradas para esta linha (Excluir aqui remove do banco de dados)'
+            }
           </CardDescription>
         </CardHeader>
         <CardContent>
-          {variables.length > 0 ? (
+          {(selectedModel ? variables.filter(v => modelVariables.some(mv => mv.opc_variable_id === v.id)) : variables).length > 0 ? (
             <div className="space-y-4">
-              {variables.map((variable) => (
+              {(selectedModel ? variables.filter(v => modelVariables.some(mv => mv.opc_variable_id === v.id)) : variables).map((variable) => (
                 <Card key={variable.id} className="border-l-4 border-l-primary">
                   <CardContent className="pt-4">
                     <div className="flex items-start justify-between">
@@ -757,6 +839,13 @@ const OPCConfiguration = ({ selectedLine }) => {
                           <Badge variant={variable.is_active ? 'default' : 'secondary'}>
                             {variable.is_active ? 'Ativa' : 'Inativa'}
                           </Badge>
+
+                          {/* [NOVO] Badge do Modelo */}
+                          {selectedModel && modelVariables.find(mv => mv.opc_variable_id === variable.id) && (
+                            <Badge className="bg-indigo-500 hover:bg-indigo-600 text-white border-indigo-600">
+                              MODELO: {modelVariables.find(mv => mv.opc_variable_id === variable.id).role.toUpperCase()}
+                            </Badge>
+                          )}
                         </div>
                         <div className="text-sm text-muted-foreground">
                           <strong>Node ID:</strong> <code>{variable.node_id}</code>
@@ -783,7 +872,7 @@ const OPCConfiguration = ({ selectedLine }) => {
                           size="sm"
                           onClick={() => handleDeleteClick(variable)}
                           className="text-destructive hover:text-destructive hover:bg-red-50 hover:border-red-300 transition-colors duration-200"
-                          title="Excluir variável"
+                          title={selectedModel ? "Remover do Modelo" : "Excluir Definitivamente"}
                         >
                           <Trash2 className="h-4 w-4" />
                         </Button>
@@ -796,16 +885,21 @@ const OPCConfiguration = ({ selectedLine }) => {
           ) : (
             <div className="text-center py-12">
               <Settings className="h-12 w-12 mx-auto mb-4 text-muted-foreground opacity-50" />
-              <h3 className="text-lg font-semibold mb-2">Nenhuma variável registrada</h3>
+              <h3 className="text-lg font-semibold mb-2">
+                {selectedModel ? 'Nenhuma variável associada' : 'Nenhuma variável registrada'}
+              </h3>
               <p className="text-muted-foreground mb-4">
-                Comece registrando suas primeiras variáveis OPC para a linha {selectedLine}
+                {selectedModel
+                  ? 'Este modelo ainda não possui variáveis. Adicione uma nova ou associe existentes.'
+                  : `Comece registrando suas primeiras variáveis OPC para a linha ${selectedLine}`
+                }
               </p>
               <Button
                 onClick={() => setDialogOpen(true)}
                 className="bg-blue-600 text-white hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600 transition-all duration-200 hover:scale-105 hover:shadow-lg"
               >
                 <Plus className="h-4 w-4 mr-2 transition-transform duration-200 hover:rotate-90" />
-                Registrar Primeira Variável
+                {selectedModel ? 'Adicionar Variável ao Modelo' : 'Registrar Primeira Variável'}
               </Button>
             </div>
           )}
@@ -816,10 +910,19 @@ const OPCConfiguration = ({ selectedLine }) => {
       <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Confirmar Exclusão</DialogTitle>
+            <DialogTitle>Confirmar {selectedModel ? 'Remoção' : 'Exclusão'}</DialogTitle>
             <DialogDescription>
-              Tem certeza que deseja excluir a variável <strong>{variableToDelete?.variable_name}</strong>?
-              Esta ação não pode ser desfeita.
+              {selectedModel ? (
+                <span>
+                  Tem certeza que deseja remover <strong>{variableToDelete?.variable_name}</strong> deste modelo?
+                  <br /><span className="text-indigo-600 dark:text-indigo-400 font-semibold mt-2 block">Isso NÃO excluirá a variável de outros modelos ou da linha.</span>
+                </span>
+              ) : (
+                <span>
+                  Tem certeza que deseja excluir <strong>{variableToDelete?.variable_name}</strong>?
+                  <br /><span className="text-red-600 dark:text-red-400 font-bold mt-2 block">ATENÇÃO: Esta ação é definitiva e removerá a variável de TODOS os modelos!</span>
+                </span>
+              )}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -836,7 +939,7 @@ const OPCConfiguration = ({ selectedLine }) => {
               disabled={loading}
               className="transition-all duration-200 hover:scale-105"
             >
-              {loading ? 'Excluindo...' : 'Excluir'}
+              {loading ? (selectedModel ? 'Removendo...' : 'Excluindo...') : (selectedModel ? 'Remover' : 'Excluir')}
             </Button>
           </DialogFooter>
         </DialogContent>

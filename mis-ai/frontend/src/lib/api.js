@@ -138,6 +138,32 @@ class ApiClient {
     })
   }
 
+  // Model Variables - Variáveis associadas a modelos específicos
+  async getModelVariables(modelId) {
+    return this.request(`/models/${modelId}/variables`)
+  }
+
+  async addModelVariable(modelId, data) {
+    return this.request(`/models/${modelId}/variables`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    })
+  }
+
+  async updateModelVariable(modelId, variableId, data) {
+    return this.request(`/models/${modelId}/variables/${variableId}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    })
+  }
+
+  async deleteModelVariable(modelId, variableId) {
+    return this.request(`/models/${modelId}/variables/${variableId}`, {
+      method: 'DELETE',
+    })
+  }
+
+
   // Continuous Predictions
   async startContinuousPredictions(data) {
     return this.request('/predictions/continuous/start', {

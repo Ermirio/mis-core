@@ -13,7 +13,7 @@ COPY patches ./patches
 
 # Instalar pnpm e dependências
 RUN npm install -g pnpm@10.4.1 && \
-    pnpm install --frozen-lockfile
+    pnpm install
 
 # Copiar código fonte
 COPY . .
@@ -41,8 +41,8 @@ FROM nginx:alpine
 # Copiar arquivos buildados
 COPY --from=builder /app/dist/public /usr/share/nginx/html
 
-# Instalar dos2unix
-RUN apk add --no-cache dos2unix
+# Instalar dependências básicas se necessário (sed já vem no alpine)
+# RUN apk add --no-cache ...
 
 # Copiar configuração customizada do Nginx
 COPY nginx.conf /etc/nginx/conf.d/default.conf
@@ -52,7 +52,8 @@ EXPOSE 80
 
 # Script para substituir variáveis de ambiente em runtime
 COPY docker-entrypoint.sh /docker-entrypoint.sh
-RUN dos2unix /docker-entrypoint.sh && chmod +x /docker-entrypoint.sh
+# Usar sed para remover caracteres \r (CR) caso o arquivo tenha sido salvo no Windows
+RUN sed -i 's/\r$//' /docker-entrypoint.sh && chmod +x /docker-entrypoint.sh
 
 ENTRYPOINT ["/docker-entrypoint.sh"]
 CMD ["nginx", "-g", "daemon off;"]

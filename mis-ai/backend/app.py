@@ -20,7 +20,7 @@ from sqlalchemy import func, exc
 from ml_model import generic_predictor
 from models import (Line, PredictionTarget, PredictionModel, PredictionData, 
                     OPCLogs, OPCVariables, OPCServerConfig, ControlRecommendation, RetrainingPolicy,
-                    create_default_data, create_tables, get_db)
+                    ModelVariable, create_default_data, create_tables, get_db)
 from opc_client import opc_client, OPCClient
 from influx_client import influx_client
 from reference_sync import reference_sync_manager
@@ -411,7 +411,132 @@ def delete_model(model_id):
     finally:
         db.close()
 
+# --- ROTAS PARA VARIÁVEIS DO MODELO ---
+@app.route('/api/models/<int:model_id>/variables', methods=['GET'])
+def get_model_variables(model_id):
+    """Lista todas as variáveis configuradas para um modelo específico"""
+    db = next(get_db())
+    try:
+        model = db.query(PredictionModel).filter(PredictionModel.id == model_id).first()
+        if not model:
+            return jsonify({'error': 'Modelo não encontrado'}), 404
+        
+        variables = db.query(ModelVariable).filter(ModelVariable.model_id == model_id).all()
+        return jsonify([v.to_dict() for v in variables]), 200
+    except Exception as e:
+        logging.error(f"Erro ao listar variáveis do modelo {model_id}: {e}")
+        return jsonify({'error': str(e)}), 500
+    finally:
+        db.close()
+
+@app.route('/api/models/<int:model_id>/variables', methods=['POST'])
+def add_model_variable(model_id):
+    """Adiciona uma variável OPC a um modelo com um role específico"""
+    db = next(get_db())
+    try:
+        model = db.query(PredictionModel).filter(PredictionModel.id == model_id).first()
+        if not model:
+            return jsonify({'error': 'Modelo não encontrado'}), 404
+        
+        data = request.get_json()
+        opc_variable_id = data.get('opc_variable_id')
+        role = data.get('role')
+        control_config = data.get('control_config')
+        
+        if not opc_variable_id or not role:
+            return jsonify({'error': 'opc_variable_id e role são obrigatórios'}), 400
+        
+        if role not in ['input', 'output', 'write', 'control', 'reference']:
+            return jsonify({'error': 'Role inválido. Use: input, output, write, control, reference'}), 400
+        
+        # Verificar se a variável OPC existe
+        opc_var = db.query(OPCVariables).filter(OPCVariables.id == opc_variable_id).first()
+        if not opc_var:
+            return jsonify({'error': 'Variável OPC não encontrada'}), 404
+        
+        # Verificar se já existe essa associação
+        existing = db.query(ModelVariable).filter(
+            ModelVariable.model_id == model_id,
+            ModelVariable.opc_variable_id == opc_variable_id
+        ).first()
+        if existing:
+            return jsonify({'error': 'Essa variável já está associada ao modelo'}), 409
+        
+        # Criar a associação
+        model_var = ModelVariable(
+            model_id=model_id,
+            opc_variable_id=opc_variable_id,
+            role=role,
+            control_config=control_config if role == 'control' else None
+        )
+        db.add(model_var)
+        db.commit()
+        db.refresh(model_var)
+        
+        return jsonify(model_var.to_dict()), 201
+    except Exception as e:
+        db.rollback()
+        logging.error(f"Erro ao adicionar variável ao modelo {model_id}: {e}")
+        return jsonify({'error': str(e)}), 500
+    finally:
+        db.close()
+
+@app.route('/api/models/<int:model_id>/variables/<int:variable_id>', methods=['PUT'])
+def update_model_variable(model_id, variable_id):
+    """Atualiza a configuração de uma variável do modelo"""
+    db = next(get_db())
+    try:
+        model_var = db.query(ModelVariable).filter(
+            ModelVariable.id == variable_id,
+            ModelVariable.model_id == model_id
+        ).first()
+        if not model_var:
+            return jsonify({'error': 'Associação não encontrada'}), 404
+        
+        data = request.get_json()
+        if 'role' in data:
+            if data['role'] not in ['input', 'output', 'write', 'control', 'reference']:
+                return jsonify({'error': 'Role inválido'}), 400
+            model_var.role = data['role']
+        if 'control_config' in data:
+            model_var.control_config = data['control_config']
+        
+        db.commit()
+        db.refresh(model_var)
+        
+        return jsonify(model_var.to_dict()), 200
+    except Exception as e:
+        db.rollback()
+        logging.error(f"Erro ao atualizar variável {variable_id} do modelo {model_id}: {e}")
+        return jsonify({'error': str(e)}), 500
+    finally:
+        db.close()
+
+@app.route('/api/models/<int:model_id>/variables/<int:variable_id>', methods=['DELETE'])
+def delete_model_variable(model_id, variable_id):
+    """Remove uma variável de um modelo"""
+    db = next(get_db())
+    try:
+        model_var = db.query(ModelVariable).filter(
+            ModelVariable.id == variable_id,
+            ModelVariable.model_id == model_id
+        ).first()
+        if not model_var:
+            return jsonify({'error': 'Associação não encontrada'}), 404
+        
+        db.delete(model_var)
+        db.commit()
+        
+        return jsonify({'message': 'Variável removida do modelo'}), 200
+    except Exception as e:
+        db.rollback()
+        logging.error(f"Erro ao remover variável {variable_id} do modelo {model_id}: {e}")
+        return jsonify({'error': str(e)}), 500
+    finally:
+        db.close()
+
 @app.route('/api/models/<int:model_id>/train', methods=['POST'])
+
 def train_model(model_id):
     success, message = generic_predictor.train_model(model_id)
     if success:

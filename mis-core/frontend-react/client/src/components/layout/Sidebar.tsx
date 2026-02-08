@@ -130,6 +130,18 @@ const Sidebar: React.FC<SidebarProps> = ({ collapsed, onToggle }) => {
 
       <div className="sidebar-footer">
         <NavLink
+          to="/admin"
+          className={({ isActive }) => isActive ? "sidebar-link active" : "sidebar-link"}
+          title="Configurações (Admin)"
+          to="/admin"
+          className={({ isActive }) => isActive || window.location.pathname.startsWith('/admin') ? "sidebar-link active" : "sidebar-link"}
+          title="Configurações (Admin)"
+        >
+          <span>⚙️</span>
+          {!collapsed && <span>Configurações</span>}
+        </NavLink>
+
+        <NavLink
           to="/diagnosticos"
           className={({ isActive }) =>
             `sidebar-link ${isActive ? "active" : ""} ${health === 'critical' ? 'critical-pulse' : health === 'warning' ? 'warning-glow' : ''}`

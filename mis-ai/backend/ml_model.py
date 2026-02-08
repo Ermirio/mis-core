@@ -10,7 +10,7 @@ import os
 import logging
 import threading
 from datetime import datetime, timedelta, timezone
-from models import PredictionData, PredictionTarget, PredictionModel, OPCVariables, get_db
+from models import PredictionData, PredictionTarget, PredictionModel, OPCVariables, ModelVariable, get_db
 from opc_client import opc_client
 from influx_client import influx_client
 from control_manager import control_manager
@@ -122,7 +122,31 @@ class GenericPredictor:
         finally:
             db.close()
     
-    def prepare_training_data(self, target_id, days_back=30):
+    def get_model_variables_by_role(self, model_id, role, db=None):
+        """
+        Busca as variáveis OPC configuradas para um modelo específico por role.
+        Retorna lista de node_ids.
+        """
+        close_db = False
+        if db is None:
+            db = next(get_db())
+            close_db = True
+        try:
+            # Buscar variáveis associadas ao modelo com o role especificado
+            model_vars = db.query(ModelVariable, OPCVariables).join(
+                OPCVariables, ModelVariable.opc_variable_id == OPCVariables.id
+            ).filter(
+                ModelVariable.model_id == model_id,
+                ModelVariable.role == role,
+                OPCVariables.is_active == True
+            ).all()
+            
+            return [opc_var.node_id for _, opc_var in model_vars]
+        finally:
+            if close_db:
+                db.close()
+
+    def prepare_training_data(self, target_id, days_back=30, model_id=None):
         """Prepara dados para treinamento de um target específico"""
         db = next(get_db())
         try:
@@ -131,17 +155,31 @@ class GenericPredictor:
             if not target:
                 return None, "Target não encontrado"
             
-            # Buscar variáveis OPC ativas para a linha
-            opc_vars = db.query(OPCVariables.node_id).filter(
-                OPCVariables.line_name == target.line_name,
-                OPCVariables.is_active == True,
-                OPCVariables.type_category == 'read' # <-- CORREÇÃO: Ler APENAS inputs
-            ).all()
+            # NOVO: Buscar variáveis de input do modelo específico, se fornecido
+            if model_id:
+                input_node_ids = self.get_model_variables_by_role(model_id, 'input', db)
+                if not input_node_ids:
+                    # Fallback: buscar variáveis da linha se modelo não tiver config
+                    logging.warning(f"Modelo {model_id} não tem variáveis configuradas, usando fallback por linha")
+                    opc_vars = db.query(OPCVariables.node_id).filter(
+                        OPCVariables.line_name == target.line_name,
+                        OPCVariables.is_active == True,
+                        OPCVariables.type_category == 'read'
+                    ).all()
+                    input_node_ids = [row[0] for row in opc_vars]
+            else:
+                # Fallback para compatibilidade: buscar por type_category='read'
+                opc_vars = db.query(OPCVariables.node_id).filter(
+                    OPCVariables.line_name == target.line_name,
+                    OPCVariables.is_active == True,
+                    OPCVariables.type_category == 'read'
+                ).all()
+                input_node_ids = [row[0] for row in opc_vars]
             
-            if not opc_vars:
-                return None, "Nenhuma variável OPC ativa registrada para esta linha"
+            if not input_node_ids:
+                return None, "Nenhuma variável de input configurada para este modelo"
             
-            valid_node_ids = {row[0] for row in opc_vars}
+            valid_node_ids = set(input_node_ids)
             
             # Buscar dados históricos
             start_date = datetime.now(timezone.utc) - timedelta(days=days_back)
@@ -190,8 +228,8 @@ class GenericPredictor:
             if not model_record:
                 return False, "Modelo não encontrado"
             
-            # Preparar dados de treinamento
-            training_data, message = self.prepare_training_data(model_record.target_id)
+            # Preparar dados de treinamento (passa model_id para usar variáveis específicas)
+            training_data, message = self.prepare_training_data(model_record.target_id, model_id=model_id)
             if training_data is None:
                 return False, message
             

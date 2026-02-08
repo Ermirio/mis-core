@@ -139,6 +139,8 @@ function App() {
                   element={
                     <OPCConfiguration
                       selectedLine={selectedLine}
+                      selectedTarget={selectedTarget}
+                      selectedModel={selectedModel}
                     />
                   }
                 />

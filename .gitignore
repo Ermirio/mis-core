@@ -1,0 +1,9 @@
+
+# Local large logs
+temp_log.txt
+*.log
+output.json
+start.json
+stop.json
+targets.json
+temp.json

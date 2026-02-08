@@ -84,6 +84,7 @@ class PredictionModel(Base):
     
     # Relacionamentos
     target_obj = relationship('PredictionTarget', back_populates='prediction_models')
+    model_variables = relationship('ModelVariable', back_populates='model_obj', cascade='all, delete-orphan')
 
     def to_dict(self):
         return {
@@ -100,6 +101,37 @@ class PredictionModel(Base):
             'is_active': self.is_active,
             'model_file_path': self.model_file_path
         }
+
+class ModelVariable(Base):
+    """Associação entre Modelos e Variáveis OPC com roles específicos"""
+    __tablename__ = 'model_variables'
+    id = Column(Integer, primary_key=True)
+    model_id = Column(Integer, ForeignKey('prediction_models.id', ondelete='CASCADE'), nullable=False)
+    opc_variable_id = Column(Integer, ForeignKey('opc_variables.id', ondelete='CASCADE'), nullable=False)
+    role = Column(String(20), nullable=False)  # 'input', 'output', 'write', 'control', 'reference'
+    created_at = Column(DateTime, default=datetime.utcnow)
+    
+    # Configurações específicas para controle (apenas para role='control')
+    control_config = Column(JSON, nullable=True)
+    # Estrutura: {"control_logic": "direct"|"reverse", "relation_factor": 0.5, ...}
+    
+    # Relacionamentos
+    model_obj = relationship('PredictionModel', back_populates='model_variables')
+    opc_variable_obj = relationship('OPCVariables', back_populates='model_variables')
+    
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'model_id': self.model_id,
+            'opc_variable_id': self.opc_variable_id,
+            'role': self.role,
+            'control_config': self.control_config,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'variable_name': self.opc_variable_obj.variable_name if self.opc_variable_obj else None,
+            'node_id': self.opc_variable_obj.node_id if self.opc_variable_obj else None,
+            'variable_type': self.opc_variable_obj.type if self.opc_variable_obj else None
+        }
+
 
 class PredictionData(Base):
     """Dados de predição - valores medidos e preditos"""
@@ -165,6 +197,8 @@ class OPCVariables(Base):
     
     line_obj = relationship('Line', back_populates='opc_variables')
     target_obj = relationship('PredictionTarget', back_populates='opc_variables')
+    model_variables = relationship('ModelVariable', back_populates='opc_variable_obj', cascade='all, delete-orphan')
+
 
     def to_dict(self):
         return {
