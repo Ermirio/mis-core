@@ -19,6 +19,8 @@ import EquipmentsAdmin from "./pages/admin/EquipmentsAdmin";
 import TagsAdmin from "./pages/admin/TagsAdmin";
 import ProductsAdmin from "./pages/admin/ProductsAdmin";
 import ProductionOrdersAdmin from "./pages/admin/ProductionOrdersAdmin";
+import FactoryHierarchy from "./pages/admin/FactoryHierarchy";
+import OPCConnectionsAdmin from "./pages/admin/OPCConnectionsAdmin";
 
 import React, { useState } from "react";
 import SplashScreen from "./components/SplashScreen";
@@ -52,7 +54,8 @@ function App() {
             <Route path="tags" element={<TagsAdmin />} />
             <Route path="produtos" element={<ProductsAdmin />} />
             <Route path="ordens" element={<ProductionOrdersAdmin />} />
-            {/* Future: Users */}
+            <Route path="hierarquia" element={<FactoryHierarchy />} />
+            <Route path="conexoes-opc" element={<OPCConnectionsAdmin />} />
           </Route>
         </Routes>
       )}

@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
-import { Plus, CheckCircle, XCircle, Settings, Edit, Trash2 } from "lucide-react";
+import { Plus, CheckCircle, XCircle, Settings, Edit, Trash2, TrendingUp, Activity } from "lucide-react";
+import EquipmentStateIndicator from "../../components/admin/EquipmentStateIndicator";
 import AdminDataGrid from "../../components/admin/AdminDataGrid";
 import EquipmentForm from "../../components/admin/EquipmentForm";
 import { Button } from "../../components/ui/button";
@@ -104,9 +105,21 @@ const EquipmentsAdmin: React.FC = () => {
 
     const columns = [
         { key: "id", header: "ID", width: "50px" },
-        { key: "nome", header: "Nome" },
-        { key: "codigo", header: "Tag / Código", render: (item: any) => <span className="text-emerald-400 font-mono">{item.codigo}</span> },
-        { key: "linha_nome", header: "Linha" },
+        { 
+            key: "nome", 
+            header: "Equipamento",
+            render: (item: any) => (
+                <div>
+                    <p className="text-neutral-200 font-medium">{item.nome}</p>
+                    <p className="text-xs text-neutral-600">{item.linha_nome || 'Sem linha'}</p>
+                </div>
+            )
+        },
+        { 
+            key: "codigo", 
+            header: "Tag / Código", 
+            render: (item: any) => <span className="text-emerald-400 font-mono">{item.codigo}</span> 
+        },
         {
             key: "tipo_display",
             header: "Tipo",
@@ -117,9 +130,35 @@ const EquipmentsAdmin: React.FC = () => {
             )
         },
         {
+            key: "estado",
+            header: "Estado",
+            render: (item: any) => (
+                <EquipmentStateIndicator
+                    state={item.estado || 'RUN'}
+                    size="sm"
+                    showLabel={false}
+                />
+            )
+        },
+        {
+            key: "velocidade_nominal",
+            header: "Velocidade Nominal",
+            render: (item: any) => (
+                <div className="flex items-center gap-1">
+                    <Activity className="w-3 h-3 text-neutral-500" />
+                    <span className="text-neutral-300 font-mono text-sm">{item.velocidade_nominal} u/min</span>
+                </div>
+            )
+        },
+        {
             key: "meta_oee",
             header: "Meta OEE",
-            render: (item: any) => <span className="text-blue-400">{item.meta_oee}%</span>
+            render: (item: any) => (
+                <div className="flex items-center gap-1">
+                    <TrendingUp className="w-3 h-3 text-blue-500" />
+                    <span className="text-blue-400 font-mono">{item.meta_oee}%</span>
+                </div>
+            )
         },
         {
             key: "actions",
