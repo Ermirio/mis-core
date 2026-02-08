@@ -1,16 +1,17 @@
 import React, { useState } from "react";
 import { Outlet, Link, useLocation } from "react-router-dom";
-import { 
-  LayoutDashboard, 
-  Server, 
-  Tag, 
-  Package, 
-  ClipboardList, 
-  Layers, 
-  Wifi,
-  ChevronLeft,
-  ChevronRight,
-  Home
+import {
+    LayoutDashboard,
+    Server,
+    Tag,
+    Package,
+    ClipboardList,
+    Layers,
+    Wifi,
+    ChevronLeft,
+    ChevronRight,
+    Home,
+    Calendar
 } from "lucide-react";
 
 const AdminLayout: React.FC = () => {
@@ -24,13 +25,14 @@ const AdminLayout: React.FC = () => {
         { path: "/admin/tags", icon: <Tag className="w-5 h-5" />, label: "Tags OPC" },
         { path: "/admin/produtos", icon: <Package className="w-5 h-5" />, label: "Produtos" },
         { path: "/admin/ordens", icon: <ClipboardList className="w-5 h-5" />, label: "Ordens de Produção" },
+        { path: "/admin/calendario", icon: <Calendar className="w-5 h-5" />, label: "Calendário de Produção" },
         { path: "/admin/conexoes-opc", icon: <Wifi className="w-5 h-5" />, label: "Conexões OPC" },
     ];
 
     return (
         <div className="admin-layout flex h-screen w-full bg-neutral-900 text-neutral-200">
             {/* Sidebar */}
-            <aside 
+            <aside
                 className={`
                     bg-neutral-950 border-r border-neutral-800 transition-all duration-300 flex flex-col
                     ${sidebarCollapsed ? 'w-16' : 'w-64'}
@@ -67,8 +69,8 @@ const AdminLayout: React.FC = () => {
                                     to={item.path}
                                     className={`
                                         flex items-center gap-3 px-3 py-2 rounded-md transition-all
-                                        ${isActive 
-                                            ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/50' 
+                                        ${isActive
+                                            ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/50'
                                             : 'text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200'
                                         }
                                         ${sidebarCollapsed ? 'justify-center' : ''}

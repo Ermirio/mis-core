@@ -21,6 +21,7 @@ import ProductsAdmin from "./pages/admin/ProductsAdmin";
 import ProductionOrdersAdmin from "./pages/admin/ProductionOrdersAdmin";
 import FactoryHierarchy from "./pages/admin/FactoryHierarchy";
 import OPCConnectionsAdmin from "./pages/admin/OPCConnectionsAdmin";
+import ProductionCalendarAdmin from "./pages/admin/ProductionCalendarAdmin";
 
 import React, { useState } from "react";
 import SplashScreen from "./components/SplashScreen";
@@ -56,6 +57,7 @@ function App() {
             <Route path="ordens" element={<ProductionOrdersAdmin />} />
             <Route path="hierarquia" element={<FactoryHierarchy />} />
             <Route path="conexoes-opc" element={<OPCConnectionsAdmin />} />
+            <Route path="calendario" element={<ProductionCalendarAdmin />} />
           </Route>
         </Routes>
       )}

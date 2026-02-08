@@ -39,7 +39,11 @@ RUN pnpm build
 FROM nginx:alpine
 
 # Copiar arquivos buildados
+# Copiar arquivos buildados
 COPY --from=builder /app/dist/public /usr/share/nginx/html
+
+# Criar symlink para suportar base path /mis-core/
+RUN ln -s . /usr/share/nginx/html/mis-core
 
 # Instalar dependências básicas se necessário (sed já vem no alpine)
 # RUN apk add --no-cache ...

@@ -160,11 +160,11 @@ class LinhaProducao(models.Model):
     class Meta:
         verbose_name = 'Linha de Produção'
         verbose_name_plural = 'Linhas de Produção'
-        ordering = ['codigo']
-    
+        ordering = ['area', 'nome']
+
     def __str__(self):
         return f'{self.codigo} - {self.nome}'
-    
+
     # ===== ALIASES PARA CONSULTAS DE BI =====
     @property
     def site(self):
@@ -175,6 +175,56 @@ class LinhaProducao(models.Model):
     def tecnologia(self):
         """Alias para area - facilita queries de BI"""
         return self.area
+
+
+# ===== ORDENS DE PRODUÇÃO =====
+
+class OrdemProducao(models.Model):
+    """Ordem de Produção"""
+    STATUS_CHOICES = [
+        ('PLANEJADA', 'Planejada'),
+        ('PRODUZINDO', 'Em Produção'),
+        ('PAUSADA', 'Pausada'),
+        ('CONCLUIDA', 'Concluída'),
+        ('CANCELADA', 'Cancelada'),
+    ]
+
+    codigo = models.CharField(max_length=50, unique=True, verbose_name='Código OP')
+    linha = models.ForeignKey(LinhaProducao, on_delete=models.CASCADE, related_name='ordens', verbose_name='Linha')
+    produto = models.ForeignKey(Produto, on_delete=models.PROTECT, related_name='ordens', verbose_name='Produto')
+    
+    meta_total = models.IntegerField(verbose_name='Meta Total')
+    producao_total = models.IntegerField(default=0, verbose_name='Produção Total (Real)')
+    
+    eficiencia_planejada = models.FloatField(default=85.0, verbose_name='Eficiência Planejada (%)')
+    
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='PLANEJADA', verbose_name='Status')
+    
+    data_planejada_inicio = models.DateTimeField(verbose_name='Início Planejado')
+    data_planejada_fim = models.DateTimeField(null=True, blank=True, verbose_name='Fim Planejado')
+    
+    inicio_real = models.DateTimeField(null=True, blank=True, verbose_name='Início Real')
+    fim_real = models.DateTimeField(null=True, blank=True, verbose_name='Fim Real')
+    
+    descricao = models.TextField(blank=True, verbose_name='Observações')
+    
+    criado_em = models.DateTimeField(auto_now_add=True)
+    atualizado_em = models.DateTimeField(auto_now=True)
+    
+    # Campo calculado de progresso
+    @property
+    def percentual_conclusao(self):
+        if self.meta_total > 0:
+            return round((self.producao_total / self.meta_total) * 100, 1)
+        return 0.0
+
+    class Meta:
+        verbose_name = 'Ordem de Produção'
+        verbose_name_plural = 'Ordens de Produção'
+        ordering = ['-criado_em']
+
+    def __str__(self):
+        return f'{self.codigo} - {self.linha.nome}'
 
 class HistoricoSKU(models.Model):
     """Histórico de SKUs rodando na linha"""

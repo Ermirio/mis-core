@@ -3,7 +3,7 @@ from .models import (
     LinhaProducao, Equipamento, Sensor, MetricaProducao, 
     Defeito, ConexaoOPC, TagColeta,
     TurnoProducao, CalendarioProducao, EventoEstadoEquipamento, EventoParada,
-    StrategicInitiative
+    StrategicInitiative, Produto, OrdemProducao
 )
 
 class ConexaoOPCSerializer(serializers.ModelSerializer):
@@ -36,6 +36,7 @@ class EquipamentoSerializer(serializers.ModelSerializer):
     linha_nome = serializers.CharField(source='linha.nome', read_only=True)
     linha_codigo = serializers.CharField(source='linha.codigo', read_only=True)
     sensores = SensorSerializer(many=True, read_only=True)
+    tags_coleta = TagColetaSerializer(many=True, read_only=True)
     
     class Meta:
         model = Equipamento
@@ -44,7 +45,7 @@ class EquipamentoSerializer(serializers.ModelSerializer):
             'velocidade_nominal', 'velocidade_maxima', 'meta_oee',
             'temperatura_min', 'temperatura_max', 'pressao_min', 'pressao_max',
             'observacoes', 'linha', 'linha_nome', 'linha_codigo', 'sensores',
-            'ordem_na_linha',
+            'tags_coleta', 'ordem_na_linha',
             'criado_em', 'atualizado_em'
         ]
 

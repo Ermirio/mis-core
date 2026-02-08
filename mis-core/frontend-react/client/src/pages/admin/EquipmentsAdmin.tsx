@@ -103,10 +103,25 @@ const EquipmentsAdmin: React.FC = () => {
         }
     };
 
+    const handleRefresh = async () => {
+        await fetchEquipments();
+        if (selectedEquipment) {
+            try {
+                const resp = await fetch(`${DJANGO_API_URL}/equipamentos/${selectedEquipment.id}/`);
+                if (resp.ok) {
+                    const data = await resp.json();
+                    setSelectedEquipment(data);
+                }
+            } catch (error) {
+                console.error("Erro ao atualizar dados do equipamento selecionado", error);
+            }
+        }
+    };
+
     const columns = [
         { key: "id", header: "ID", width: "50px" },
-        { 
-            key: "nome", 
+        {
+            key: "nome",
             header: "Equipamento",
             render: (item: any) => (
                 <div>
@@ -115,10 +130,10 @@ const EquipmentsAdmin: React.FC = () => {
                 </div>
             )
         },
-        { 
-            key: "codigo", 
-            header: "Tag / Código", 
-            render: (item: any) => <span className="text-emerald-400 font-mono">{item.codigo}</span> 
+        {
+            key: "codigo",
+            header: "Tag / Código",
+            render: (item: any) => <span className="text-emerald-400 font-mono">{item.codigo}</span>
         },
         {
             key: "tipo_display",
@@ -210,7 +225,7 @@ const EquipmentsAdmin: React.FC = () => {
                             <Plus className="mr-2 h-4 w-4" /> Novo Equipamento
                         </Button>
                     </SheetTrigger>
-                    <SheetContent className="bg-neutral-950 border-l border-neutral-800 text-neutral-200">
+                    <SheetContent className="bg-neutral-950 border-l border-neutral-800 text-neutral-200 sm:max-w-xl w-full sm:w-[600px]">
                         <SheetHeader>
                             <SheetTitle className="text-neutral-100">
                                 {selectedEquipment ? "Editar Equipamento" : "Novo Equipamento"}
@@ -219,12 +234,13 @@ const EquipmentsAdmin: React.FC = () => {
                                 Preencha os dados técnicos do equipamento. O Tag/Código deve ser único.
                             </SheetDescription>
                         </SheetHeader>
-                        <div className="mt-6">
+                        <div className="mt-6 h-[calc(100vh-180px)]">
                             <EquipmentForm
                                 initialData={selectedEquipment}
                                 onSubmit={handleCreateOrUpdate}
                                 onCancel={() => setIsSheetOpen(false)}
                                 isLoading={isSubmitting}
+                                onRefresh={handleRefresh}
                             />
                         </div>
                     </SheetContent>

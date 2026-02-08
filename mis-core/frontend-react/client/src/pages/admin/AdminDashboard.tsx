@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { Settings, Database, Activity, Server, Cpu, TrendingUp, AlertTriangle, CheckCircle } from "lucide-react";
+import { Settings, Database, Activity, Server, Cpu, TrendingUp, AlertTriangle, CheckCircle, Calendar } from "lucide-react";
 import OEEChart from "../../components/admin/OEEChart";
 import EquipmentStateIndicator from "../../components/admin/EquipmentStateIndicator";
 import useRealTimeData from "../../hooks/useRealTimeData";
@@ -68,7 +68,7 @@ const AdminDashboard: React.FC = () => {
           disponibilidade: 92.5,
           performance: 87.3,
           qualidade: 98.2,
-          oee: 79.3
+          oee_medio: 79.3
         };
 
         setMetrics({
@@ -89,7 +89,7 @@ const AdminDashboard: React.FC = () => {
           velocidade_atual: Math.random() * 100,
           linha_nome: eq.linha_nome || 'N/A'
         }));
-        
+
         setEquipmentStatus(statusData);
         setLoading(false);
       } catch (error) {
@@ -223,6 +223,7 @@ const AdminDashboard: React.FC = () => {
             <QuickActionButton label="Planejamento de Produção" to="/admin/ordens" icon={<Activity className="w-4 h-4" />} />
             <QuickActionButton label="Catálogo de Produtos" to="/admin/produtos" icon={<Database className="w-4 h-4" />} />
             <QuickActionButton label="Configurar Tags OPC" to="/admin/tags" icon={<Settings className="w-4 h-4" />} />
+            <QuickActionButton label="Calendário de Produção" to="/admin/calendario" icon={<Calendar className="w-4 h-4" />} />
             <QuickActionButton label="Ver Logs de Erro" to="/diagnosticos" icon={<AlertTriangle className="w-4 h-4" />} />
           </div>
         </div>

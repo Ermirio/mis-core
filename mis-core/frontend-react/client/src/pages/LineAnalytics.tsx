@@ -348,18 +348,16 @@ const LineAnalytics: React.FC = () => {
                             <Filter className="w-4 h-4 absolute left-2.5 top-2.5 text-gray-400" />
                         </div>
 
-                        <ScrollArea className="flex-1 border rounded-md p-2 bg-slate-50 dark:bg-slate-900/50">
-                            <Accordion type="multiple" className="w-full">
+                        <ScrollArea className="flex-1 w-full h-full border rounded-md px-2 bg-slate-50 dark:bg-slate-900/50">
+                            <Accordion type="multiple" className="w-full pr-3">
                                 {linhas.map(linha => {
-                                    // Check if line has matching items if search is active
-                                    // Complex filter logic omitted for brevity, passing all for now or basic check
                                     return (
-                                        <AccordionItem key={linha.id} value={`line-${linha.id}`}>
-                                            <AccordionTrigger className="hover:no-underline py-2">
-                                                <span className="font-semibold text-sm">{linha.nome} ({linha.codigo})</span>
+                                        <AccordionItem key={linha.id} value={`line-${linha.id}`} className="border-b last:border-0">
+                                            <AccordionTrigger className="hover:no-underline py-2 sticky top-0 bg-slate-50 dark:bg-slate-900/50 z-10">
+                                                <span className="font-semibold text-sm text-left">{linha.nome} ({linha.codigo})</span>
                                             </AccordionTrigger>
-                                            <AccordionContent>
-                                                <div className="pl-2 flex flex-col gap-1">
+                                            <AccordionContent className="pb-2">
+                                                <div className="pl-1 flex flex-col gap-1">
                                                     {/* === CONSOLIDADO DA LINHA === */}
                                                     {(() => {
                                                         const consolidatedTags = getLineConsolidatedTags(linha);
@@ -370,12 +368,12 @@ const LineAnalytics: React.FC = () => {
                                                         if (visibleConsolidated.length === 0) return null;
 
                                                         return (
-                                                            <div className="mb-3 pb-2 border-b border-dashed border-slate-300">
-                                                                <div className="text-xs font-bold text-emerald-600 mb-1 flex items-center gap-1">
+                                                            <div className="mb-2">
+                                                                <div className="text-xs font-bold text-emerald-600 mb-2 mt-1 flex items-center gap-1">
                                                                     <Layers className="w-3 h-3" />
                                                                     📊 Consolidado da Linha
                                                                 </div>
-                                                                <div className="pl-3 space-y-1">
+                                                                <div className="pl-2 space-y-1">
                                                                     {visibleConsolidated.map(tag => (
                                                                         <div
                                                                             key={tag.id}
@@ -388,7 +386,6 @@ const LineAnalytics: React.FC = () => {
                                                                             />
                                                                             <label htmlFor={`tag-${tag.id}`} className="text-xs cursor-pointer flex-1 font-medium text-emerald-700 dark:text-emerald-300">
                                                                                 {tag.nome}
-                                                                                <Badge variant="outline" className="ml-2 text-[10px] h-4 px-1 py-0 border-emerald-400 text-emerald-600">Linha</Badge>
                                                                             </label>
                                                                         </div>
                                                                     ))}
@@ -397,43 +394,48 @@ const LineAnalytics: React.FC = () => {
                                                         );
                                                     })()}
 
-                                                    {/* === EQUIPAMENTOS === */}
-                                                    {linha.equipamentos.map(eq => {
-                                                        const tags = getEquipmentTags(linha, eq);
-                                                        // If searching, filter tags
-                                                        const visibleTags = searchTerm
-                                                            ? tags.filter(t => filterMatch(t.nome) || filterMatch(eq.nome))
-                                                            : tags;
+                                                    {/* === EQUIPAMENTOS (NESTED ACCORDION) === */}
+                                                    <Accordion type="multiple" className="w-full">
+                                                        {linha.equipamentos.map(eq => {
+                                                            const tags = getEquipmentTags(linha, eq);
+                                                            const visibleTags = searchTerm
+                                                                ? tags.filter(t => filterMatch(t.nome) || filterMatch(eq.nome))
+                                                                : tags;
 
-                                                        if (searchTerm && visibleTags.length === 0) return null;
+                                                            if (searchTerm && visibleTags.length === 0) return null;
 
-                                                        return (
-                                                            <div key={eq.id} className="mb-2">
-                                                                <div className="text-xs font-bold text-gray-500 mb-1 flex items-center gap-1">
-                                                                    <div className="w-1.5 h-1.5 rounded-full bg-blue-400"></div>
-                                                                    {eq.nome}
-                                                                </div>
-                                                                <div className="pl-3 space-y-1">
-                                                                    {visibleTags.map(tag => (
-                                                                        <div
-                                                                            key={tag.id}
-                                                                            className="flex items-center space-x-2 p-1.5 rounded hover:bg-white dark:hover:bg-slate-800 transition-colors cursor-pointer border border-transparent hover:border-slate-200 dark:hover:border-slate-700 bg-white/50"
-                                                                        >
-                                                                            <Checkbox
-                                                                                id={`tag-${tag.id}`}
-                                                                                checked={!!selectedTags.find(t => t.id === tag.id)}
-                                                                                onCheckedChange={() => toggleTag(tag)}
-                                                                            />
-                                                                            <label htmlFor={`tag-${tag.id}`} className="text-xs cursor-pointer flex-1 font-medium text-slate-700 dark:text-slate-300">
-                                                                                {tag.nome}
-                                                                                {tag.isStandard && <Badge variant="outline" className="ml-2 text-[10px] h-4 px-1 py-0">Std</Badge>}
-                                                                            </label>
+                                                            return (
+                                                                <AccordionItem key={eq.id} value={`eq-${eq.id}`} className="border-none">
+                                                                    <AccordionTrigger className="py-2 hover:no-underline text-xs font-bold text-gray-500">
+                                                                        <div className="flex items-center gap-2 text-left">
+                                                                            <div className="w-1.5 h-1.5 rounded-full bg-blue-400 shrink-0"></div>
+                                                                            {eq.nome}
                                                                         </div>
-                                                                    ))}
-                                                                </div>
-                                                            </div>
-                                                        );
-                                                    })}
+                                                                    </AccordionTrigger>
+                                                                    <AccordionContent className="pt-0 pb-2">
+                                                                        <div className="pl-3 space-y-1">
+                                                                            {visibleTags.map(tag => (
+                                                                                <div
+                                                                                    key={tag.id}
+                                                                                    className="flex items-center space-x-2 p-1.5 rounded hover:bg-white dark:hover:bg-slate-800 transition-colors cursor-pointer border border-transparent hover:border-slate-200 dark:hover:border-slate-700 bg-white/50"
+                                                                                >
+                                                                                    <Checkbox
+                                                                                        id={`tag-${tag.id}`}
+                                                                                        checked={!!selectedTags.find(t => t.id === tag.id)}
+                                                                                        onCheckedChange={() => toggleTag(tag)}
+                                                                                    />
+                                                                                    <label htmlFor={`tag-${tag.id}`} className="text-xs cursor-pointer flex-1 font-medium text-slate-700 dark:text-slate-300 truncate" title={tag.nome}>
+                                                                                        {tag.nome}
+                                                                                        {tag.isStandard && <Badge variant="outline" className="ml-1 text-[9px] h-3 px-1 py-0 border-blue-200 text-blue-400">Std</Badge>}
+                                                                                    </label>
+                                                                                </div>
+                                                                            ))}
+                                                                        </div>
+                                                                    </AccordionContent>
+                                                                </AccordionItem>
+                                                            );
+                                                        })}
+                                                    </Accordion>
                                                 </div>
                                             </AccordionContent>
                                         </AccordionItem>

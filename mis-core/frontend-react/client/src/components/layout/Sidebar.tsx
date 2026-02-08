@@ -131,9 +131,6 @@ const Sidebar: React.FC<SidebarProps> = ({ collapsed, onToggle }) => {
       <div className="sidebar-footer">
         <NavLink
           to="/admin"
-          className={({ isActive }) => isActive ? "sidebar-link active" : "sidebar-link"}
-          title="Configurações (Admin)"
-          to="/admin"
           className={({ isActive }) => isActive || window.location.pathname.startsWith('/admin') ? "sidebar-link active" : "sidebar-link"}
           title="Configurações (Admin)"
         >
