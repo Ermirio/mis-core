@@ -22,6 +22,7 @@ import {
   createSafeProductionData,
   type ProductionData
 } from "@/utils/productionCalculations";
+import { DJANGO_API_URL, FLASK_API_URL } from '@/config/api';
 
 interface EquipamentoConfig {
   id: number;
@@ -90,8 +91,7 @@ interface LinhaAgrupada {
   };
 }
 
-const DJANGO_API_URL = import.meta.env.VITE_DJANGO_API_URL || "http://127.0.0.1:8000/api";
-const FLASK_API_URL = import.meta.env.VITE_FLASK_API_URL || "http://127.0.0.1:5000/api";
+
 
 export default function Home() {
   const navigate = useNavigate();

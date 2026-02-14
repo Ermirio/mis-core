@@ -1,0 +1,353 @@
+/**
+ * globals-compatible.css - Variáveis CSS compatíveis com componentes existentes
+ * 
+ * Versão conservadora que mantém compatibilidade com todos os componentes
+ * existentes enquanto adiciona melhorias visuais graduais
+ * 
+ * @author Process Engineer
+ * @version 4.1.0 - Versão Compatível
+ */
+
+/* ===== IMPORTAÇÃO DE FONTES (OPCIONAL) ===== */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+/* ===== VARIÁVEIS CSS COMPATÍVEIS ===== */
+:root {
+  /* === CORES EXISTENTES MANTIDAS === */
+  --primary-color: #1a56db;
+  --primary-dark: #1e429f;
+  --primary-light: #e1effe;
+  --primary-rgb: 26, 86, 219;
+  
+  /* === CORES DE ACENTO === */
+  --accent-color: #00bcd4;
+  --accent-dark: #008c9f;
+  --accent-light: #bfdbfe;
+  
+  /* === CORES DE STATUS === */
+  --success-color: #059669;
+  --warning-color: #d97706;
+  --error-color: #dc2626;
+  --info-color: #0891b2;
+  
+  /* === TONS DE CINZA MANTIDOS === */
+  --gray-50: #f9fafb;
+  --gray-100: #f3f4f6;
+  --gray-200: #e5e7eb;
+  --gray-300: #d1d5db;
+  --gray-500: #6b7280;
+  --gray-600: #4b5563;
+  --gray-800: #1f2937;
+  --gray-900: #111827;
+  
+  /* === CORES DE FUNDO === */
+  --bg-primary: #ffffff;
+  --bg-secondary: #f9fafb;
+  
+  /* === CORES DE TEXTO === */
+  --text-primary: #111827;
+  --text-secondary: #374151;
+  --text-light: #f9fafb;
+  
+  /* === SOMBRAS MANTIDAS === */
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+  
+  /* === ESPAÇAMENTOS MANTIDOS === */
+  --spacing-sm: 0.5rem;
+  --spacing-md: 1rem;
+  --spacing-lg: 1.5rem;
+  --spacing-xl: 2rem;
+  
+  /* === BORDER RADIUS === */
+  --border-radius-md: 0.375rem;
+  --border-radius-lg: 0.5rem;
+  
+  /* === TRANSIÇÕES === */
+  --transition-normal: 0.3s ease-in-out;
+  --transition-slow: 0.5s ease-in-out;
+  --transition-fast: 0.15s ease-out;
+  
+  /* === NOVAS VARIÁVEIS PARA MODERNIZAÇÃO (COM NAMESPACE) === */
+  --modern-primary-blue: #0066CC;
+  --modern-primary-dark: #004499;
+  --modern-primary-light: #E6F2FF;
+  
+  --modern-status-normal: #00AA44;
+  --modern-status-warning: #FFAA00;
+  --modern-status-alarm: #CC0000;
+  --modern-status-info: #0066CC;
+  
+  --modern-accent-cyan: #00BCD4;
+  --modern-accent-purple: #6B46C1;
+  
+  --modern-white: #FFFFFF;
+  --modern-gray-50: #F5F7FA;
+  --modern-gray-100: #EDF2F7;
+  --modern-gray-200: #E2E8F0;
+  --modern-gray-500: #8B9DC3;
+  --modern-gray-700: #2D3748;
+  --modern-gray-900: #1A202C;
+  
+  /* === TIPOGRAFIA === */
+  --font-primary: 'Inter', 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Consolas', monospace;
+  
+  /* === DIMENSÕES ESPECÍFICAS === */
+  --sidebar-width: 280px;
+  --header-height: 70px;
+  --navbar-height: 70px;
+}
+
+/* ===== RESET MÍNIMO (SEM QUEBRAR BOOTSTRAP) ===== */
+* {
+  box-sizing: border-box;
+}
+
+/* ===== MELHORIAS GRADUAIS ===== */
+
+/* Melhoria na fonte do body (opcional) */
+body {
+  font-family: var(--font-primary), -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Scrollbar personalizada (apenas para navegadores webkit) */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--gray-100);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--gray-300);
+  border-radius: 3px;
+  transition: background 0.2s ease;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--gray-500);
+}
+
+/* ===== CLASSES UTILITÁRIAS MODERNAS (COM NAMESPACE) ===== */
+
+/* Container moderno para componentes atualizados */
+.modern-container {
+  background: linear-gradient(135deg, var(--modern-white) 0%, var(--modern-gray-50) 100%);
+  border-radius: var(--border-radius-lg);
+  box-shadow: var(--shadow-md);
+  transition: all var(--transition-normal);
+}
+
+.modern-container:hover {
+  box-shadow: var(--shadow-lg);
+  transform: translateY(-1px);
+}
+
+/* Cards modernos */
+.modern-card {
+  background: var(--modern-white);
+  border: 1px solid var(--modern-gray-200);
+  border-radius: var(--border-radius-lg);
+  box-shadow: var(--shadow-sm);
+  transition: all var(--transition-normal);
+}
+
+.modern-card:hover {
+  box-shadow: var(--shadow-md);
+  transform: translateY(-2px);
+}
+
+/* Botões modernos */
+.modern-btn {
+  border-radius: var(--border-radius-md);
+  font-weight: 500;
+  transition: all var(--transition-fast);
+  border: none;
+  padding: 0.5rem 1rem;
+  font-family: var(--font-primary);
+}
+
+.modern-btn-primary {
+  background: linear-gradient(135deg, var(--modern-primary-blue) 0%, var(--modern-primary-dark) 100%);
+  color: var(--modern-white);
+}
+
+.modern-btn-primary:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 102, 204, 0.3);
+}
+
+/* Indicadores de status */
+.modern-status-indicator {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+  margin-right: 0.5rem;
+}
+
+.modern-status-normal {
+  background: var(--modern-status-normal);
+  animation: pulse-status 2s infinite;
+}
+
+.modern-status-warning {
+  background: var(--modern-status-warning);
+  animation: pulse-status 2s infinite;
+}
+
+.modern-status-alarm {
+  background: var(--modern-status-alarm);
+  animation: pulse-status 1s infinite;
+}
+
+@keyframes pulse-status {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
+/* Gradientes modernos */
+.modern-gradient-primary {
+  background: linear-gradient(135deg, var(--modern-primary-blue) 0%, var(--modern-primary-dark) 100%);
+}
+
+.modern-gradient-accent {
+  background: linear-gradient(135deg, var(--modern-accent-cyan) 0%, var(--modern-accent-purple) 100%);
+}
+
+/* Efeito shimmer */
+.modern-shimmer {
+  position: relative;
+  overflow: hidden;
+}
+
+.modern-shimmer::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.1), transparent);
+  animation: shimmer 3s infinite;
+}
+
+@keyframes shimmer {
+  0% { left: -100%; }
+  100% { left: 100%; }
+}
+
+/* ===== RESPONSIVIDADE ===== */
+@media (max-width: 992px) {
+  :root {
+    --sidebar-width: 280px;
+    --header-height: 60px;
+    --navbar-height: 60px;
+  }
+}
+
+@media (max-width: 768px) {
+  :root {
+    --sidebar-width: 100vw;
+    --spacing-lg: 1rem;
+    --spacing-xl: 1.5rem;
+  }
+  
+  .modern-container {
+    margin: 0.5rem;
+    border-radius: var(--border-radius-md);
+  }
+}
+
+/* ===== ACESSIBILIDADE ===== */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ===== COMPATIBILIDADE COM COMPONENTES EXISTENTES ===== */
+
+/* Garantir que os componentes existentes não sejam afetados */
+.kpis-content,
+.product-status-content,
+.machine-chat-content,
+.reports-content,
+.process-variables-content,
+.cartucho-content,
+.flexiveis-content,
+.troca-automatica-content {
+  /* Manter estilos existentes intactos */
+  font-family: inherit;
+  color: inherit;
+  background: inherit;
+}
+
+/* Aplicar melhorias apenas em componentes específicos */
+.app-container.modern-iiot {
+  /* Aplicar melhorias apenas quando a classe modern-iiot estiver presente */
+}
+
+/* ===== CLASSES DE LAYOUT ESPECÍFICAS ===== */
+
+/* Container principal da aplicação */
+.main-content {
+  transition: margin-left var(--transition-normal);
+  min-height: 100vh;
+  background: var(--bg-primary);
+}
+
+.main-content.sidebar-open {
+  margin-left: var(--sidebar-width);
+}
+
+.main-content.sidebar-closed {
+  margin-left: 0;
+}
+
+/* Área de conteúdo */
+.content-area {
+  padding: 0;
+  min-height: calc(100vh - var(--header-height) - var(--navbar-height));
+}
+
+/* ===== INDICADORES DE CONECTIVIDADE ===== */
+.connection-indicator {
+  position: fixed;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  z-index: 9999;
+  transition: all var(--transition-normal);
+}
+
+.connection-indicator.online {
+  background: var(--modern-status-normal);
+  box-shadow: 0 0 10px var(--modern-status-normal);
+}
+
+.connection-indicator.offline {
+  background: var(--modern-status-alarm);
+  box-shadow: 0 0 10px var(--modern-status-alarm);
+  animation: pulse-offline 1s infinite;
+}
+
+@keyframes pulse-offline {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+

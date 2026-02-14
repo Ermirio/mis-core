@@ -4,7 +4,8 @@
  * Funções para buscar dados de tonelagem da API Django
  */
 
-const DJANGO_API_URL = import.meta.env.VITE_DJANGO_API_URL || 'http://localhost:8000/api';
+import { DJANGO_API_URL } from '../config/api';
+
 
 export interface TonnageRealtimeData {
     linha_id: number;

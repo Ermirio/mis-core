@@ -4,6 +4,7 @@ import HierarchyTree from "../../components/admin/HierarchyTree";
 import { Plus, RefreshCw } from "lucide-react";
 import { Button } from "../../components/ui/button";
 import { toast } from "sonner";
+import { DJANGO_API_URL } from '@/config/api';
 
 interface Equipment {
   id: number;
@@ -35,7 +36,7 @@ interface Factory {
 }
 
 const FactoryHierarchy: React.FC = () => {
-  const DJANGO_API_URL = import.meta.env.VITE_DJANGO_API_URL || "http://127.0.0.1:8000/api";
+
   const navigate = useNavigate();
 
   const [factories, setFactories] = useState<Factory[]>([]);
@@ -185,7 +186,7 @@ const FactoryHierarchy: React.FC = () => {
         {/* Painel de Detalhes */}
         <div className="bg-neutral-950 border border-neutral-800 rounded-lg p-6">
           <h3 className="text-lg font-semibold text-neutral-200 mb-4">Detalhes</h3>
-          
+
           {!selectedItem ? (
             <div className="text-center text-neutral-600 py-8">
               <p>Selecione um item na hierarquia para ver os detalhes</p>

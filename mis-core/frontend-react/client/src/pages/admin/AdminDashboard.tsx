@@ -4,6 +4,7 @@ import { Settings, Database, Activity, Server, Cpu, TrendingUp, AlertTriangle, C
 import OEEChart from "../../components/admin/OEEChart";
 import EquipmentStateIndicator from "../../components/admin/EquipmentStateIndicator";
 import useRealTimeData from "../../hooks/useRealTimeData";
+import { DJANGO_API_URL, FLASK_API_URL } from '@/config/api';
 
 interface SystemMetrics {
   total_equipamentos: number;
@@ -27,8 +28,7 @@ interface EquipmentStatus {
 }
 
 const AdminDashboard: React.FC = () => {
-  const DJANGO_API_URL = import.meta.env.VITE_DJANGO_API_URL || "http://127.0.0.1:8000/api";
-  const FLASK_API_URL = import.meta.env.VITE_FLASK_API_URL || "http://127.0.0.1:5000/api";
+
 
   const [metrics, setMetrics] = useState<SystemMetrics>({
     total_equipamentos: 0,

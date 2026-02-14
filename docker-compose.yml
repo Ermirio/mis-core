@@ -75,7 +75,7 @@ services:
       DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY}
       DJANGO_DEBUG: ${DJANGO_DEBUG}
       DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS}
-      CSRF_TRUSTED_ORIGINS: ${CSRF_TRUSTED_ORIGINS}
+      # CSRF_TRUSTED_ORIGINS: Removido para ler do arquivo .env montado
       DJANGO_SUPERUSER_USERNAME: ${DJANGO_SUPERUSER_USERNAME}
       DJANGO_SUPERUSER_EMAIL: ${DJANGO_SUPERUSER_EMAIL}
       DJANGO_SUPERUSER_PASSWORD: ${DJANGO_SUPERUSER_PASSWORD}
@@ -84,6 +84,7 @@ services:
       - "${DJANGO_HOST_PORT}:8000"
     volumes:
       - ./mis-core/backend-django:/app
+      - ./.env:/app/.env
       - django_static:/app/staticfiles
     networks:
       - mis-network
@@ -147,6 +148,8 @@ services:
         condition: service_started
       mis-ai-frontend:
         condition: service_started
+      mis-changeover-frontend:
+        condition: service_started
       emqx:
         condition: service_started
     restart: unless-stopped
@@ -171,12 +174,13 @@ services:
       INFLUXDB_PORT: 8086
       INFLUXDB_USER: ${INFLUXDB_ADMIN_USER}
       INFLUXDB_PASSWORD: ${INFLUXDB_ADMIN_PASSWORD}
-      INFLUXDB_DATABASE: mis-ai
+      INFLUXDB_DATABASE: mis_ai_db
     networks:
       - mis-network
     volumes:
       - ./mis-ai/backend/models:/app/models
       - ./mis-ai/backend/logs:/app/logs
+      - ./.env:/app/.env
     depends_on:
       mysql:
         condition: service_healthy
@@ -216,16 +220,17 @@ services:
       MYSQL_PORT: "3306"
       MYSQL_USER: ${MYSQL_USER}
       MYSQL_PASSWORD: ${MYSQL_PASSWORD}
-      MYSQL_DB: energy_monitor
+      MYSQL_DB: mis_energy_db
       # InfluxDB configuration
       INFLUXDB_HOST: influxdb
       INFLUXDB_PORT: "8086"
-      INFLUXDB_DATABASE: industrial_db
+      INFLUXDB_DATABASE: mis_energy_db
     networks:
       - mis-network
     volumes:
       - ./mis-energy/backend/database:/app/database
       - ./mis-energy/backend/logs:/app/logs
+      - ./.env:/app/.env
     depends_on:
       mysql:
         condition: service_healthy
@@ -262,6 +267,58 @@ services:
     restart: unless-stopped
 
   # ==========================================
+  # SERVIÇOS DO MIS-CHANGE-OVER
+  # ==========================================
+
+  # ===== CHANGEOVER BACKEND (DJANGO) =====
+  mis-changeover-backend:
+    build:
+      context: ./mis-change-over/Backend
+      dockerfile: Dockerfile
+    container_name: mis-changeover-backend
+    environment:
+      DJANGO_SETTINGS_MODULE: digitalfactory.settings
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY}
+      DJANGO_DEBUG: ${DJANGO_DEBUG}
+      DJANGO_ALLOWED_HOSTS: "*"
+      DJANGO_CSRF_TRUSTED_ORIGINS: "http://changeover.mis.local:3000,http://192.168.15.20:3000,http://localhost:3000"
+      DB_ENGINE: django.db.backends.mysql
+      DB_NAME: mis_changeover_db
+      DB_USER: ${MYSQL_USER}
+      DB_PASSWORD: ${MYSQL_PASSWORD}
+      DB_HOST: mysql
+      DB_PORT: "3306"
+      DJANGO_SUPERUSER_USERNAME: ${DJANGO_SUPERUSER_USERNAME}
+      DJANGO_SUPERUSER_EMAIL: ${DJANGO_SUPERUSER_EMAIL}
+      DJANGO_SUPERUSER_PASSWORD: ${DJANGO_SUPERUSER_PASSWORD}
+      USE_X_FORWARDED_HOST: "true"
+      TZ: ${TZ}
+    ports:
+      - "${MIS_CHANGEOVER_BACKEND_PORT:-5006}:8000"
+    volumes:
+      - ./mis-change-over/Backend:/app
+    networks:
+      - mis-network
+    depends_on:
+      mysql:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ===== CHANGEOVER FRONTEND (REACT/NGINX) =====
+  mis-changeover-frontend:
+    build:
+      context: ./mis-change-over/Frontend
+      dockerfile: dockerfile
+    container_name: mis-changeover-frontend
+    ports:
+      - "${MIS_CHANGEOVER_FRONTEND_PORT:-3009}:80"
+    networks:
+      - mis-network
+    depends_on:
+      - mis-changeover-backend
+    restart: unless-stopped
+
+  # ==========================================
   # FERRAMENTAS AUXILIARES (Phase 2)
   # ==========================================
 
@@ -273,6 +330,9 @@ services:
       - TZ=America/Sao_Paulo
     volumes:
       - node_red_data:/data
+      - ./mis-core/node-red/settings.js:/data/settings.js
+    ports:
+      - "1880:1880"
     networks:
       - mis-network
     restart: unless-stopped
@@ -376,6 +436,7 @@ services:
       INFLUXDB_URL: http://influxdb:8086
       INFLUXDB_USERNAME: ${INFLUXDB_ADMIN_USER}
       INFLUXDB_PASSWORD: ${INFLUXDB_ADMIN_PASSWORD}
+      BASE_PATH: /chronograf
     networks:
       - mis-network
     restart: unless-stopped

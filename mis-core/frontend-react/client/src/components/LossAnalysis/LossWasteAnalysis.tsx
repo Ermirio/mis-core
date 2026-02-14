@@ -3,6 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import { AlertCircle, RefreshCw, Trash2 } from 'lucide-react';
+import { DJANGO_API_URL } from '@/config/api';
 
 interface AnalysisData {
     periodo: string;
@@ -32,8 +33,6 @@ const COLORS_BY_STATE: Record<string, string> = {
     'Parando': '#f43f5e', // Rose
     'Outro': '#6b7280' // Gray
 };
-
-const DJANGO_API_URL = import.meta.env.VITE_DJANGO_API_URL || 'http://localhost:8000/api';
 
 export function LossWasteAnalysis({ lineId, mode = 'line' }: LossWasteProps) {
     const [periodo, setPeriodo] = useState('TURNO');

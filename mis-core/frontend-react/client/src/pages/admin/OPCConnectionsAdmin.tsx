@@ -3,6 +3,7 @@ import { Plus, Wifi, WifiOff, RefreshCw, Settings, CheckCircle, XCircle } from "
 import AdminDataGrid from "../../components/admin/AdminDataGrid";
 import { Button } from "../../components/ui/button";
 import { toast } from "sonner";
+import { DJANGO_API_URL } from '@/config/api';
 
 interface OPCConnection {
   id: number;
@@ -19,7 +20,7 @@ interface OPCConnection {
 }
 
 const OPCConnectionsAdmin: React.FC = () => {
-  const DJANGO_API_URL = import.meta.env.VITE_DJANGO_API_URL || "http://127.0.0.1:8000/api";
+
 
   const [connections, setConnections] = useState<OPCConnection[]>([]);
   const [loading, setLoading] = useState(true);
@@ -56,7 +57,7 @@ const OPCConnectionsAdmin: React.FC = () => {
 
   const testConnection = async (connectionId: number) => {
     toast.info("Testando conexão...");
-    
+
     // Simular teste de conexão
     setTimeout(() => {
       const success = Math.random() > 0.2; // 80% de sucesso
@@ -70,8 +71,8 @@ const OPCConnectionsAdmin: React.FC = () => {
 
   const columns = [
     { key: "id", header: "ID", width: "50px" },
-    { 
-      key: "nome", 
+    {
+      key: "nome",
       header: "Nome da Conexão",
       render: (item: OPCConnection) => (
         <div>

@@ -1,0 +1,25 @@
+# Dockerfile para Aplipack Mock API
+# Permite rodar a API mock em um container Docker
+
+FROM python:3.11-slim
+
+# Definir diretório de trabalho
+WORKDIR /app
+
+# Copiar arquivos
+COPY aplipack_mock_api.py .
+COPY requirements_mock_api.txt .
+
+# Instalar dependências
+RUN pip install --no-cache-dir -r requirements_mock_api.txt
+
+# Expor porta
+EXPOSE 5003
+
+# Variáveis de ambiente (opcional)
+ENV FLASK_APP=aplipack_mock_api.py
+ENV FLASK_ENV=development
+
+# Comando para iniciar a API
+CMD ["python", "aplipack_mock_api.py"]
+

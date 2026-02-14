@@ -22,8 +22,7 @@ import {
 import { format, subHours } from "date-fns";
 import { ptBR } from "date-fns/locale";
 
-const DJANGO_API = import.meta.env.VITE_DJANGO_API_URL;
-const FLASK_API = import.meta.env.VITE_FLASK_API_URL;
+import { DJANGO_API_URL as DJANGO_API, FLASK_API_URL as FLASK_API } from '@/config/api';
 
 interface Tag {
     id: number;

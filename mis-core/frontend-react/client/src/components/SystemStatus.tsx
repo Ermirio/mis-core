@@ -8,8 +8,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 
-const DJANGO_API_URL = import.meta.env.VITE_DJANGO_API_URL || "http://127.0.0.1:8000/api";
-const FLASK_API_URL = import.meta.env.VITE_FLASK_API_URL || "http://127.0.0.1:5000/api";
+import { DJANGO_API_URL, FLASK_API_URL } from "@/config/api";
 
 interface ServiceStatus {
   name: string;
@@ -22,21 +21,21 @@ export default function SystemStatus() {
     { name: 'Django API', status: 'checking' },
     { name: 'Flask API', status: 'checking' },
   ]);
-  
+
   const checkServiceHealth = async (url: string, name: string) => {
     const startTime = Date.now();
     try {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 5000);
-      
+
       const response = await fetch(url, {
         signal: controller.signal,
         method: 'GET',
       });
-      
+
       clearTimeout(timeoutId);
       const responseTime = Date.now() - startTime;
-      
+
       return {
         name,
         status: response.ok ? 'online' as const : 'offline' as const,
@@ -50,25 +49,25 @@ export default function SystemStatus() {
       };
     }
   };
-  
+
   const checkAllServices = async () => {
     const [djangoStatus, flaskStatus] = await Promise.all([
       checkServiceHealth(`${DJANGO_API_URL}/linhas/`, 'Django API'),
       checkServiceHealth(`${FLASK_API_URL}/health`, 'Flask API'),
     ]);
-    
+
     setServices([djangoStatus, flaskStatus]);
   };
-  
+
   useEffect(() => {
     checkAllServices();
-    
+
     // Verificar a cada 30 segundos
     const interval = setInterval(checkAllServices, 30000);
-    
+
     return () => clearInterval(interval);
   }, []);
-  
+
   const getStatusIcon = (status: ServiceStatus['status']) => {
     switch (status) {
       case 'online':
@@ -79,7 +78,7 @@ export default function SystemStatus() {
         return <Loader2 className="h-3 w-3 animate-spin text-yellow-500" />;
     }
   };
-  
+
   const getStatusVariant = (status: ServiceStatus['status']) => {
     switch (status) {
       case 'online':
@@ -90,10 +89,10 @@ export default function SystemStatus() {
         return 'secondary';
     }
   };
-  
+
   const allOnline = services.every(s => s.status === 'online');
   const anyOffline = services.some(s => s.status === 'offline');
-  
+
   return (
     <TooltipProvider>
       <Tooltip>
@@ -117,8 +116,8 @@ export default function SystemStatus() {
                   <span className="text-sm">{service.name}</span>
                 </div>
                 <Badge variant={getStatusVariant(service.status)} className="text-xs">
-                  {service.status === 'online' && service.responseTime 
-                    ? `${service.responseTime}ms` 
+                  {service.status === 'online' && service.responseTime
+                    ? `${service.responseTime}ms`
                     : service.status}
                 </Badge>
               </div>

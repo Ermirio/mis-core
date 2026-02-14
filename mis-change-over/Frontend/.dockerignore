@@ -1,0 +1,21 @@
+# Pastas e arquivos a serem ignorados pelo Docker
+
+# Dependências
+node_modules
+
+# Pasta de build (ela será criada DENTRO do container)
+build
+
+# Git
+.git
+.gitignore
+
+# Arquivos de ambiente
+.env
+.env.local
+.env.development
+.env.test
+
+# Logs
+npm-debug.log
+yarn-error.log

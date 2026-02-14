@@ -27,6 +27,9 @@ echo "[entrypoint] InfluxDB is up."
 echo "[entrypoint] Running migrations..."
 python manage.py migrate --noinput
 
+echo "[entrypoint] Creating superuser..."
+python manage.py createsuperuser --noinput || echo "Superuser already exists or failed to create"
+
 echo "[entrypoint] Collecting static files..."
 python manage.py collectstatic --noinput || true
 

@@ -1,0 +1,327 @@
+/**
+ * ReportsContent.css - Estilos para o componente de relatórios
+ * 
+ * Este arquivo contém todos os estilos específicos para o componente ReportsContent,
+ * incluindo cards, gráficos, tabelas e elementos de interface.
+ * 
+ * @author Manus AI
+ * @version 2.0.0
+ */
+
+/* Estilos gerais do componente */
+.reports-content {
+  padding: 1rem;
+}
+
+/* Cabeçalho do conteúdo */
+.content-header {
+  margin-bottom: 1.5rem;
+}
+
+.section-title {
+  display: flex;
+  align-items: center;
+  font-size: 1.5rem;
+  margin-bottom: 0.5rem;
+  color: var(--primary-color);
+}
+
+.title-icon {
+  margin-right: 0.75rem;
+  font-size: 1.25rem;
+}
+
+.section-description {
+  color: #6c757d;
+  margin-bottom: 0;
+}
+
+/* Mensagem quando nenhuma linha está selecionada */
+.no-line-selected {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 3rem;
+  text-align: center;
+  background-color: #f8f9fa;
+  border-radius: 0.5rem;
+  margin: 1rem;
+}
+
+.no-line-icon {
+  font-size: 3rem;
+  color: #adb5bd;
+  margin-bottom: 1rem;
+}
+
+/* Card de geração de relatórios */
+.report-generator-card {
+  height: 100%;
+  box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
+  border: none;
+  border-radius: 0.5rem;
+}
+
+.report-generator-card .card-header {
+  background-color: #f8f9fa;
+  border-bottom: 1px solid #e9ecef;
+  padding: 1rem;
+}
+
+.report-generator-card .card-header h5 {
+  margin-bottom: 0;
+  font-weight: 600;
+}
+
+/* Seletor de tipo de relatório */
+.report-type-selector {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.report-type-item {
+  display: flex;
+  align-items: center;
+  padding: 0.75rem;
+  border-radius: 0.5rem;
+  border: 1px solid #dee2e6;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.report-type-item:hover {
+  background-color: #f8f9fa;
+  border-color: #ced4da;
+}
+
+.report-type-item.active {
+  background-color: rgba(13, 110, 253, 0.1);
+  border-color: #0d6efd;
+}
+
+.report-type-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  background-color: #f8f9fa;
+  border-radius: 50%;
+  margin-right: 1rem;
+  font-size: 1.25rem;
+  color: #6c757d;
+}
+
+.report-type-item.active .report-type-icon {
+  background-color: #0d6efd;
+  color: white;
+}
+
+.report-type-info {
+  flex: 1;
+}
+
+.report-type-info h6 {
+  margin-bottom: 0.25rem;
+  font-weight: 600;
+}
+
+.report-type-info small {
+  color: #6c757d;
+}
+
+/* Seletor de formato */
+.format-selector {
+  display: flex;
+  gap: 0.75rem;
+}
+
+.format-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 5rem;
+  height: 5rem;
+  border: 1px solid #dee2e6;
+  border-radius: 0.5rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.format-item:hover {
+  background-color: #f8f9fa;
+  border-color: #ced4da;
+}
+
+.format-item.active {
+  background-color: rgba(13, 110, 253, 0.1);
+  border-color: #0d6efd;
+}
+
+.format-item svg {
+  font-size: 1.5rem;
+  margin-bottom: 0.5rem;
+}
+
+/* Botões de ação */
+.report-actions {
+  display: flex;
+  gap: 1rem;
+  margin-top: 1.5rem;
+}
+
+/* Card de histórico de relatórios */
+.report-history-card {
+  height: 100%;
+  box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
+  border: none;
+  border-radius: 0.5rem;
+}
+
+.report-history-card .card-header {
+  background-color: #f8f9fa;
+  border-bottom: 1px solid #e9ecef;
+  padding: 1rem;
+}
+
+.report-history-card .card-header h5 {
+  margin-bottom: 0;
+  font-weight: 600;
+}
+
+/* Barra de filtros */
+.filter-bar {
+  display: flex;
+  gap: 1rem;
+}
+
+.filter-selects {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.filter-select {
+  min-width: 150px;
+}
+
+/* Mensagem quando não há relatórios */
+.no-reports {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 3rem;
+  text-align: center;
+}
+
+.no-reports-icon {
+  font-size: 3rem;
+  color: #adb5bd;
+  margin-bottom: 1rem;
+}
+
+/* Modal de visualização */
+.report-preview {
+  padding: 1rem;
+}
+
+.report-header {
+  margin-bottom: 1.5rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid #dee2e6;
+}
+
+.report-header h4 {
+  margin-bottom: 0.5rem;
+  font-weight: 600;
+}
+
+.report-header p {
+  margin-bottom: 0.25rem;
+  color: #6c757d;
+}
+
+/* Itens de resumo */
+.summary-item {
+  background-color: #f8f9fa;
+  padding: 1rem;
+  border-radius: 0.5rem;
+  height: 100%;
+}
+
+.summary-label {
+  font-size: 0.875rem;
+  color: #6c757d;
+  margin-bottom: 0.5rem;
+}
+
+.summary-value {
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: #212529;
+}
+
+/* Contêineres de gráficos */
+.chart-container {
+  padding: 1rem;
+  background-color: #f8f9fa;
+  border-radius: 0.5rem;
+  height: 100%;
+}
+
+.chart-container h6 {
+  margin-bottom: 1rem;
+  text-align: center;
+  font-weight: 600;
+}
+
+/* Responsividade */
+@media (max-width: 992px) {
+  .filter-bar {
+    flex-direction: column;
+  }
+  
+  .filter-selects {
+    width: 100%;
+  }
+  
+  .filter-select {
+    flex: 1;
+  }
+  
+  .report-actions {
+    flex-direction: column;
+  }
+  
+  .report-actions button {
+    width: 100%;
+  }
+}
+
+@media (max-width: 768px) {
+  .format-selector {
+    justify-content: center;
+  }
+}
+
+/* Animações */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.report-preview {
+  animation: fadeIn 0.3s ease;
+}
+
+/* Estilos para notificações */
+.toast-container {
+  z-index: 1060;
+}

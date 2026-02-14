@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { ArrowLeft, RefreshCw, TrendingUp, AlertCircle, CheckCircle } from 'lucide-react';
 import { useParams, useNavigate } from 'react-router-dom';
+import { FLASK_API_URL } from '@/config/api';
 
 interface EquipamentoStatus {
   equipamento: string;
@@ -38,7 +39,7 @@ interface LinhaStatusResponse {
   };
 }
 
-const FLASK_API_URL = import.meta.env.VITE_FLASK_API_URL || 'http://localhost:5000/api';
+
 
 /**
  * LineManagement - Tela de Gerenciamento de Linha

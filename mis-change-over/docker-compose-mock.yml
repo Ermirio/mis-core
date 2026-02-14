@@ -1,0 +1,51 @@
+# Docker Compose para Aplipack Mock API
+# Permite rodar a API mock junto com os outros serviços
+
+version: '3.8'
+
+services:
+  # API Mock da Aplipack
+  aplipack-mock:
+    build:
+      context: .
+      dockerfile: Dockerfile.mock
+    image: aplipack-mock:latest
+    container_name: aplipack_mock_container
+    ports:
+      - "5003:5003"
+    environment:
+      FLASK_APP: aplipack_mock_api.py
+      FLASK_ENV: development
+    networks:
+      - app_network
+      - shared-network
+    restart: unless-stopped
+
+networks:
+  app_network:
+    driver: bridge
+  shared-network:
+    external: true
+
+# ==================== INSTRUÇÕES DE USO ====================
+#
+# 1. Build da imagem:
+#    docker-compose -f docker-compose-mock.yml build
+#
+# 2. Iniciar o serviço:
+#    docker-compose -f docker-compose-mock.yml up -d
+#
+# 3. Ver logs:
+#    docker-compose -f docker-compose-mock.yml logs -f aplipack-mock
+#
+# 4. Parar o serviço:
+#    docker-compose -f docker-compose-mock.yml down
+#
+# 5. Testar a API:
+#    curl http://localhost:5003/health
+#
+# 6. Integrar com o Docker-Compose principal:
+#    Adicione este serviço ao seu Docker-Compose.yaml principal
+#    ou rode este compose separadamente
+#
+

@@ -51,10 +51,10 @@ import StateTimelineChart from '@/components/StateTimelineChart';
 import DiagnosticsPanel from '@/components/GoldenState/DiagnosticsPanel';
 import VariablesTab from '@/components/EquipamentoDetalhes/VariablesTab';
 import { mapEstado } from '@/utils/equipmentStateUtils';
+import { DJANGO_API_URL, FLASK_API_URL } from '@/config/api';
 
 // Configuração
-const DJANGO_API_URL = import.meta.env.VITE_DJANGO_API_URL || 'http://127.0.0.1:8000/api';
-const FLASK_API_URL = import.meta.env.VITE_FLASK_API_URL || 'http://127.0.0.1:5000/api';
+// Configuração
 
 // ===== TIPOS =====
 

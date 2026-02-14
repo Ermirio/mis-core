@@ -1,0 +1,344 @@
+/**
+ * LoadingSpinner.css - Estilos modernizados para o componente de loading
+ * 
+ * Design IIoT minimalista seguindo padrões ISA 101
+ * Características: Animações suaves, cores consistentes, feedback visual claro
+ * 
+ * @author Process Engineer
+ * @version 4.0.0 - Modernização IIoT
+ */
+
+/* ===== CONTAINER PRINCIPAL ===== */
+.loading-spinner-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  width: 100%;
+  min-height: 200px;
+  padding: 40px 20px;
+  background: linear-gradient(135deg, var(--white) 0%, var(--gray-50) 100%);
+  border-radius: 12px;
+  position: relative;
+  overflow: hidden;
+}
+
+/* Efeito de shimmer de fundo */
+.loading-spinner-container::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(var(--primary-rgb), 0.05), transparent);
+  animation: shimmer-loading 2s infinite;
+}
+
+@keyframes shimmer-loading {
+  0% { left: -100%; }
+  100% { left: 100%; }
+}
+
+/* ===== SPINNER MODERNIZADO ===== */
+.loading-spinner-container .spinner-border {
+  width: 4rem;
+  height: 4rem;
+  border-width: 0.4em;
+  border-color: var(--primary-blue);
+  border-right-color: transparent;
+  animation: modern-spin 1s linear infinite, pulse-spinner 2s ease-in-out infinite;
+  position: relative;
+  z-index: 2;
+}
+
+@keyframes modern-spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+@keyframes pulse-spinner {
+  0%, 100% { 
+    transform: scale(1);
+    filter: drop-shadow(0 0 0 rgba(var(--primary-rgb), 0));
+  }
+  50% { 
+    transform: scale(1.05);
+    filter: drop-shadow(0 0 20px rgba(var(--primary-rgb), 0.3));
+  }
+}
+
+/* ===== TEXTO DE LOADING ===== */
+.loading-spinner-container .loading-text {
+  margin-top: 24px;
+  color: var(--primary-blue);
+  font-size: 1.1rem;
+  font-weight: 600;
+  font-family: var(--font-primary);
+  text-align: center;
+  position: relative;
+  z-index: 2;
+  animation: fade-text 2s ease-in-out infinite;
+}
+
+@keyframes fade-text {
+  0%, 100% { opacity: 0.7; }
+  50% { opacity: 1; }
+}
+
+/* ===== VARIAÇÕES DE TAMANHO ===== */
+
+/* Spinner pequeno */
+.loading-spinner-container.small {
+  min-height: 120px;
+  padding: 20px;
+}
+
+.loading-spinner-container.small .spinner-border {
+  width: 2.5rem;
+  height: 2.5rem;
+  border-width: 0.3em;
+}
+
+.loading-spinner-container.small .loading-text {
+  font-size: 0.95rem;
+  margin-top: 16px;
+}
+
+/* Spinner grande */
+.loading-spinner-container.large {
+  min-height: 300px;
+  padding: 60px 20px;
+}
+
+.loading-spinner-container.large .spinner-border {
+  width: 5rem;
+  height: 5rem;
+  border-width: 0.5em;
+}
+
+.loading-spinner-container.large .loading-text {
+  font-size: 1.3rem;
+  margin-top: 32px;
+}
+
+/* ===== VARIAÇÕES DE COR ===== */
+
+/* Spinner de sucesso */
+.loading-spinner-container.success .spinner-border {
+  border-color: var(--status-normal);
+  border-right-color: transparent;
+}
+
+.loading-spinner-container.success .loading-text {
+  color: var(--status-normal);
+}
+
+/* Spinner de aviso */
+.loading-spinner-container.warning .spinner-border {
+  border-color: var(--status-warning);
+  border-right-color: transparent;
+}
+
+.loading-spinner-container.warning .loading-text {
+  color: var(--status-warning);
+}
+
+/* Spinner de erro */
+.loading-spinner-container.error .spinner-border {
+  border-color: var(--status-alarm);
+  border-right-color: transparent;
+}
+
+.loading-spinner-container.error .loading-text {
+  color: var(--status-alarm);
+}
+
+/* ===== SPINNER INLINE ===== */
+.loading-spinner-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--primary-blue);
+  font-size: 0.95rem;
+  font-weight: 500;
+  font-family: var(--font-primary);
+}
+
+.loading-spinner-inline .spinner-border {
+  width: 1.2rem;
+  height: 1.2rem;
+  border-width: 0.15em;
+  border-color: var(--primary-blue);
+  border-right-color: transparent;
+}
+
+/* ===== SPINNER COM PONTOS ===== */
+.loading-dots {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--primary-blue);
+  font-size: 1.1rem;
+  font-weight: 600;
+  font-family: var(--font-primary);
+}
+
+.loading-dots::after {
+  content: '';
+  display: inline-block;
+  animation: dots 1.5s infinite;
+}
+
+@keyframes dots {
+  0%, 20% { content: ''; }
+  40% { content: '.'; }
+  60% { content: '..'; }
+  80%, 100% { content: '...'; }
+}
+
+/* ===== SPINNER PULSANTE ===== */
+.loading-pulse {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+}
+
+.pulse-circle {
+  width: 60px;
+  height: 60px;
+  border-radius: 50%;
+  background: var(--primary-blue);
+  animation: pulse-circle 1.5s ease-in-out infinite;
+  position: relative;
+}
+
+.pulse-circle::before,
+.pulse-circle::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  background: var(--primary-blue);
+  opacity: 0.6;
+  animation: pulse-ring 1.5s ease-in-out infinite;
+}
+
+.pulse-circle::after {
+  animation-delay: 0.5s;
+}
+
+@keyframes pulse-circle {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(0.8); opacity: 0.7; }
+}
+
+@keyframes pulse-ring {
+  0% { transform: scale(1); opacity: 0.6; }
+  100% { transform: scale(2); opacity: 0; }
+}
+
+/* ===== SKELETON LOADING ===== */
+.skeleton-loading {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 20px;
+  width: 100%;
+}
+
+.skeleton-line {
+  height: 16px;
+  background: linear-gradient(90deg, var(--gray-200) 25%, var(--gray-100) 50%, var(--gray-200) 75%);
+  background-size: 200% 100%;
+  border-radius: 8px;
+  animation: skeleton-shimmer 1.5s infinite;
+}
+
+.skeleton-line.short {
+  width: 60%;
+}
+
+.skeleton-line.medium {
+  width: 80%;
+}
+
+.skeleton-line.long {
+  width: 100%;
+}
+
+@keyframes skeleton-shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+/* ===== RESPONSIVIDADE ===== */
+@media (max-width: 768px) {
+  .loading-spinner-container {
+    min-height: 150px;
+    padding: 30px 16px;
+  }
+  
+  .loading-spinner-container .spinner-border {
+    width: 3rem;
+    height: 3rem;
+    border-width: 0.3em;
+  }
+  
+  .loading-spinner-container .loading-text {
+    font-size: 1rem;
+    margin-top: 20px;
+  }
+  
+  .loading-spinner-container.large {
+    min-height: 200px;
+    padding: 40px 16px;
+  }
+  
+  .loading-spinner-container.large .spinner-border {
+    width: 4rem;
+    height: 4rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .loading-spinner-container {
+    min-height: 120px;
+    padding: 20px 12px;
+  }
+  
+  .loading-spinner-container .spinner-border {
+    width: 2.5rem;
+    height: 2.5rem;
+  }
+  
+  .loading-spinner-container .loading-text {
+    font-size: 0.95rem;
+    margin-top: 16px;
+  }
+}
+
+/* ===== ACESSIBILIDADE ===== */
+@media (prefers-reduced-motion: reduce) {
+  .loading-spinner-container .spinner-border,
+  .pulse-circle,
+  .pulse-circle::before,
+  .pulse-circle::after {
+    animation-duration: 3s;
+  }
+  
+  .loading-spinner-container::before {
+    animation: none;
+  }
+  
+  @keyframes pulse-spinner {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.02); }
+  }
+}
+

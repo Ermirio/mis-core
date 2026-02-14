@@ -24,6 +24,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "../ui/tabs"; // Import
 import { Loader2, Settings, Tag, Activity } from "lucide-react";
 import TagInlineManager from "./TagInlineManager"; // Import Inline Manager
 import SensorInlineManager from "./SensorInlineManager"; // Import Sensor Manager
+import { DJANGO_API_URL } from "@/config/api";
 
 // Schema de Validação
 const formSchema = z.object({
@@ -64,7 +65,7 @@ const EquipmentForm: React.FC<EquipmentFormProps> = ({
     // Carregar linhas para o Select
     useEffect(() => {
         async function fetchLinhas() {
-            const DJANGO_API_URL = import.meta.env.VITE_DJANGO_API_URL || "http://127.0.0.1:8000/api";
+            // Import moved to top level
             try {
                 const resp = await fetch(`${DJANGO_API_URL}/linhas/`);
                 if (!resp.ok) throw new Error("Falha ao buscar linhas");

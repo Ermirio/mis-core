@@ -11,6 +11,7 @@ import {
 } from "../ui/dialog";
 import { toast } from "sonner";
 import SensorForm from "./SensorForm";
+import { DJANGO_API_URL } from "@/config/api";
 
 interface SensorInlineManagerProps {
     equipmentId: number;
@@ -19,7 +20,6 @@ interface SensorInlineManagerProps {
 }
 
 const SensorInlineManager: React.FC<SensorInlineManagerProps> = ({ equipmentId, sensors, onUpdate }) => {
-    const DJANGO_API_URL = import.meta.env.VITE_DJANGO_API_URL || "http://127.0.0.1:8000/api";
 
     const [isDialogOpen, setIsDialogOpen] = useState(false);
     const [selectedSensor, setSelectedSensor] = useState<any | null>(null);

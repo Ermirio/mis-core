@@ -1,0 +1,26 @@
+.flexiveis-content {
+  background: #ffffff;
+  border-radius: 10px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+  padding: 20px;
+  margin-top: 20px;
+}
+
+.flexiveis-content h2 {
+  color: #1e3c72;
+  margin-bottom: 15px;
+}
+
+.flexiveis-content p {
+  color: #333;
+  font-size: 1.1rem;
+}
+
+@media (max-width: 768px) {
+  .flexiveis-content {
+    padding: 15px;
+  }
+  .flexiveis-content h2 {
+    font-size: 1.5rem;
+  }
+}

@@ -14,6 +14,7 @@ import ProductionChart from '@/components/ProductionChart';
 import SpeedChart from '@/components/SpeedChart';
 import SKUProductionChart from '@/components/SKUProductionChart';
 import { fetchTonnageRealtime, fetchTonnageHistory, type TonnageRealtimeData, type TonnageHistoryData } from '@/services/tonnageApi';
+import { DJANGO_API_URL, FLASK_API_URL } from '@/config/api';
 
 // ===== TIPOS =====
 
@@ -130,8 +131,8 @@ const LinhaDetalhes: React.FC = () => {
     const [dadosSKU, setDadosSKU] = useState<any[]>([]);
     const [analiseLoading, setAnaliseLoading] = useState(false);
 
-    const DJANGO_API_URL = import.meta.env.VITE_DJANGO_API_URL || 'http://127.0.0.1:8000/api';
-    const FLASK_API_URL = import.meta.env.VITE_FLASK_API_URL || 'http://127.0.0.1:5000/api';
+
+
 
     // Busca dados da linha
     useEffect(() => {

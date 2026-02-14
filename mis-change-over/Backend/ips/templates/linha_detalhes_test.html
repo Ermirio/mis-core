@@ -1,0 +1,180 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Página de Teste - SKUs{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <h1 class="mb-4">Página de Teste de SKUs (Linha: <span id="linha-info" data-linha="{{ linha.nome }}">{{ linha.nome }}</span>)</h1>
+
+    <p>Esta página utiliza dados de SKU de teste e não interage com o Aplipack real.</p>
+
+    <!-- Seção de SKUs do Aplipack (TESTE) -->
+    <div class="card mb-4">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <h2 class="h5 mb-0">SKUs da Ordem de Produção (Dados de Teste)</h2>
+            <button id="sync-skus-aplipack" class="btn btn-sm btn-secondary">Carregar SKUs de Teste</button>
+        </div>
+        <div class="card-body">
+             <div class="mb-3">
+                 <input type="text" id="search-bar-aplipack" class="form-control" placeholder="Buscar SKU, Descrição ou OP...">
+            </div>
+            <div id="aplipack-skus-container" class="table-container">
+                <p class="text-muted">Clique em "Carregar SKUs de Teste" para ver os dados.</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Seção de Últimas Trocas (TESTE) -->
+    <div class="card mb-4">
+        <div class="card-header">
+            <h2 class="h5 mb-0">Últimas Trocas de SKU (Simulado)</h2>
+        </div>
+        <div class="card-body">
+            <div class="mb-3">
+                <input type="text" id="search-swaps" class="form-control" placeholder="Buscar SKU Trocado ou Descrição...">
+            </div>
+            <div class="table-container">
+                <table class="table table-striped">
+                    <thead class="table-dark">
+                        <tr>
+                            <th>SKU Trocado</th>
+                            <th>Descrição</th>
+                            <th>Data/Hora</th>
+                        </tr>
+                    </thead>
+                    <tbody id="swaps-list">
+                        {% for troca in ultimas_trocas %} <!-- Isso estará vazio a menos que você passe dados de teste -->
+                        <tr>
+                            <td>{{ troca.sku_trocado }}</td>
+                            <td>{{ troca.descricao }}</td>
+                            <td>{{ troca.data_hora|date:"d/m/Y H:i:s" }}</td>
+                        </tr>
+                        {% empty %}
+                        <tr>
+                            <td colspan="3" class="text-center">Nenhuma troca registrada recentemente (simulado).</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal de Confirmação -->
+    <div class="modal fade" id="confirmModal" tabindex="-1" aria-labelledby="confirmModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="confirmModalLabel">Confirmar Troca de SKU (Teste)</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <p>Você tem certeza que deseja enviar o seguinte SKU para a <strong>Linha <span id="modal-linha-strong" class="fw-bold">{{ linha.nome }}</span></strong>?</p>
+                     <table class="table table-bordered">
+                        <tbody>
+                            <tr><th scope="row">Linha:</th><td id="modal-linha">{{ linha.nome }}</td></tr>
+                            <tr><th scope="row">SKU:</th><td id="modal-sku"></td></tr>
+                            <tr><th scope="row">Descrição:</th><td id="modal-descricao"></td></tr>
+                            <tr><th scope="row">DUN14:</th><td id="modal-dun14"></td></tr>
+                            <tr><th scope="row">Validade:</th><td id="modal-validade"></td></tr>
+                            <!-- Campos adicionais do Aplipack -->
+                            <tr class="aplipack-info d-none"><th scope="row">Data OP:</th><td id="modal-dataop"></td></tr>
+                            <tr class="aplipack-info d-none"><th scope="row">ID Ordem:</th><td id="modal-idordem"></td></tr>
+                            <tr class="aplipack-info d-none"><th scope="row">Número OP:</th><td id="modal-numeroop"></td></tr>
+                            <tr class="aplipack-info d-none"><th scope="row">Qtd./Pallet:</th><td id="modal-quantidade"></td></tr>
+                            <tr class="aplipack-info d-none"><th scope="row">Status OP:</th><td id="modal-status"></td></tr>
+                        </tbody>
+                    </table>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="button" class="btn btn-primary" id="confirm-send">Confirmar Envio (Teste)</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+    {# Adapte o sync.js para usar a URL /test-skus/ se necessário, ou modifique-o aqui #}
+    <script>
+        // Sobrescreve ou adapta a URL de sincronização para a página de teste
+        document.addEventListener('DOMContentLoaded', function() {
+            var originalSyncButton = document.getElementById('sync-skus-aplipack');
+            if (originalSyncButton) {
+                // Clonar o botão para remover event listeners antigos e adicionar o novo
+                var syncButton = originalSyncButton.cloneNode(true);
+                originalSyncButton.parentNode.replaceChild(syncButton, originalSyncButton);
+                
+                syncButton.addEventListener('click', function() {
+                    var linha = document.getElementById('linha-info').getAttribute('data-linha');
+                    fetch(`/test-skus/`) // URL de teste
+                        .then(response => response.json())
+                        .then(data => {
+                            console.log("Dados de teste recebidos:", data.skus); 
+                            var container = document.getElementById('aplipack-skus-container');
+                            if (data.skus) {
+                                var html = '<table class="table table-bordered table-hover">';
+                                html += '<thead class="table-dark"><tr>';
+                                html += '<th>Código SKU</th><th>Descrição</th><th>Data OP</th><th>ID Ordem</th>';
+                                html += '<th>Número OP</th><th>DUN14</th><th>Validade</th><th>Qtd/Pallet</th>';
+                                html += '<th>Status OP</th><th>Ação</th>';
+                                html += '</tr></thead>';
+                                html += '<tbody id="aplipack-tbody">'; // Adiciona ID para busca
+                                data.skus.forEach(function(item) {
+                                    html += `<tr class="clickable-row-aplipack">
+                                        <td>${item.codigo_sku || ''}</td>
+                                        <td>${item.descricao_sku || ''}</td>
+                                        <td>${item.dataop || ''}</td>
+                                        <td>${item.id_ordem_prod || ''}</td>
+                                        <td>${item.numero_op || ''}</td>
+                                        <td>${item.dun14 || ''}</td>
+                                        <td>${item.validade || ''}</td>
+                                        <td>${item.quantidade_por_pallet || ''}</td>
+                                        <td>${item.status_op || ''}</td>
+                                        <td>
+                                            <button class="btn btn-sm btn-primary enviar-sku-btn" 
+                                                    data-source="aplipack"
+                                                    data-linha="${linha}"
+                                                    data-sku="${item.codigo_sku || ''}" 
+                                                    data-descricao="${item.descricao_sku || ''}"
+                                                    data-dataop="${item.dataop || ''}"
+                                                    data-idordem="${item.id_ordem_prod || ''}"
+                                                    data-numeroop="${item.numero_op || ''}"
+                                                    data-dun14="${item.dun14 || ''}"
+                                                    data-validade="${item.validade || ''}"
+                                                    data-quantidade="${item.quantidade_por_pallet || ''}"
+                                                    data-status="${item.status_op || ''}">
+                                                Enviar SKU
+                                            </button>
+                                        </td>
+                                    </tr>`;
+                                });
+                                html += '</tbody></table>';
+                                container.innerHTML = html;
+                                
+                                // Adiciona eventos para os botões "Enviar SKU" da tabela Aplipack
+                                document.querySelectorAll('#aplipack-skus-container .enviar-sku-btn').forEach(btn => {
+                                    btn.addEventListener('click', function () {
+                                        showConfirmModal(this, 'aplipack');
+                                    });
+                                });
+                            } else {
+                                container.innerHTML = `<p>${data.mensagem || 'Nenhum SKU de teste encontrado.'}</p>`;
+                            }
+                        })
+                        .catch(error => {
+                            console.error('Erro ao carregar SKUs de teste:', error);
+                            var feedbackArea = document.getElementById('feedback-area');
+                            if(feedbackArea) { // Verifica se feedbackArea existe
+                                feedbackArea.innerHTML = `<div class="alert alert-danger">Erro ao carregar SKUs de teste: ${error.message}</div>`;
+                            }
+                        });
+                });
+            }
+        });
+    </script>
+    <script src="{% static 'js/search.js' %}"></script> 
+{% endblock %}

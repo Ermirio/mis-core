@@ -1,0 +1,42 @@
+# === Geral ===
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.log
+
+# === Python / Django (Backend) ===
+Backend/**/__pycache__/
+Backend/**/*.py[cod]
+Backend/venv/
+Backend/env/
+Backend/.venv/
+Backend/*.sqlite3
+Backend/**/migrations/00*.py
+!Backend/**/migrations/__init__.py
+Backend/.env
+Backend/staticfiles/
+Backend/media/
+
+# === Node.js / React (Frontend) ===
+Frontend/node_modules/
+Frontend/build/
+Frontend/dist/
+Frontend/.env.local
+Frontend/.env.development.local
+Frontend/.env.test.local
+Frontend/.env.production.local
+Frontend/npm-debug.log*
+Frontend/yarn-debug.log*
+Frontend/yarn-error.log*
+
+# === Arquivos Grandes e Backups ===
+*.tar
+*.gz
+*.zip
+bkp _images/
+MIS_Offline_Package/
+mis-images*.tar
+
+# === Docker ===
+.docker/

@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -142,7 +143,7 @@
             display: flex;
             align-items: center;
             justify-content: center;
-            background: linear-gradient(to bottom, rgba(255,255,255,0.02), transparent);
+            background: linear-gradient(to bottom, rgba(255, 255, 255, 0.02), transparent);
             padding: 20px;
         }
 
@@ -150,7 +151,7 @@
             width: 100%;
             height: 100%;
             object-fit: contain;
-            filter: drop-shadow(0 0 10px rgba(0,0,0,0.5));
+            filter: drop-shadow(0 0 10px rgba(0, 0, 0, 0.5));
             transition: transform 0.4s;
         }
 
@@ -202,6 +203,7 @@
                 opacity: 0;
                 transform: translateY(-20px);
             }
+
             to {
                 opacity: 1;
                 transform: translateY(0);
@@ -210,7 +212,7 @@
 
         /* Loading */
         .loader {
-            border: 3px solid rgba(255,255,255,0.1);
+            border: 3px solid rgba(255, 255, 255, 0.1);
             border-radius: 50%;
             border-top: 3px solid var(--primary);
             width: 24px;
@@ -219,11 +221,17 @@
         }
 
         @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
+            0% {
+                transform: rotate(0deg);
+            }
+
+            100% {
+                transform: rotate(360deg);
+            }
         }
     </style>
 </head>
+
 <body>
 
     <!-- Intro Video -->
@@ -292,14 +300,69 @@
             </a>
 
             <!-- MIS Change Over -->
-            <a href="#" onclick="alert('Em Breve: Módulo em desenvolvimento')" class="mis-card" style="opacity: 0.7;">
-                <div class="status-dot inactive"></div>
+            <a href="/mis-change-over/" class="mis-card">
+                <div class="status-dot"></div>
                 <div class="card-image">
                     <img src="imagens/mis-change-over-aniamtion-image.png" alt="Change Over">
                 </div>
                 <div class="card-content">
                     <div class="card-title">Change Over</div>
                     <div class="card-desc">Troca Rápida de Ferramentas</div>
+                </div>
+            </a>
+        </div>
+
+        <!-- Section Divider -->
+        <div class="header" style="margin-top: 2rem; margin-bottom: 2rem; animation-delay: 0.8s;">
+            <p style="font-size: 1.5rem; color: var(--text-main); font-weight: 600;">Ferramentas & Infraestrutura</p>
+        </div>
+
+        <div class="cards-wrapper" style="animation: fadeInDown 1s ease 1s forwards; opacity: 0;">
+            <!-- Grafana -->
+            <a href="/grafana/" class="mis-card">
+                <div class="status-dot"></div>
+                <div class="card-image">
+                    <img src="https://upload.wikimedia.org/wikipedia/commons/a/a1/Grafana_logo.svg" alt="Grafana">
+                </div>
+                <div class="card-content">
+                    <div class="card-title">Grafana</div>
+                    <div class="card-desc">Dashboards & Visualização</div>
+                </div>
+            </a>
+
+            <!-- Node-RED -->
+            <a href="/nodered/" class="mis-card">
+                <div class="status-dot"></div>
+                <div class="card-image">
+                    <img src="https://upload.wikimedia.org/wikipedia/commons/0/03/Node-RED-Logo.png" alt="Node-RED">
+                </div>
+                <div class="card-content">
+                    <div class="card-title">Node-RED</div>
+                    <div class="card-desc">Automação & Fluxos Low-Code</div>
+                </div>
+            </a>
+
+            <!-- EMQX -->
+            <a href="/emqx/" class="mis-card">
+                <div class="status-dot"></div>
+                <div class="card-image">
+                    <img src="https://www.emqx.com/images/logo.png" alt="EMQX">
+                </div>
+                <div class="card-content">
+                    <div class="card-title">EMQX Dashboard</div>
+                    <div class="card-desc">Broker MQTT & Mensageria</div>
+                </div>
+            </a>
+
+            <!-- Chronograf -->
+            <a href="/chronograf/" class="mis-card">
+                <div class="status-dot"></div>
+                <div class="card-image">
+                    <img src="https://assets.zabbix.com/img/brands/influxdb.svg" alt="Chronograf">
+                </div>
+                <div class="card-content">
+                    <div class="card-title">Chronograf</div>
+                    <div class="card-desc">Admin InfluxDB & Explorer</div>
                 </div>
             </a>
         </div>
@@ -317,7 +380,7 @@
             function finishIntro() {
                 if (videoFinished) return;
                 videoFinished = true;
-                
+
                 overlay.style.opacity = '0';
                 setTimeout(() => {
                     overlay.style.display = 'none';
@@ -339,4 +402,5 @@
         });
     </script>
 </body>
+
 </html>

@@ -22,8 +22,7 @@ interface VariablesTabProps {
     isConsolidated: boolean;
 }
 
-const FLASK_API_URL = import.meta.env.VITE_FLASK_API_URL || 'http://127.0.0.1:5000/api';
-const DJANGO_API_URL = import.meta.env.VITE_DJANGO_API_URL || 'http://127.0.0.1:8000/api';
+import { FLASK_API_URL, DJANGO_API_URL } from "@/config/api";
 
 import { Button } from "@/components/ui/button";
 import { ChevronLeft, ChevronRight, AlertTriangle } from "lucide-react";

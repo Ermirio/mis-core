@@ -25,9 +25,9 @@ import {
     calculateProduction,
     createSafeProductionData
 } from '../utils/productionCalculations';
+import { DJANGO_API_URL, FLASK_API_URL } from '@/config/api';
 
-const FLASK_API_URL = import.meta.env.VITE_FLASK_API_URL || 'http://localhost:5000/api';
-const DJANGO_API_URL = import.meta.env.VITE_DJANGO_API_URL || 'http://localhost:8000/api';
+
 
 interface EquipamentoConfig {
     id: number;

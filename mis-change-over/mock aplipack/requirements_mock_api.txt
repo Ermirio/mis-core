@@ -1,0 +1,6 @@
+# Requirements para Aplipack Mock API
+# Instale com: pip install -r requirements_mock_api.txt
+
+Flask==3.0.0
+Werkzeug==3.0.1
+

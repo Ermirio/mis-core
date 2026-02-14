@@ -16,7 +16,7 @@ import { ptBR } from "date-fns/locale";
 import Plot from 'react-plotly.js';
 import axios from 'axios';
 
-const DJANGO_API = import.meta.env.VITE_DJANGO_API_URL;
+import { DJANGO_API_URL as DJANGO_API } from '@/config/api';
 
 interface WasteData {
     periodo: string;

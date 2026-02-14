@@ -1,0 +1,106 @@
+/* Geral */
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background-color: #f8f9fa; /* Cor de fundo suave */
+}
+
+/* Navbar styling */
+.navbar-dark .navbar-brand {
+    font-weight: bold;
+    font-size: 1.5rem;
+}
+
+.nav-link {
+    font-size: 1rem;
+    margin-right: 1rem;
+}
+
+.nav-link.active {
+    font-weight: bold;
+    /* text-decoration: underline; Bootstrap já faz isso com a classe active */
+}
+
+/* Table containers */
+.table-container {
+    max-height: 400px; /* Aumentei um pouco a altura */
+    overflow-y: auto;
+    border: 1px solid #dee2e6; /* Cor de borda do Bootstrap */
+    margin-bottom: 1rem;
+    border-radius: 0.25rem; /* Bordas arredondadas */
+}
+
+/* Configuração do cabeçalho fixo */
+.table thead {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    /* background-color: #343a40; /* Cor de fundo Bootstrap para table-dark */
+    /* color: #fff; Cor do texto Bootstrap para table-dark */ 
+    /* A classe table-dark no <thead> já faz isso */
+}
+
+/* Ajusta largura e garante tabelas proporcionais */
+.table {
+    table-layout: fixed;
+    width: 100%;
+}
+
+.table th, .table td {
+    text-align: left; /* Alinhar à esquerda para melhor legibilidade */
+    padding: 0.75rem; /* Espaçamento interno padrão do Bootstrap */
+    vertical-align: middle; /* Alinhamento vertical */
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap; /* Impede quebra de linha no texto, use com cautela */
+}
+
+.table th {
+    font-weight: 600; /* Cabeçalho um pouco mais forte */
+}
+
+/* Linhas clicáveis */
+.clickable-row-cadastrado:hover, .clickable-row-aplipack:hover {
+    cursor: pointer;
+    background-color: #e9ecef; /* Cor de hover suave */
+}
+
+/* Feedback Area */
+#feedback-area .alert {
+    margin-bottom: 1.5rem; /* Mais espaço abaixo do alerta */
+}
+
+/* Cards */
+.card {
+    box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075); /* Sombra sutil */
+}
+
+.card-header {
+    background-color: #e9ecef; /* Cabeçalho de card suave */
+    border-bottom: 1px solid #dee2e6;
+}
+
+/* Modal */
+.modal-lg {
+    max-width: 700px; /* Modal um pouco maior */
+}
+
+.modal-body th {
+    width: 30%; /* Largura para os labels no modal */
+    font-weight: normal;
+    text-align: right;
+    padding-right: 10px;
+}
+.modal-body td {
+    font-weight: bold;
+}
+
+/* Ajustes para campos de busca */
+.form-control::placeholder {
+    color: #6c757d;
+    opacity: 0.7;
+}
+
+/* Botões */
+.btn {
+    transition: background-color 0.2s ease-in-out, border-color 0.2s ease-in-out;
+}

@@ -1,0 +1,7 @@
+services:
+  frontend:
+    build: ./frontend # Assumindo que o Dockerfile está em 'frontend'
+    image: mis-frontend:1.1 # Nome que você já usa
+  backend:
+    build: ./backend # Assumindo que o Dockerfile está em 'backend'
+    image: mis-backend:1.8 # Nome que você já usa

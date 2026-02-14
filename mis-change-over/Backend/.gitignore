@@ -1,0 +1,39 @@
+# Ignore o ambiente virtual
+myenv/
+*.pyc
+__pycache__/
+db.sqlite3
+
+# Ignore o ambiente virtual
+venv/
+*.pyc
+__pycache__/
+db.sqlite3
+# Ignore arquivos de configuração do sistema operacional
+.DS_Store
+Thumbs.db
+
+# Ignore arquivos do VSCode
+.vscode/
+
+config.py
+config.py
+ips/migrations/0006_inkjetprinter_remove_equipamento_ativo_and_more.py
+requests.log
+ips/migrations/0001_initial.py
+ips/migrations/0002_remove_impressora_linha_remove_trocasku_erros_and_more.py
+ips/migrations/0003_logequipamentotroca_statuslinha_and_more.py
+ips/migrations/0002_remove_impressora_linha_remove_trocasku_erros_and_more.py
+ips/migrations/0001_initial.py
+ips/migrations/0002_remove_impressora_linha_remove_trocasku_erros_and_more.py
+ips/migrations/0003_logequipamentotroca_statuslinha_and_more.py
+ips/migrations/0002_remove_impressora_linha_remove_trocasku_erros_and_more.py
+ips/migrations/0001_initial.py
+ips/migrations/0002_remove_impressora_linha_remove_trocasku_erros_and_more.py
+ips/migrations/0003_logequipamentotroca_statuslinha_and_more.py
+ips/migrations/0002_remove_impressora_linha_remove_trocasku_erros_and_more.py
+ips/migrations/0003_logequipamentotroca_statuslinha_and_more.py
+ips/migrations/0002_remove_impressora_linha_remove_trocasku_erros_and_more.py
+ips/migrations/0001_initial.py
+ips/migrations/0005_alter_trocasku_sucesso.py
+ips/migrations/0002_alter_configuracaoequipamentovariavel_options_and_more.py

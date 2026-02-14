@@ -3,6 +3,7 @@ import { NavLink, Link } from "react-router-dom";
 import { ChevronLeft, ChevronRight, Menu } from "lucide-react";
 import { useSystemHealth } from "../../hooks/useSystemHealth";
 import "./Sidebar.css";
+import { DJANGO_API_URL } from "@/config/api";
 
 interface SidebarProps {
   collapsed: boolean;
@@ -10,8 +11,7 @@ interface SidebarProps {
 }
 
 const Sidebar: React.FC<SidebarProps> = ({ collapsed, onToggle }) => {
-  const DJANGO_API_URL =
-    import.meta.env.VITE_DJANGO_API_URL || "http://127.0.0.1:8000/api";
+  // Import moved to top level
 
   const [linhas, setLinhas] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -127,6 +127,29 @@ const Sidebar: React.FC<SidebarProps> = ({ collapsed, onToggle }) => {
           ))
         )}
       </nav>
+
+      <div className="sidebar-divider"></div>
+      {!collapsed && <p className="sidebar-section-title">FERRAMENTAS AUXILIARES</p>}
+
+      <a href="http://localhost:3004" target="_blank" rel="noopener noreferrer" className="sidebar-link" title="Grafana (Dashboards)">
+        <span>📈</span>
+        {!collapsed && <span>Grafana</span>}
+      </a>
+
+      <a href="http://localhost:8889" target="_blank" rel="noopener noreferrer" className="sidebar-link" title="Chronograf (InfluxDB)">
+        <span>⏱️</span>
+        {!collapsed && <span>Chronograf</span>}
+      </a>
+
+      <a href="http://localhost:18083" target="_blank" rel="noopener noreferrer" className="sidebar-link" title="EMQX (MQTT)">
+        <span>📡</span>
+        {!collapsed && <span>EMQX</span>}
+      </a>
+
+      <a href="http://localhost:1880" target="_blank" rel="noopener noreferrer" className="sidebar-link" title="Node-RED (Fluxos)">
+        <span>🔌</span>
+        {!collapsed && <span>Node-RED</span>}
+      </a>
 
       <div className="sidebar-footer">
         <NavLink

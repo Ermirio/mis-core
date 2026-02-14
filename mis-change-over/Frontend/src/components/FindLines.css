@@ -1,0 +1,118 @@
+.find-lines {
+  background: #ffffff;
+  border-radius: 10px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+  padding: 20px;
+  margin: 20px;
+}
+
+.find-lines h2 {
+  color: #1e3c72;
+  margin-bottom: 15px;
+}
+
+.div-linhas {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.div-linha {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 15px;
+  padding: 10px;
+  background: #f8f9fa;
+  border-radius: 8px;
+  box-shadow: 0 1px 5px rgba(0, 0, 0, 0.05);
+  transition: transform 0.3s ease;
+}
+
+.div-linha:hover {
+  transform: translateY(-2px);
+}
+
+.nome-linha {
+  font-weight: 600;
+  color: #1e3c72;
+  font-size: 1.2rem;
+  margin-right: 20px;
+  min-width: 120px;
+}
+
+.progress-wrapper {
+  display: flex;
+  align-items: center;
+  flex-grow: 1;
+}
+
+.speed-line {
+  height: 20px;
+  width: 100%;
+  border-radius: 10px;
+  margin-right: 10px;
+  background-color: #e9ecef;
+}
+
+.speed-line .progress-bar {
+  height: 100%;
+  border-radius: 10px;
+  background-color: #28a745;
+  transition: width 0.6s ease;
+}
+
+.status-icon {
+  font-size: 1.2rem;
+  margin-left: 10px;
+}
+
+.running-icon {
+  color: #28a745;
+  animation: pulse 1.5s infinite;
+}
+
+.stopped-icon {
+  color: #dc3545;
+}
+
+@keyframes pulse {
+  0% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.2);
+    opacity: 0.7;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+@media (max-width: 768px) {
+  .find-lines {
+    padding: 15px;
+    margin: 10px;
+  }
+  .div-linha {
+    flex-direction: column;
+    align-items: flex-start;
+    padding: 8px;
+  }
+  .nome-linha {
+    margin-bottom: 10px;
+    margin-right: 0;
+  }
+  .progress-wrapper {
+    width: 100%;
+  }
+  .speed-line {
+    height: 15px;
+  }
+  .status-icon {
+    font-size: 1rem;
+  }
+}

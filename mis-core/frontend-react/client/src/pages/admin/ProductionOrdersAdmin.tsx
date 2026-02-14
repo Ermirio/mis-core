@@ -14,9 +14,9 @@ import {
 } from "../../components/ui/sheet";
 import { toast } from "sonner";
 import { Progress } from "../../components/ui/progress";
+import { DJANGO_API_URL } from '@/config/api';
 
 const ProductionOrdersAdmin: React.FC = () => {
-    const DJANGO_API_URL = import.meta.env.VITE_DJANGO_API_URL || "http://127.0.0.1:8000/api";
 
     // Grid State
     const [orders, setOrders] = useState<any[]>([]);

@@ -1,0 +1,73 @@
+/* SidebarCategories.css */
+
+/* Estilos de fundo suaves para as seções */
+.sidebar-section.cartucho-bg {
+  background-color: #e6f7ff; /* Um azul celeste bem claro */
+  border-left: 3px solid #69c0ff; /* Linha lateral azul */
+}
+
+.sidebar-section.flexiveis-bg {
+  background-color: #fffbe6; /* Um amarelo suave */
+  border-left: 3px solid #ffd666; /* Linha lateral laranja claro */
+}
+
+.sidebar-section.liquidos-bg {
+  background-color: #e6ffe6; /* Um verde menta bem claro */
+  border-left: 3px solid #87e8de; /* Linha lateral verde-água */
+}
+
+/* Opcional: Efeito hover para as seções */
+.sidebar-section.cartucho-bg:hover,
+.sidebar-section.flexiveis-bg:hover,
+.sidebar-section.liquidos-bg:hover {
+  filter: brightness(98%); /* Sutilmente mais claro ao passar o mouse */
+  transition: background-color 0.2s ease-in-out;
+}
+
+/* Cores para os ícones e texto dos cabeçalhos das seções */
+.sidebar-section-header.cartucho-header .section-icon,
+.sidebar-section-header.cartucho-header span {
+  color: #3182ce; /* Azul mais escuro para ícone e texto */
+}
+
+.sidebar-section-header.flexiveis-header .section-icon,
+.sidebar-section-header.flexiveis-header span {
+  color: #d69e2e; /* Amarelo/laranja mais escuro para ícone e texto */
+}
+
+.sidebar-section-header.liquidos-header .section-icon,
+.sidebar-section-header.liquidos-header span {
+  color: #38a169; /* Verde mais escuro para ícone e texto */
+}
+
+/* Estilos para os links de linha individuais (botões) dentro das seções */
+.sidebar-section-content button.sidebar-link {
+    transition: background-color 0.2s ease-in-out, color 0.2s ease-in-out;
+}
+
+/* Hover para os links de linha, para combinar com a seção */
+.sidebar-section-content button.sidebar-link.cartucho-link:hover {
+  background-color: #cce9ff; /* Azul um pouco mais intenso no hover */
+}
+.sidebar-section-content button.sidebar-link.flexiveis-link:hover {
+  background-color: #ffe8cc; /* Amarelo um pouco mais intenso no hover */
+}
+.sidebar-section-content button.sidebar-link.liquidos-link:hover {
+  background-color: #ccffe0; /* Verde um pouco mais intenso no hover */
+}
+
+/* Estilo para o link ativo (linha selecionada) */
+.sidebar-link.active {
+    font-weight: bold;
+    color: white !important; /* Cor do texto branco para contraste */
+}
+
+.sidebar-link.active.cartucho-link {
+    background-color: #3182ce !important; /* Fundo azul para cartucho ativo */
+}
+.sidebar-link.active.flexiveis-link {
+    background-color: #d69e2e !important; /* Fundo laranja para flexíveis ativos */
+}
+.sidebar-link.active.liquidos-link {
+    background-color: #38a169 !important; /* Fundo verde para líquidos ativos */
+}

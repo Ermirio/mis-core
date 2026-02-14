@@ -21,6 +21,7 @@ import {
 } from "../ui/select";
 import { Loader2 } from "lucide-react";
 import { Textarea } from "../ui/textarea";
+import { DJANGO_API_URL } from "@/config/api";
 
 // Schema
 const formSchema = z.object({
@@ -55,7 +56,7 @@ const OrderForm: React.FC<OrderFormProps> = ({
     // Carregar dados auxiliares
     useEffect(() => {
         async function fetchData() {
-            const DJANGO_API_URL = import.meta.env.VITE_DJANGO_API_URL || "http://127.0.0.1:8000/api";
+            // Import moved to top level
             try {
                 const [respLinhas, respProdutos] = await Promise.all([
                     fetch(`${DJANGO_API_URL}/linhas/`),

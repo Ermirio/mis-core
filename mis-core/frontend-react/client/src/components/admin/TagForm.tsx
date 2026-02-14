@@ -21,6 +21,7 @@ import {
 } from "../ui/select";
 import { Checkbox } from "../ui/checkbox";
 import { Loader2 } from "lucide-react";
+import { DJANGO_API_URL } from "@/config/api";
 
 // Schema de Validação
 const formSchema = z.object({
@@ -51,7 +52,6 @@ const TagForm: React.FC<TagFormProps> = ({
     // Carregar equipamentos para o Select
     useEffect(() => {
         async function fetchEquipamentos() {
-            const DJANGO_API_URL = import.meta.env.VITE_DJANGO_API_URL || "http://127.0.0.1:8000/api";
             try {
                 const resp = await fetch(`${DJANGO_API_URL}/equipamentos/`);
                 const data = await resp.json();

@@ -14,9 +14,17 @@ from blueprints.golden_state import golden_state_bp
 INFLUX_HOST = config('INFLUXDB_HOST', default='127.0.0.1')
 INFLUX_PORT = config('INFLUXDB_PORT', default=8086, cast=int)
 INFLUX_DB = config('INFLUXDB_DATABASE', default='mis_core_db')
-INFLUX_USER = 'admin' # Hardcoded Config Fix
-INFLUX_PASS = 'admin123' # Hardcoded Config Fix
+INFLUX_USER = config('INFLUXDB_USER', default='admin')
+INFLUX_PASS = config('INFLUXDB_PASSWORD', default='admin123')
 DJANGO_API_URL = config('DJANGO_API_URL', default='http://127.0.0.1:8000/api')
+
+# CORS Config
+CORS_ALLOW_ALL = config('CORS_ALLOW_ALL_ORIGINS', default=False, cast=bool)
+CORS_ORIGINS = config('CORS_ALLOWED_ORIGINS', default='').split(',')
+CORS_ORIGINS = [o.strip() for o in CORS_ORIGINS if o.strip()]
+
+if not CORS_ORIGINS and not CORS_ALLOW_ALL:
+    CORS_ORIGINS = ["http://localhost:3000", "http://127.0.0.1:3000"] # Default dev fallback
 
 def create_app():
     """
@@ -24,7 +32,12 @@ def create_app():
     Initializes extensions and registers blueprints.
     """
     app = Flask(__name__)
-    CORS(app, resources={r"/api/*": {"origins": "*"}})
+    
+    # Configure CORS
+    if CORS_ALLOW_ALL:
+        CORS(app, resources={r"/api/*": {"origins": "*"}})
+    else:
+        CORS(app, resources={r"/api/*": {"origins": CORS_ORIGINS}})
 
     logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
     logger = logging.getLogger(__name__)

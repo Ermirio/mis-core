@@ -9,7 +9,12 @@ SECRET_KEY = config('DJANGO_SECRET_KEY', default='django-insecure-dev-key')
 DEBUG = config('DJANGO_DEBUG', default=True, cast=bool)
 
 # DEFINIÇÃO ÚNICA
-ALLOWED_HOSTS = ['*'] # Lembre-se de restringir isso em produção
+# DEFINIÇÃO ÚNICA
+ALLOWED_HOSTS = ['*']
+import os
+print(f"DEBUG: RAW_ENV_VAR={os.environ.get('DJANGO_ALLOWED_HOSTS')}")
+print(f"DEBUG: DECOUPLE_CONFIG={config('DJANGO_ALLOWED_HOSTS', default='NOT_FOUND')}")
+print(f"DEBUG: ALLOWED_HOSTS={ALLOWED_HOSTS}")
 
 # CSRF Trusted Origins - Lê do ambiente e faz merge com padrões
 _default_csrf_origins = [
@@ -118,21 +123,20 @@ STATIC_ROOT = BASE_DIR / 'staticfiles'
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 # --- CORS ---
-# Permite todas as origens para facilitar o desenvolvimento e evitar erros de bloqueio
-CORS_ALLOW_ALL_ORIGINS = True
+# Permite todas as origens SOMENTE se configurado explicitamente (ex: em dev)
+CORS_ALLOW_ALL_ORIGINS = config('CORS_ALLOW_ALL_ORIGINS', default=False, cast=bool)
 
-# CORS_ALLOWED_ORIGINS = [
-#     "http://127.0.0.1:3000",
-#     "http://127.0.0.1:3001",
-#     "http://127.0.0.1:5000",
-#     "http://127.0.0.1:8000",
-#     "http://127.0.0.1:5173",
-#     "http://localhost:3000",
-#     "http://localhost:3001",
-#     "http://localhost:5000",
-#     "http://localhost:8000",
-#     "http://localhost:5173",
-# ]
+CORS_ALLOWED_ORIGINS = config('CORS_ALLOWED_ORIGINS', default='').split(',')
+CORS_ALLOWED_ORIGINS = [origin.strip() for origin in CORS_ALLOWED_ORIGINS if origin.strip()]
+
+if not CORS_ALLOWED_ORIGINS and not CORS_ALLOW_ALL_ORIGINS:
+    # Fallback razoável para desenvolvimento local se nada for configurado
+    CORS_ALLOWED_ORIGINS = [
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "http://localhost:8000",
+        "http://127.0.0.1:8000",
+    ]
 
 CORS_ALLOW_CREDENTIALS = True
 
@@ -149,4 +153,4 @@ INFLUXDB_HOST = config('INFLUXDB_HOST', default='mis-core-influxdb')
 INFLUXDB_PORT = config('INFLUXDB_PORT', default=8086, cast=int)
 INFLUXDB_USER = config('INFLUXDB_USER', default='admin')
 INFLUXDB_PASSWORD = config('INFLUXDB_PASSWORD', default='admin123')
-INFLUXDB_DATABASE = config('INFLUXDB_DB', default='industrial_db')
+INFLUXDB_DATABASE = config('INFLUXDB_DATABASE', default='mis_core_db')

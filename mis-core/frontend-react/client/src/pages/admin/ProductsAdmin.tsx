@@ -13,9 +13,9 @@ import {
     SheetTrigger,
 } from "../../components/ui/sheet";
 import { toast } from "sonner";
+import { DJANGO_API_URL } from '@/config/api';
 
 const ProductsAdmin: React.FC = () => {
-    const DJANGO_API_URL = import.meta.env.VITE_DJANGO_API_URL || "http://127.0.0.1:8000/api";
 
     // Grid State
     const [products, setProducts] = useState<any[]>([]);

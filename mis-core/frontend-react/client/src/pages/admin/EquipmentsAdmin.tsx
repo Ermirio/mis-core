@@ -13,6 +13,7 @@ import {
     SheetTrigger,
 } from "../../components/ui/sheet";
 import { toast } from "sonner";
+import { DJANGO_API_URL } from '@/config/api';
 import {
     Dialog,
     DialogContent,
@@ -24,7 +25,7 @@ import {
 } from "../../components/ui/dialog";
 
 const EquipmentsAdmin: React.FC = () => {
-    const DJANGO_API_URL = import.meta.env.VITE_DJANGO_API_URL || "http://127.0.0.1:8000/api";
+
 
     const [equipments, setEquipments] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);

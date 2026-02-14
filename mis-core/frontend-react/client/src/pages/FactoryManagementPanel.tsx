@@ -45,7 +45,7 @@ interface FactoryData {
     layout_fabrica: LayoutItem[];
 }
 
-const FLASK_API_URL = import.meta.env.VITE_FLASK_API_URL || 'http://localhost:5000/api';
+import { FLASK_API_URL } from '@/config/api';
 
 const FactoryManagementPanel: React.FC = () => {
     const navigate = useNavigate();

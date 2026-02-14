@@ -11,6 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { Save, FolderOpen, Trash2, Copy, Star } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import axios from 'axios';
+import { DJANGO_API_URL as DJANGO_API } from "@/config/api";
 
 interface Profile {
     id: number;
@@ -36,7 +37,7 @@ export const ProfileManager: React.FC<ProfileManagerProps> = ({
     const [newProfileName, setNewProfileName] = useState('');
     const [newProfileDesc, setNewProfileDesc] = useState('');
 
-    const DJANGO_API = import.meta.env.VITE_DJANGO_API_URL;
+
 
     useEffect(() => {
         if (isOpen && linhaId) loadProfiles();

@@ -1,7 +1,8 @@
 // Serviço para buscar dados de análise da linha
 import axios from 'axios';
 
-const DJANGO_API_URL = import.meta.env.VITE_DJANGO_API_URL || 'http://127.0.0.1:8000/api';
+import { DJANGO_API_URL } from '../config/api';
+
 
 export interface DadosProducao {
     timestamp: string;

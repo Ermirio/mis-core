@@ -20,9 +20,9 @@ import {
     SelectTrigger,
     SelectValue,
 } from "../../components/ui/select";
+import { DJANGO_API_URL } from '@/config/api';
 
 const ProductionCalendarAdmin: React.FC = () => {
-    const DJANGO_API_URL = import.meta.env.VITE_DJANGO_API_URL || "http://127.0.0.1:8000/api";
 
     // Grid State
     const [entries, setEntries] = useState<any[]>([]);

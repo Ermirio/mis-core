@@ -1,0 +1,1224 @@
+[
+{
+  "model": "auth.user",
+  "fields": {
+    "password": "pbkdf2_sha256$870000$E7l6tdVzwpGUKdoviv5aUb$Vx4nGt2B0OG7+crgo+EHfG+TOzQD1qAas52S3qZz9d8=",
+    "last_login": null,
+    "is_superuser": true,
+    "username": "ermiri",
+    "first_name": "",
+    "last_name": "",
+    "email": "",
+    "is_staff": true,
+    "is_active": true,
+    "date_joined": "2025-04-05T10:46:00.710Z",
+    "groups": [],
+    "user_permissions": []
+  }
+},
+{
+  "model": "auth.user",
+  "fields": {
+    "password": "pbkdf2_sha256$870000$3TSqph8S8pL9sNQIwH5N0c$qtxzRsNiQitOPnBYYp/rol5aPZYii16wi45Oindde1E=",
+    "last_login": "2025-04-05T10:47:09.275Z",
+    "is_superuser": true,
+    "username": "admin",
+    "first_name": "",
+    "last_name": "",
+    "email": "",
+    "is_staff": true,
+    "is_active": true,
+    "date_joined": "2025-04-05T10:46:57.556Z",
+    "groups": [],
+    "user_permissions": []
+  }
+},
+{
+  "model": "sessions.session",
+  "pk": "rbs6xigkgcc6dtyvbs6vduj98eig4bqn",
+  "fields": {
+    "session_data": ".eJxVjDkOwjAUBe_iGlmWF7Ap6TmD9f0XHECOFCdVxN1JpBTQvpl5q8qwzDUvnac8kLoqq06_WwF8cdsBPaE9Ro1jm6eh6F3RB-36PhK_b4f7d1Ch161OPuIlmGBdSIQxWI-IhALoxBRJcQOOHRbv2QqBM-BiYntG5CBS1OcL6tA4xw:1u113N:YM7ENZMFgFQymdPlOqdQ3X4kPOy-a7IZzUWdOYcScXg",
+    "expire_date": "2025-04-19T10:47:09.284Z"
+  }
+},
+{
+  "model": "ips.conexaoopcuaservidor",
+  "pk": 1,
+  "fields": {
+    "nome": "OPC UA - Senzani L09",
+    "url": "opc.tcp://1.0.0.158:49320",
+    "caminho_plc": "PackagingBox_L09_SENZANI_VARPE.PLC L09 Senzani."
+  }
+},
+{
+  "model": "ips.variavel",
+  "pk": 1,
+  "fields": {
+    "nome": "VelocidadeTeste",
+    "tipo": "DINT"
+  }
+},
+{
+  "model": "ips.impressora",
+  "pk": 1,
+  "fields": {
+    "nome": "L09 - Impressora 3M",
+    "ip": "192.168.50.236"
+  }
+},
+{
+  "model": "ips.impressora",
+  "pk": 2,
+  "fields": {
+    "nome": "L01-Impressora 3M",
+    "ip": "192.168.50.25"
+  }
+},
+{
+  "model": "ips.enchedora",
+  "pk": 1,
+  "fields": {
+    "nome": "Senzani L09",
+    "conexao_opcua": 1
+  }
+},
+{
+  "model": "ips.equipamento",
+  "pk": 1,
+  "fields": {
+    "nome": "Vincadora L09",
+    "conexao_opcua": 1
+  }
+},
+{
+  "model": "ips.linha",
+  "pk": 1,
+  "fields": {
+    "nome": "L09",
+    "enchedoras": [
+      1
+    ],
+    "equipamentos": [],
+    "impressoras": []
+  }
+},
+{
+  "model": "ips.linha",
+  "pk": 2,
+  "fields": {
+    "nome": "L01",
+    "enchedoras": [],
+    "equipamentos": [],
+    "impressoras": [
+      2
+    ]
+  }
+},
+{
+  "model": "ips.linha",
+  "pk": 3,
+  "fields": {
+    "nome": "L02",
+    "enchedoras": [],
+    "equipamentos": [],
+    "impressoras": []
+  }
+},
+{
+  "model": "ips.cadastroprodutoflex",
+  "pk": 1,
+  "fields": {
+    "sku": "69974071",
+    "descricao": "OMO DT PO BCO ABSOL 24X360G",
+    "criado_por": null,
+    "atualizado_por": null,
+    "linhas": [
+      1
+    ]
+  }
+},
+{
+  "model": "ips.cadastroprodutoflex",
+  "pk": 2,
+  "fields": {
+    "sku": "68860027",
+    "descricao": "BRILHANTE DT PO LIMPEZA TOTAL CT 20X800G",
+    "criado_por": null,
+    "atualizado_por": null,
+    "linhas": [
+      1
+    ]
+  }
+},
+{
+  "model": "ips.cadastroprodutoflex",
+  "pk": 3,
+  "fields": {
+    "sku": "64821839",
+    "descricao": "OMO DT PO LP 20X800G+800GX600G",
+    "criado_por": null,
+    "atualizado_por": null,
+    "linhas": [
+      1
+    ]
+  }
+},
+{
+  "model": "ips.cadastroprodutoflex",
+  "pk": 4,
+  "fields": {
+    "sku": "67791061",
+    "descricao": "OMO DT PO LAV PER CAR 24X400G",
+    "criado_por": null,
+    "atualizado_por": null,
+    "linhas": [
+      1
+    ]
+  }
+},
+{
+  "model": "ips.cadastroprodutoflex",
+  "pk": 5,
+  "fields": {
+    "sku": "68687957",
+    "descricao": "OMO SN PO LAV PERF HIG SANI CART20X800G",
+    "criado_por": null,
+    "atualizado_por": null,
+    "linhas": [
+      1
+    ]
+  }
+},
+{
+  "model": "ips.cadastroprodutoflex",
+  "pk": 6,
+  "fields": {
+    "sku": "64853133",
+    "descricao": "OMO DT PO LAV PERF CART 24X400G",
+    "criado_por": null,
+    "atualizado_por": null,
+    "linhas": [
+      1
+    ]
+  }
+},
+{
+  "model": "ips.cadastroprodutoflex",
+  "pk": 7,
+  "fields": {
+    "sku": "64312119",
+    "descricao": "OMO DT PO BCO ABSOLUTO 24X360G",
+    "criado_por": null,
+    "atualizado_por": null,
+    "linhas": [
+      1
+    ]
+  }
+},
+{
+  "model": "ips.cadastroprodutoflex",
+  "pk": 8,
+  "fields": {
+    "sku": "67733593",
+    "descricao": "OMO DT PO LV PER CAR 20X800G",
+    "criado_por": null,
+    "atualizado_por": null,
+    "linhas": [
+      1
+    ]
+  }
+},
+{
+  "model": "ips.cadastroprodutoflex",
+  "pk": 9,
+  "fields": {
+    "sku": "68605345",
+    "descricao": "OMO DT PO LAVANDA CART 24X400G",
+    "criado_por": null,
+    "atualizado_por": null,
+    "linhas": [
+      1
+    ]
+  }
+},
+{
+  "model": "ips.cadastroprodutoflex",
+  "pk": 10,
+  "fields": {
+    "sku": "64853137",
+    "descricao": "OMO DT PO LAV PERF CART 20X800G",
+    "criado_por": null,
+    "atualizado_por": null,
+    "linhas": [
+      1
+    ]
+  }
+},
+{
+  "model": "ips.cadastroprodutoflex",
+  "pk": 11,
+  "fields": {
+    "sku": "64972670",
+    "descricao": "OMO DT PO LAV PERF CART 20X800G PRM 200G",
+    "criado_por": null,
+    "atualizado_por": null,
+    "linhas": [
+      1
+    ]
+  }
+},
+{
+  "model": "ips.cadastroprodutoflex",
+  "pk": 12,
+  "fields": {
+    "sku": "68605344",
+    "descricao": "OMO DT PO LAVANDA CART 20X800G",
+    "criado_por": null,
+    "atualizado_por": null,
+    "linhas": [
+      1
+    ]
+  }
+},
+{
+  "model": "ips.cadastroprodutoflex",
+  "pk": 13,
+  "fields": {
+    "sku": "68390267",
+    "descricao": "OMO DT PO +PURO CUID 20X800G",
+    "criado_por": null,
+    "atualizado_por": null,
+    "linhas": [
+      1
+    ]
+  }
+},
+{
+  "model": "ips.cadastroprodutoflex",
+  "pk": 14,
+  "fields": {
+    "sku": "64861259",
+    "descricao": "OMO DT PO LAV PERF CART 9X2.2KG",
+    "criado_por": null,
+    "atualizado_por": null,
+    "linhas": [
+      2,
+      3
+    ]
+  }
+},
+{
+  "model": "ips.cadastroprodutoflex",
+  "pk": 15,
+  "fields": {
+    "sku": "68860028",
+    "descricao": "BRILHANTE DT PO LIMPEZA TOTAL CT 9X2.2KG",
+    "criado_por": null,
+    "atualizado_por": null,
+    "linhas": [
+      2
+    ]
+  }
+},
+{
+  "model": "ips.cadastroprodutoflex",
+  "pk": 16,
+  "fields": {
+    "sku": "68687950",
+    "descricao": "OMO SN PO LAV PERF HIG SANI CART9X2.2KG",
+    "criado_por": null,
+    "atualizado_por": null,
+    "linhas": [
+      2,
+      3
+    ]
+  }
+},
+{
+  "model": "ips.cadastroprodutoflex",
+  "pk": 17,
+  "fields": {
+    "sku": "68897373",
+    "descricao": "OMO DT PO PURO CUIDADO CART 9X2.2KG",
+    "criado_por": null,
+    "atualizado_por": null,
+    "linhas": [
+      2
+    ]
+  }
+},
+{
+  "model": "ips.receitaenchedora",
+  "pk": 1,
+  "fields": {
+    "nome_receita": "OMO DT PO LAVANDA CART 20X800G",
+    "produto": 12,
+    "linhas": [
+      1
+    ]
+  }
+},
+{
+  "model": "ips.receitaenchedora",
+  "pk": 2,
+  "fields": {
+    "nome_receita": "OMO SN PO LAV PERF HIG SANI CART9X2.2KG",
+    "produto": 16,
+    "linhas": [
+      1,
+      2,
+      3
+    ]
+  }
+},
+{
+  "model": "ips.receitaenchedora",
+  "pk": 3,
+  "fields": {
+    "nome_receita": "OMO DT PO BCO ABSOL 24X360G",
+    "produto": 1,
+    "linhas": [
+      1
+    ]
+  }
+},
+{
+  "model": "ips.receitaenchedora",
+  "pk": 4,
+  "fields": {
+    "nome_receita": "BRILHANTE DT PO LIMPEZA TOTAL CT 20X800G",
+    "produto": 2,
+    "linhas": [
+      1
+    ]
+  }
+},
+{
+  "model": "ips.receitaenchedora",
+  "pk": 5,
+  "fields": {
+    "nome_receita": "OMO DT PO LP 20X800G+800GX600G",
+    "produto": 3,
+    "linhas": [
+      1
+    ]
+  }
+},
+{
+  "model": "ips.receitaenchedora",
+  "pk": 6,
+  "fields": {
+    "nome_receita": "OMO DT PO LAV PER CAR 24X400G",
+    "produto": 4,
+    "linhas": [
+      1
+    ]
+  }
+},
+{
+  "model": "ips.receitaenchedora",
+  "pk": 7,
+  "fields": {
+    "nome_receita": "OMO SN PO LAV PERF HIG SANI CART20X800G",
+    "produto": 5,
+    "linhas": [
+      1
+    ]
+  }
+},
+{
+  "model": "ips.receitaenchedora",
+  "pk": 8,
+  "fields": {
+    "nome_receita": "OMO DT PO LAV PERF CART 24X400G",
+    "produto": 6,
+    "linhas": [
+      1
+    ]
+  }
+},
+{
+  "model": "ips.receitaenchedora",
+  "pk": 9,
+  "fields": {
+    "nome_receita": "OMO DT PO BCO ABSOLUTO 24X360G",
+    "produto": 7,
+    "linhas": [
+      1
+    ]
+  }
+},
+{
+  "model": "ips.receitaenchedora",
+  "pk": 10,
+  "fields": {
+    "nome_receita": "OMO DT PO LV PER CAR 20X800G",
+    "produto": 8,
+    "linhas": [
+      1
+    ]
+  }
+},
+{
+  "model": "ips.receitaenchedora",
+  "pk": 11,
+  "fields": {
+    "nome_receita": "OMO DT PO LAVANDA CART 24X400G",
+    "produto": 9,
+    "linhas": [
+      1
+    ]
+  }
+},
+{
+  "model": "ips.receitaenchedora",
+  "pk": 12,
+  "fields": {
+    "nome_receita": "OMO DT PO LAV PERF CART 20X800G",
+    "produto": 10,
+    "linhas": [
+      1
+    ]
+  }
+},
+{
+  "model": "ips.receitaenchedora",
+  "pk": 13,
+  "fields": {
+    "nome_receita": "OMO DT PO LAV PERF CART 20X800G PRM 200G",
+    "produto": 11,
+    "linhas": [
+      1
+    ]
+  }
+},
+{
+  "model": "ips.receitaenchedora",
+  "pk": 14,
+  "fields": {
+    "nome_receita": "OMO DT PO +PURO CUID 20X800G",
+    "produto": 13,
+    "linhas": [
+      1
+    ]
+  }
+},
+{
+  "model": "ips.receitaenchedora",
+  "pk": 15,
+  "fields": {
+    "nome_receita": "OMO DT PO LAV PERF CART 9X2.2KG",
+    "produto": 14,
+    "linhas": [
+      2,
+      3
+    ]
+  }
+},
+{
+  "model": "ips.receitaenchedora",
+  "pk": 16,
+  "fields": {
+    "nome_receita": "BRILHANTE DT PO LIMPEZA TOTAL CT 9X2.2KG",
+    "produto": 15,
+    "linhas": [
+      2
+    ]
+  }
+},
+{
+  "model": "ips.receitaenchedora",
+  "pk": 17,
+  "fields": {
+    "nome_receita": "OMO DT PO PURO CUIDADO CART 9X2.2KG",
+    "produto": 17,
+    "linhas": [
+      2
+    ]
+  }
+},
+{
+  "model": "ips.receitaenchedoraitem",
+  "pk": 1,
+  "fields": {
+    "receita": 1,
+    "variavel": 1,
+    "valor": "334"
+  }
+},
+{
+  "model": "ips.receitaequipamento",
+  "pk": 1,
+  "fields": {
+    "nome_receita": "OMO DT PO LAV PERF CART 9X2.2KG",
+    "produto": 14,
+    "linhas": [
+      2,
+      3
+    ]
+  }
+},
+{
+  "model": "ips.receitaequipamento",
+  "pk": 2,
+  "fields": {
+    "nome_receita": "BRILHANTE DT PO LIMPEZA TOTAL CT 9X2.2KG",
+    "produto": 15,
+    "linhas": [
+      2
+    ]
+  }
+},
+{
+  "model": "ips.receitaequipamento",
+  "pk": 3,
+  "fields": {
+    "nome_receita": "OMO SN PO LAV PERF HIG SANI CART9X2.2KG",
+    "produto": 16,
+    "linhas": [
+      2,
+      3
+    ]
+  }
+},
+{
+  "model": "ips.receitaequipamento",
+  "pk": 4,
+  "fields": {
+    "nome_receita": "OMO DT PO PURO CUIDADO CART 9X2.2KG",
+    "produto": 17,
+    "linhas": [
+      2
+    ]
+  }
+},
+{
+  "model": "ips.receitaequipamento",
+  "pk": 5,
+  "fields": {
+    "nome_receita": "OMO DT PO BCO ABSOL 24X360G",
+    "produto": 1,
+    "linhas": [
+      1
+    ]
+  }
+},
+{
+  "model": "ips.receitaequipamento",
+  "pk": 6,
+  "fields": {
+    "nome_receita": "BRILHANTE DT PO LIMPEZA TOTAL CT 20X800G",
+    "produto": 2,
+    "linhas": [
+      1
+    ]
+  }
+},
+{
+  "model": "ips.receitaequipamento",
+  "pk": 7,
+  "fields": {
+    "nome_receita": "OMO DT PO LP 20X800G+800GX600G",
+    "produto": 3,
+    "linhas": [
+      1
+    ]
+  }
+},
+{
+  "model": "ips.receitaequipamento",
+  "pk": 8,
+  "fields": {
+    "nome_receita": "OMO DT PO LAV PER CAR 24X400G",
+    "produto": 4,
+    "linhas": [
+      1
+    ]
+  }
+},
+{
+  "model": "ips.receitaequipamento",
+  "pk": 9,
+  "fields": {
+    "nome_receita": "OMO SN PO LAV PERF HIG SANI CART20X800G",
+    "produto": 5,
+    "linhas": [
+      1
+    ]
+  }
+},
+{
+  "model": "ips.receitaequipamento",
+  "pk": 10,
+  "fields": {
+    "nome_receita": "OMO DT PO LAV PERF CART 24X400G",
+    "produto": 6,
+    "linhas": [
+      1
+    ]
+  }
+},
+{
+  "model": "ips.receitaequipamento",
+  "pk": 11,
+  "fields": {
+    "nome_receita": "OMO DT PO BCO ABSOLUTO 24X360G",
+    "produto": 7,
+    "linhas": [
+      1
+    ]
+  }
+},
+{
+  "model": "ips.receitaequipamento",
+  "pk": 12,
+  "fields": {
+    "nome_receita": "OMO DT PO LV PER CAR 20X800G",
+    "produto": 8,
+    "linhas": [
+      1
+    ]
+  }
+},
+{
+  "model": "ips.receitaequipamento",
+  "pk": 13,
+  "fields": {
+    "nome_receita": "OMO DT PO LAVANDA CART 24X400G",
+    "produto": 9,
+    "linhas": [
+      1
+    ]
+  }
+},
+{
+  "model": "ips.receitaequipamento",
+  "pk": 14,
+  "fields": {
+    "nome_receita": "OMO DT PO LAV PERF CART 20X800G",
+    "produto": 10,
+    "linhas": [
+      1
+    ]
+  }
+},
+{
+  "model": "ips.receitaequipamento",
+  "pk": 15,
+  "fields": {
+    "nome_receita": "OMO DT PO LAV PERF CART 20X800G PRM 200G",
+    "produto": 11,
+    "linhas": [
+      1
+    ]
+  }
+},
+{
+  "model": "ips.receitaequipamento",
+  "pk": 16,
+  "fields": {
+    "nome_receita": "OMO DT PO LAVANDA CART 20X800G",
+    "produto": 12,
+    "linhas": [
+      1
+    ]
+  }
+},
+{
+  "model": "ips.receitaequipamento",
+  "pk": 17,
+  "fields": {
+    "nome_receita": "OMO DT PO +PURO CUID 20X800G",
+    "produto": 13,
+    "linhas": [
+      1
+    ]
+  }
+},
+{
+  "model": "ips.trocasku",
+  "pk": 1,
+  "fields": {
+    "linha": "L09",
+    "sku_trocado": "68605344",
+    "descricao": "OMO DT PO LAVANDA CART 20X800G",
+    "data_hora": "2025-04-05T10:51:25.153Z"
+  }
+},
+{
+  "model": "ips.trocasku",
+  "pk": 2,
+  "fields": {
+    "linha": "L09",
+    "sku_trocado": "68605344",
+    "descricao": "OMO DT PO LAVANDA CART 20X800G",
+    "data_hora": "2025-04-05T10:55:47.843Z"
+  }
+},
+{
+  "model": "ips.trocasku",
+  "pk": 3,
+  "fields": {
+    "linha": "L09",
+    "sku_trocado": "68605344",
+    "descricao": "OMO DT PO LAVANDA CART 20X800G",
+    "data_hora": "2025-04-05T11:03:10.262Z"
+  }
+},
+{
+  "model": "ips.trocasku",
+  "pk": 4,
+  "fields": {
+    "linha": "L09",
+    "sku_trocado": "68605344",
+    "descricao": "OMO DT PO LAVANDA CART 20X800G",
+    "data_hora": "2025-04-05T11:05:39.146Z"
+  }
+},
+{
+  "model": "ips.trocasku",
+  "pk": 5,
+  "fields": {
+    "linha": "L09",
+    "sku_trocado": "68605344",
+    "descricao": "OMO DT PO LAVANDA CART 20X800G",
+    "data_hora": "2025-04-05T11:11:46.745Z"
+  }
+},
+{
+  "model": "ips.trocasku",
+  "pk": 6,
+  "fields": {
+    "linha": "L09",
+    "sku_trocado": "68605344",
+    "descricao": "OMO DT PO LAVANDA CART 20X800G",
+    "data_hora": "2025-04-05T11:12:50.923Z"
+  }
+},
+{
+  "model": "ips.trocasku",
+  "pk": 7,
+  "fields": {
+    "linha": "L09",
+    "sku_trocado": "68605344",
+    "descricao": "OMO DT PO LAVANDA CART 20X800G",
+    "data_hora": "2025-04-05T11:59:17.350Z"
+  }
+},
+{
+  "model": "ips.trocasku",
+  "pk": 8,
+  "fields": {
+    "linha": "L09",
+    "sku_trocado": "68605344",
+    "descricao": "OMO DT PO LAVANDA CART 20X800G",
+    "data_hora": "2025-04-05T11:59:17.351Z"
+  }
+},
+{
+  "model": "ips.trocasku",
+  "pk": 9,
+  "fields": {
+    "linha": "L09",
+    "sku_trocado": "68605344",
+    "descricao": "OMO DT PO LAVANDA CART 20X800G",
+    "data_hora": "2025-04-05T14:09:08.720Z"
+  }
+},
+{
+  "model": "admin.logentry",
+  "pk": 1,
+  "fields": {
+    "action_time": "2025-04-05T10:47:20.194Z",
+    "user": [
+      "admin"
+    ],
+    "content_type": [
+      "ips",
+      "linha"
+    ],
+    "object_id": "1",
+    "object_repr": "L09",
+    "action_flag": 1,
+    "change_message": "[{\"added\": {}}]"
+  }
+},
+{
+  "model": "admin.logentry",
+  "pk": 2,
+  "fields": {
+    "action_time": "2025-04-05T10:49:09.812Z",
+    "user": [
+      "admin"
+    ],
+    "content_type": [
+      "ips",
+      "receitaenchedora"
+    ],
+    "object_id": "1",
+    "object_repr": "OMO DT PO LAVANDA CART 20X800G",
+    "action_flag": 1,
+    "change_message": "[{\"added\": {}}]"
+  }
+},
+{
+  "model": "admin.logentry",
+  "pk": 3,
+  "fields": {
+    "action_time": "2025-04-05T10:49:40.275Z",
+    "user": [
+      "admin"
+    ],
+    "content_type": [
+      "ips",
+      "variavel"
+    ],
+    "object_id": "1",
+    "object_repr": "VelocidadeTeste (DINT)",
+    "action_flag": 1,
+    "change_message": "[{\"added\": {}}]"
+  }
+},
+{
+  "model": "admin.logentry",
+  "pk": 4,
+  "fields": {
+    "action_time": "2025-04-05T10:49:44.594Z",
+    "user": [
+      "admin"
+    ],
+    "content_type": [
+      "ips",
+      "receitaenchedoraitem"
+    ],
+    "object_id": "1",
+    "object_repr": "OMO DT PO LAVANDA CART 20X800G - VelocidadeTeste: 334",
+    "action_flag": 1,
+    "change_message": "[{\"added\": {}}]"
+  }
+},
+{
+  "model": "admin.logentry",
+  "pk": 5,
+  "fields": {
+    "action_time": "2025-04-05T10:50:23.435Z",
+    "user": [
+      "admin"
+    ],
+    "content_type": [
+      "ips",
+      "conexaoopcuaservidor"
+    ],
+    "object_id": "1",
+    "object_repr": "opc.tcp://1.0.0.158:49320",
+    "action_flag": 1,
+    "change_message": "[{\"added\": {}}]"
+  }
+},
+{
+  "model": "admin.logentry",
+  "pk": 6,
+  "fields": {
+    "action_time": "2025-04-05T10:51:17.089Z",
+    "user": [
+      "admin"
+    ],
+    "content_type": [
+      "ips",
+      "equipamento"
+    ],
+    "object_id": "1",
+    "object_repr": "Senzani",
+    "action_flag": 1,
+    "change_message": "[{\"added\": {}}]"
+  }
+},
+{
+  "model": "admin.logentry",
+  "pk": 7,
+  "fields": {
+    "action_time": "2025-04-05T10:55:26.933Z",
+    "user": [
+      "admin"
+    ],
+    "content_type": [
+      "ips",
+      "enchedora"
+    ],
+    "object_id": "1",
+    "object_repr": "Senzani",
+    "action_flag": 1,
+    "change_message": "[{\"added\": {}}]"
+  }
+},
+{
+  "model": "admin.logentry",
+  "pk": 8,
+  "fields": {
+    "action_time": "2025-04-05T10:55:40.456Z",
+    "user": [
+      "admin"
+    ],
+    "content_type": [
+      "ips",
+      "linha"
+    ],
+    "object_id": "1",
+    "object_repr": "L09",
+    "action_flag": 2,
+    "change_message": "[{\"changed\": {\"fields\": [\"Enchedoras\"]}}]"
+  }
+},
+{
+  "model": "admin.logentry",
+  "pk": 9,
+  "fields": {
+    "action_time": "2025-04-05T11:14:23.394Z",
+    "user": [
+      "admin"
+    ],
+    "content_type": [
+      "ips",
+      "equipamento"
+    ],
+    "object_id": "1",
+    "object_repr": "Vincadora",
+    "action_flag": 2,
+    "change_message": "[{\"changed\": {\"fields\": [\"Nome\"]}}]"
+  }
+},
+{
+  "model": "admin.logentry",
+  "pk": 10,
+  "fields": {
+    "action_time": "2025-04-05T11:14:32.282Z",
+    "user": [
+      "admin"
+    ],
+    "content_type": [
+      "ips",
+      "equipamento"
+    ],
+    "object_id": "1",
+    "object_repr": "Vincadora L09",
+    "action_flag": 2,
+    "change_message": "[{\"changed\": {\"fields\": [\"Nome\"]}}]"
+  }
+},
+{
+  "model": "admin.logentry",
+  "pk": 11,
+  "fields": {
+    "action_time": "2025-04-05T11:19:02.305Z",
+    "user": [
+      "admin"
+    ],
+    "content_type": [
+      "ips",
+      "conexaoopcuaservidor"
+    ],
+    "object_id": "1",
+    "object_repr": "OPC UA - Senzani L09",
+    "action_flag": 2,
+    "change_message": "[{\"changed\": {\"fields\": [\"Nome\"]}}]"
+  }
+},
+{
+  "model": "admin.logentry",
+  "pk": 12,
+  "fields": {
+    "action_time": "2025-04-05T11:19:55.075Z",
+    "user": [
+      "admin"
+    ],
+    "content_type": [
+      "ips",
+      "linha"
+    ],
+    "object_id": "2",
+    "object_repr": "L01",
+    "action_flag": 1,
+    "change_message": "[{\"added\": {}}]"
+  }
+},
+{
+  "model": "admin.logentry",
+  "pk": 13,
+  "fields": {
+    "action_time": "2025-04-05T11:36:50.751Z",
+    "user": [
+      "admin"
+    ],
+    "content_type": [
+      "ips",
+      "enchedora"
+    ],
+    "object_id": "1",
+    "object_repr": "Senzani L09",
+    "action_flag": 2,
+    "change_message": "[{\"changed\": {\"fields\": [\"Nome\"]}}]"
+  }
+},
+{
+  "model": "admin.logentry",
+  "pk": 14,
+  "fields": {
+    "action_time": "2025-04-05T11:51:22.675Z",
+    "user": [
+      "admin"
+    ],
+    "content_type": [
+      "ips",
+      "impressora"
+    ],
+    "object_id": "1",
+    "object_repr": "L09 - Impressora",
+    "action_flag": 1,
+    "change_message": "[{\"added\": {}}]"
+  }
+},
+{
+  "model": "admin.logentry",
+  "pk": 15,
+  "fields": {
+    "action_time": "2025-04-05T11:51:32.424Z",
+    "user": [
+      "admin"
+    ],
+    "content_type": [
+      "ips",
+      "linha"
+    ],
+    "object_id": "1",
+    "object_repr": "L09",
+    "action_flag": 2,
+    "change_message": "[{\"changed\": {\"fields\": [\"Impressoras\"]}}]"
+  }
+},
+{
+  "model": "admin.logentry",
+  "pk": 16,
+  "fields": {
+    "action_time": "2025-04-05T11:57:59.344Z",
+    "user": [
+      "admin"
+    ],
+    "content_type": [
+      "ips",
+      "receitaenchedora"
+    ],
+    "object_id": "2",
+    "object_repr": "68687950",
+    "action_flag": 1,
+    "change_message": "[{\"added\": {}}]"
+  }
+},
+{
+  "model": "admin.logentry",
+  "pk": 17,
+  "fields": {
+    "action_time": "2025-04-05T12:11:52.492Z",
+    "user": [
+      "admin"
+    ],
+    "content_type": [
+      "ips",
+      "impressora"
+    ],
+    "object_id": "2",
+    "object_repr": "Impressora 3M - L01",
+    "action_flag": 1,
+    "change_message": "[{\"added\": {}}]"
+  }
+},
+{
+  "model": "admin.logentry",
+  "pk": 18,
+  "fields": {
+    "action_time": "2025-04-05T12:12:05.943Z",
+    "user": [
+      "admin"
+    ],
+    "content_type": [
+      "ips",
+      "linha"
+    ],
+    "object_id": "2",
+    "object_repr": "L01",
+    "action_flag": 2,
+    "change_message": "[{\"changed\": {\"fields\": [\"Impressoras\"]}}]"
+  }
+},
+{
+  "model": "admin.logentry",
+  "pk": 19,
+  "fields": {
+    "action_time": "2025-04-05T12:12:55.610Z",
+    "user": [
+      "admin"
+    ],
+    "content_type": [
+      "ips",
+      "linha"
+    ],
+    "object_id": "3",
+    "object_repr": "L02",
+    "action_flag": 1,
+    "change_message": "[{\"added\": {}}]"
+  }
+},
+{
+  "model": "admin.logentry",
+  "pk": 20,
+  "fields": {
+    "action_time": "2025-04-05T12:15:43.557Z",
+    "user": [
+      "admin"
+    ],
+    "content_type": [
+      "ips",
+      "impressora"
+    ],
+    "object_id": "1",
+    "object_repr": "L09 - Impressora 3M",
+    "action_flag": 2,
+    "change_message": "[{\"changed\": {\"fields\": [\"Nome\"]}}]"
+  }
+},
+{
+  "model": "admin.logentry",
+  "pk": 21,
+  "fields": {
+    "action_time": "2025-04-05T12:16:10.617Z",
+    "user": [
+      "admin"
+    ],
+    "content_type": [
+      "ips",
+      "impressora"
+    ],
+    "object_id": "2",
+    "object_repr": "L01-Impressora 3M",
+    "action_flag": 2,
+    "change_message": "[{\"changed\": {\"fields\": [\"Nome\"]}}]"
+  }
+},
+{
+  "model": "admin.logentry",
+  "pk": 22,
+  "fields": {
+    "action_time": "2025-04-05T14:08:33.350Z",
+    "user": [
+      "admin"
+    ],
+    "content_type": [
+      "ips",
+      "linha"
+    ],
+    "object_id": "1",
+    "object_repr": "L09",
+    "action_flag": 2,
+    "change_message": "[{\"changed\": {\"fields\": [\"Impressoras\"]}}]"
+  }
+}
+]

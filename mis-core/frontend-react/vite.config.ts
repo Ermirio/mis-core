@@ -32,6 +32,17 @@ export default defineConfig({
       "localhost",
       "127.0.0.1",
     ],
+    // Proxy for local development ("bench" mode)
+    proxy: {
+      '/api': {
+        target: 'http://localhost:8000',
+        changeOrigin: true,
+      },
+      '/flask-api': {
+        target: 'http://localhost:5000',
+        changeOrigin: true,
+      }
+    },
     fs: {
       strict: true,
       deny: ["**/.*"],

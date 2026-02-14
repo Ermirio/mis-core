@@ -22,9 +22,9 @@ import {
     DialogTitle,
     DialogTrigger,
 } from "../../components/ui/dialog";
+import { DJANGO_API_URL } from '@/config/api';
 
 const TagsAdmin: React.FC = () => {
-    const DJANGO_API_URL = import.meta.env.VITE_DJANGO_API_URL || "http://127.0.0.1:8000/api";
 
     // Grid State
     const [tags, setTags] = useState<any[]>([]);

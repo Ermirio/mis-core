@@ -7,6 +7,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { AlertCircle, CheckCircle, Clock, TrendingUp, Factory, Calendar } from 'lucide-react';
+import { DJANGO_API_URL as API_URL } from "@/config/api";
 
 // Cores para o gráfico
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8', '#82ca9d', '#ffc658', '#ff7300'];
@@ -71,7 +72,7 @@ export function StrategicAnalysis({ linhaId }: StrategicAnalysisProps) {
     const [selectedDay, setSelectedDay] = useState<string>('');
     const [selectedTurno, setSelectedTurno] = useState<string>('');
 
-    const API_URL = import.meta.env.VITE_DJANGO_API_URL || 'http://localhost:8000/api';
+    // Import moved to top level
 
     const fetchData = async () => {
         try {

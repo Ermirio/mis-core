@@ -71,7 +71,7 @@ export function StrategicAnalysis({ linhaId }: StrategicAnalysisProps) {
     const [selectedDay, setSelectedDay] = useState<string>('');
     const [selectedTurno, setSelectedTurno] = useState<string>('');
 
-    const API_URL = import.meta.env.VITE_DJANGO_API_URL || 'http://localhost:8000/api';
+    import { DJANGO_API_URL as API_URL } from '@/config/api';
 
     const fetchData = async () => {
         try {

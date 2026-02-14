@@ -1,0 +1,36 @@
+# === Etapa 1: Build do React ===
+FROM node:18 AS build
+
+# Define diretório de trabalho
+WORKDIR /app
+
+# Copia dependências e instala
+COPY package*.json ./
+RUN npm install
+
+# Copia o restante do projeto
+COPY . .
+
+# Define as variáveis de ambiente REACT_APP para o build CRA
+# O CRA substitui process.env.REACT_APP_* pelos valores no momento do build
+ENV REACT_APP_SIDEBAR_API_BASE_URL=/mis-change-over-api
+ENV REACT_APP_TROCA_AUTOMATICA_BASE_URL=/mis-change-over-api
+ENV REACT_APP_DATA_API_ENDPOINT=/mis-change-over-data-api
+ENV REACT_APP_HISTORICO_TROCAS_ENDPOINT=/mis-change-over-api/linha/{line}
+
+# Gera o build de produção do React
+RUN npm run build
+
+# === Etapa 2: Servindo via Nginx ===
+FROM nginx:alpine
+
+# Copia o build do React para o diretório padrão do Nginx
+COPY --from=build /app/build /usr/share/nginx/html
+
+# Copia sua configuração customizada
+COPY nginx.conf /etc/nginx/conf.d/default.conf
+
+# Exponha a porta padrão do Nginx
+EXPOSE 80
+
+CMD ["nginx", "-g", "daemon off;"]

@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { format } from 'date-fns';
 import { mapEstado, EstadoMapeado } from '@/utils/equipmentStateUtils';
+import { DJANGO_API_URL } from "@/config/api";
 
 interface EventoEstado {
     id: number;
@@ -24,7 +25,7 @@ interface MultiEquipmentTimelineProps {
     equipamentos: EquipamentoInfo[];
 }
 
-const DJANGO_API_URL = import.meta.env.VITE_DJANGO_API_URL || "http://127.0.0.1:8000/api";
+// Import moved to top level
 
 export default function MultiEquipmentTimeline({
     linhaId,

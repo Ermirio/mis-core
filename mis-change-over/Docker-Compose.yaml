@@ -1,0 +1,53 @@
+version: '3.8'
+
+services:
+  # === Frontend (React) ===
+  frontend:
+    image: mis-frontend:1.1
+    container_name: mis_frontend_container
+    ports:
+      - "3005:80"
+    # NOTA: Variáveis REACT_APP_* não têm efeito em runtime.
+    # Elas são incorporadas no build do React (npm run build).
+    # Os valores estão no arquivo Frontend/.env
+    depends_on:
+      - backend
+    networks:
+      - app_network
+      - shared-network
+
+  # === Backend (Django) ===
+  backend:
+    image: mis-backend:1.8
+    container_name: mis_backend_container
+    ports:
+      - "8000:8000"
+    environment:
+      DJANGO_SETTINGS_MODULE: digitalfactory.settings
+      DJANGO_SECRET_KEY: sua_chave_secreta_aqui
+      DJANGO_DEBUG: "True"
+      DJANGO_ALLOWED_HOSTS: "*"
+      DJANGO_CSRF_TRUSTED_ORIGINS: "http://localhost:3000,http://127.0.0.1:3000,http://192.168.15.13:3000,http://192.168.30.71:3000,http://192.168.30.78:3000,http://10.168.79:3000"
+
+      DB_ENGINE: django.db.backends.mysql
+      DB_NAME: ips
+      DB_USER: root
+      DB_PASSWORD: ixvq10A@10
+      DB_HOST: host.docker.internal
+      DB_PORT: 3307
+
+      USE_X_FORWARDED_HOST: "true"
+      SECURE_PROXY_SSL_HEADER: "HTTP_X_FORWARDED_PROTO,https"
+
+    command: python manage.py runserver 0.0.0.0:8000
+    networks:
+      - app_network
+      - shared-network
+
+volumes: {}
+
+networks:
+  app_network:
+    driver: bridge
+  shared-network:
+    external: true

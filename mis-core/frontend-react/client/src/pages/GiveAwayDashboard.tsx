@@ -9,7 +9,7 @@ import {
 } from "lucide-react";
 import axios from 'axios';
 
-const DJANGO_API = import.meta.env.VITE_DJANGO_API_URL;
+import { DJANGO_API_URL as DJANGO_API } from '@/config/api';
 
 interface GiveAwayData {
     consolidado: {

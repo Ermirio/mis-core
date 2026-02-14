@@ -1,0 +1,117 @@
+{
+	"info": {
+		"_postman_id": "a1b2c3d4-e5f6-a7b8-c9d0-e1f2a3b4c5d6",
+		"name": "Testes Aplipack (MIS)",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "1. Sincronizar SKUs (Via Django API)",
+			"request": {
+				"auth": {
+					"type": "bearer",
+					"bearer": [
+						{
+							"key": "token",
+							"value": "{{auth_token}}",
+							"type": "string"
+						}
+					]
+				},
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "{{django_url}}/sincronizar-skus/?linha=L10",
+					"host": [
+						"{{django_url}}"
+					],
+					"path": [
+						"sincronizar-skus",
+						""
+					],
+					"query": [
+						{
+							"key": "linha",
+							"value": "L10"
+						}
+					]
+				},
+				"description": "Este é o teste recomendado. Ele testa a sua API Django (`/sincronizar-skus/`), que por sua vez consulta o Aplipack.\n\nVocê **DEVE** fornecer um Token JWT na aba 'Authorization'.\n\nAltere o parâmetro `linha=L10` para a linha que deseja testar."
+			},
+			"response": []
+		},
+		{
+			"name": "2. Consulta Direta ao Aplipack (SOAP)",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "text/xml",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "<?xml version=\"1.0\" encoding=\"utf-8\"?>\r\n<soap12:Envelope xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\"\r\n                             xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\"\r\n                             xmlns:soap12=\"http://www.w3.org/2003/05/soap-envelope\">\r\n  <soap12:Body>\r\n    <GetListaOP xmlns=\"http://www.aplipack.com.br/\">\r\n      <UserSoftware>test</UserSoftware>\r\n      <PasswordSoftware>1234</PasswordSoftware>\r\n      <LinhaProducao>L10IP</LinhaProducao>\r\n    </GetListaOP>\r\n  </soap12:Body>\r\n</soap12:Envelope>",
+					"options": {
+						"raw": {
+							"language": "xml"
+						}
+					}
+				},
+				"url": {
+					"raw": "{{aplipack_url}}/WsOffLineCom.asmx?op=GetListaOP",
+					"host": [
+						"{{aplipack_url}}"
+					],
+					"path": [
+						"WsOffLineCom.asmx"
+					],
+					"query": [
+						{
+							"key": "op",
+							"value": "GetListaOP"
+						}
+					]
+				},
+				"description": "Este teste fala *diretamente* com o web service da Aplipack, sem passar pelo Django. É uma cópia exata da requisição SOAP feita pela sua função `get_lista_op`.\n\nÚtil para verificar se o serviço da Aplipack está online e respondendo.\n\nAltere o valor de `<LinhaProducao>L10IP</LinhaProducao>` conforme necessário."
+			},
+			"response": []
+		}
+	],
+	"event": [
+		{
+			"listen": "prerequest",
+			"script": {
+				"type": "text/javascript",
+				"exec": [
+					""
+				]
+			}
+		},
+		{
+			"listen": "test",
+			"script": {
+				"type": "text/javascript",
+				"exec": [
+					""
+				]
+			}
+		}
+	],
+	"variable": [
+		{
+			"key": "django_url",
+			"value": "http://localhost:8000"
+		},
+		{
+			"key": "aplipack_url",
+			"value": "http://192.168.30.42:82"
+		},
+		{
+			"key": "auth_token",
+			"value": "COLE_SEU_TOKEN_AQUI"
+		}
+	]
+}

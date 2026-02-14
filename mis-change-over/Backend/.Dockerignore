@@ -1,0 +1,11 @@
+# .dockerignore para o Django
+.git
+.venv/
+venv/
+__pycache__/
+*.pyc
+*.sqlite3 # Se você tem um SQLite local para dev
+.env       # Não envie suas variáveis .env para a imagem Docker!
+.pytest_cache/
+media/     # Se você usa volumes para mídia, não inclua na imagem
+staticfiles/ # Se você coleta estáticos em um volume, não inclua aqui
