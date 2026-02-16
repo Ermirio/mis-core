@@ -345,6 +345,7 @@ services:
       # Fix: Remove Domain to fallback to Host header default
       # Fix: Hardcoded URL avoids expansion issues
       - GF_SERVER_ROOT_URL=http://localhost:3000/grafana/
+      - GF_SERVER_SERVE_FROM_SUB_PATH=true
       - GF_AUTH_ANONYMOUS_ENABLED=true
       - GF_SECURITY_ALLOW_EMBEDDING=true
     volumes:
