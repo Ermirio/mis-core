@@ -120,7 +120,7 @@ services:
       - mis-network
     depends_on:
       django:
-        condition: service_healthy
+        condition: service_started
     restart: unless-stopped
 
   # ===== PROXY REVERSO =====
@@ -137,21 +137,6 @@ services:
     volumes:
       - ./proxy-reverse/html:/usr/share/nginx/html/hub
       - ./proxy-reverse/imagens:/usr/share/nginx/html/imagens
-    depends_on:
-      frontend:
-        condition: service_started
-      mis-energy-backend:
-        condition: service_started
-      mis-energy-frontend:
-        condition: service_started
-      mis-ai-backend:
-        condition: service_started
-      mis-ai-frontend:
-        condition: service_started
-      mis-changeover-frontend:
-        condition: service_started
-      emqx:
-        condition: service_started
     restart: unless-stopped
 
   # ==========================================
