@@ -32,6 +32,19 @@ app.register_blueprint(hierarchy_bp, url_prefix='/api')
 # Inicializar banco de dados
 db.init_app(app)
 
+from src.auth import jwt_required_cookie
+from flask import request
+@app.before_request
+def check_jwt():
+    if request.path.startswith('/api/health') or request.method == 'OPTIONS' or not request.path.startswith('/api/'):
+        return None
+        
+    @jwt_required_cookie
+    def validate():
+        return None
+        
+    return validate()
+
 # Criar tabelas (Mover para script de inicialização ou executar apenas se main)
 # with app.app_context():
 #     db.create_all()

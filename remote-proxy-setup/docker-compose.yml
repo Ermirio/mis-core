@@ -1,0 +1,39 @@
+version: "3"
+
+services:
+  remote-access-proxy:
+    image: nginx:alpine
+    container_name: mis-remote-proxy
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  # pihole:
+  #   container_name: pihole
+  #   image: pihole/pihole:latest
+
+  #   ports:
+  #     # DNS (obrigatório manter)
+  #     - "53:53/tcp"
+  #     - "53:53/udp"
+
+  #     # WEB alterada (não usar 80)
+  #     - "8081:80/tcp"
+  #     - "4443:443/tcp"
+
+  #   environment:
+  #     TZ: 'America/Sao_Paulo'
+  #     FTLCONF_webserver_api_password: 'sua_senha_forte'
+  #     FTLCONF_dns_listeningMode: 'ALL'
+
+  #   volumes:
+  #     - './etc-pihole:/etc/pihole'
+
+  #   cap_add:
+  #     - NET_ADMIN
+
+  #   restart: unless-stopped

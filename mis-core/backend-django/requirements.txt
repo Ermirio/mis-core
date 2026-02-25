@@ -8,4 +8,4 @@ whitenoise==6.6.0
 django-apscheduler==0.6.2
 django-import-export==3.3.1
 pymysql==1.1.1
-
+djangorestframework-simplejwt==5.3.1

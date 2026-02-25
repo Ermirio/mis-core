@@ -144,6 +144,26 @@ CORS_ALLOW_CREDENTIALS = True
 REST_FRAMEWORK = {
     'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
     'PAGE_SIZE': 100,
+    'DEFAULT_AUTHENTICATION_CLASSES': (
+        # A nova classe customizada buscará o token tanto do header (Bearer) quanto do Cookie (access_token)
+        'config.authentication.CookieJWTAuthentication',
+    ),
+}
+
+from datetime import timedelta
+SIMPLE_JWT = {
+    'ACCESS_TOKEN_LIFETIME': timedelta(hours=12),
+    'REFRESH_TOKEN_LIFETIME': timedelta(days=7),
+    'ROTATE_REFRESH_TOKENS': True,
+    'BLACKLIST_AFTER_ROTATION': False,
+    'AUTH_COOKIE': 'access_token',      # Nome do cookie com access_token
+    'AUTH_COOKIE_DOMAIN': config('SESSION_COOKIE_DOMAIN', default=None), # Compartilha o cookie no mesmo host/IP
+    'AUTH_COOKIE_SECURE': not DEBUG,    # True se usar HTTPS (False no dev/http local)
+    'AUTH_COOKIE_HTTP_ONLY': True,      # Bloqueia leitura do cookie via JS
+    'AUTH_COOKIE_PATH': '/',
+    'AUTH_COOKIE_SAMESITE': 'Lax',      # Protege contra CSRF mas permite navegação
+    
+    'SIGNING_KEY': config('JWT_SECRET_KEY', default=SECRET_KEY), # Se houver JWT_SECRET no .env, usa. Senão, herda SECRET_KEY do django
 }
 
 

@@ -1,0 +1,455 @@
+version: "3.8"
+
+services:
+  # ==========================================
+  # SERVIÇOS DO MIS-CORE (Django/Infra)
+  # ==========================================
+
+  # ===== MYSQL (COMPARTILHADO) =====
+  mysql:
+    image: mysql:8.0
+    container_name: mis-hub-mysql
+    command: --default-authentication-plugin=mysql_native_password
+    environment:
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      TZ: ${TZ}
+    ports:
+      - "${MYSQL_HOST_PORT}:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./mysql-init:/docker-entrypoint-initdb.d
+    networks:
+      - mis-network
+    healthcheck:
+      test: [ "CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-p${MYSQL_ROOT_PASSWORD}" ]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  # ===== INFLUXDB 1.8 =====
+  influxdb:
+    image: influxdb:1.8-alpine
+    container_name: mis-core-influxdb
+    environment:
+      INFLUXDB_DB: ${INFLUXDB_DATABASE}
+      INFLUXDB_ADMIN_USER: ${INFLUXDB_ADMIN_USER}
+      INFLUXDB_ADMIN_PASSWORD: ${INFLUXDB_ADMIN_PASSWORD}
+      INFLUXDB_HTTP_AUTH_ENABLED: ${INFLUXDB_HTTP_AUTH_ENABLED}
+      TZ: ${TZ}
+    ports:
+      - "${INFLUXDB_HOST_PORT}:8086"
+    volumes:
+      - influxdb_data:/var/lib/influxdb
+    networks:
+      - mis-network
+    healthcheck:
+      test: [ "CMD", "wget", "-q", "-O", "-", "http://localhost:8086/ping" ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  # ===== DJANGO (CORE BACKEND) =====
+  django:
+    image: mis-core-django:v2.0
+    container_name: mis-core-django
+    environment:
+      MYSQL_HOST: mysql
+      MYSQL_PORT: 3306
+      MYSQL_DB: ${MYSQL_DB}
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+      INFLUXDB_HOST: influxdb
+      INFLUXDB_PORT: 8086
+      INFLUXDB_DATABASE: ${INFLUXDB_DATABASE}
+      INFLUXDB_USER: ${INFLUXDB_USER}
+      INFLUXDB_PASSWORD: ${INFLUXDB_PASSWORD}
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY}
+      DJANGO_DEBUG: ${DJANGO_DEBUG}
+      DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS}
+      DJANGO_SUPERUSER_USERNAME: ${DJANGO_SUPERUSER_USERNAME}
+      DJANGO_SUPERUSER_EMAIL: ${DJANGO_SUPERUSER_EMAIL}
+      DJANGO_SUPERUSER_PASSWORD: ${DJANGO_SUPERUSER_PASSWORD}
+      TZ: ${TZ}
+    ports:
+      - "${DJANGO_HOST_PORT}:8000"
+    volumes:
+      - ./.env:/app/.env
+      - django_static:/app/staticfiles
+    networks:
+      - mis-network
+    depends_on:
+      mysql:
+        condition: service_healthy
+      influxdb:
+        condition: service_healthy
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:8000/api/health/" ]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    restart: unless-stopped
+
+  # ===== FRONTEND CORE (NGINX) =====
+  frontend:
+    image: mis-core-frontend:v2.1
+    container_name: mis-core-frontend
+    environment:
+      TZ: ${TZ}
+    ports:
+      - "${FRONTEND_HOST_PORT}:80"
+    networks:
+      - mis-network
+    depends_on:
+      django:
+        condition: service_started
+    restart: unless-stopped
+
+  # ===== PROXY REVERSO =====
+  nginx-proxy:
+    image: mis-core-proxy:v2.0
+    container_name: mis-core-proxy
+    ports:
+      - "${PROXY_HOST_PORT}:80"
+    networks:
+      - mis-network
+    volumes:
+      - ./proxy-reverse/html:/usr/share/nginx/html/hub
+      - ./proxy-reverse/imagens:/usr/share/nginx/html/imagens
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
+
+  # ==========================================
+  # SERVIÇOS DO MIS-AI (Predict-Generic)
+  # ==========================================
+
+  # ===== AI BACKEND (FLASK) =====
+  mis-ai-backend:
+    image: mis-core-ai-backend:v1.0
+    container_name: mis-ai-backend
+    ports:
+      - "5004:5004"
+    environment:
+      DATABASE_URL: mysql+pymysql://${MYSQL_USER}:${MYSQL_PASSWORD}@mysql:3306/mis_ai_db
+      OPC_SERVER_URL: ${OPC_SERVER_URL}
+      INFLUXDB_HOST: influxdb
+      INFLUXDB_PORT: 8086
+      INFLUXDB_USER: ${INFLUXDB_ADMIN_USER}
+      INFLUXDB_PASSWORD: ${INFLUXDB_ADMIN_PASSWORD}
+      INFLUXDB_DATABASE: mis_ai_db
+    networks:
+      - mis-network
+    volumes:
+      - ./mis-ai/backend/models:/app/models
+      - ./mis-ai/backend/logs:/app/logs
+      - ./.env:/app/.env
+    depends_on:
+      mysql:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ===== AI FRONTEND (REACT) =====
+  mis-ai-frontend:
+    image: mis-core-ai-frontend:v1.0
+    container_name: mis-ai-frontend
+    ports:
+      - "3007:3007"
+    environment:
+      NODE_ENV: production
+      VITE_API_URL: /mis-ai-api
+    networks:
+      - mis-network
+    depends_on:
+      - mis-ai-backend
+    restart: unless-stopped
+
+  # ==========================================
+  # SERVIÇOS DO MIS-ENERGY (Energy Monitoring)
+  # ==========================================
+
+  # ===== ENERGY BACKEND (FLASK) =====
+  mis-energy-backend:
+    image: mis-core-energy-backend:v1.0
+    container_name: mis-energy-backend
+    ports:
+      - "5005:5005"
+    environment:
+      FLASK_ENV: production
+      MYSQL_HOST: mysql
+      MYSQL_PORT: "3306"
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+      MYSQL_DB: mis_energy_db
+      INFLUXDB_HOST: influxdb
+      INFLUXDB_PORT: "8086"
+      INFLUXDB_DATABASE: mis_energy_db
+    networks:
+      - mis-network
+    volumes:
+      - ./mis-energy/backend/database:/app/database
+      - ./mis-energy/backend/logs:/app/logs
+      - ./.env:/app/.env
+    depends_on:
+      mysql:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ===== ENERGY FRONTEND (REACT) =====
+  mis-energy-frontend:
+    image: mis-core-energy-frontend:v1.0
+    container_name: mis-energy-frontend
+    ports:
+      - "3008:3008"
+    environment:
+      NODE_ENV: production
+      VITE_API_URL: /mis-energy-api
+    networks:
+      - mis-network
+    depends_on:
+      - mis-energy-backend
+    restart: unless-stopped
+
+  # ===== ENERGY COLLECTOR (PYTHON) =====
+  mis-energy-collector:
+    image: mis-core-energy-collector:v1.0
+    container_name: mis-energy-collector
+    environment:
+      BACKEND_URL: http://mis-energy-backend:5005/api
+      POLL_INTERVAL: 10
+    networks:
+      - mis-network
+    depends_on:
+      - mis-energy-backend
+    restart: unless-stopped
+
+  # ==========================================
+  # SERVIÇOS DO MIS-CHANGE-OVER
+  # ==========================================
+
+  # ===== CHANGEOVER BACKEND (DJANGO) =====
+  mis-changeover-backend:
+    image: mis-core-changeover-backend:v1.0
+    container_name: mis-changeover-backend
+    environment:
+      DJANGO_SETTINGS_MODULE: digitalfactory.settings
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY}
+      DJANGO_DEBUG: ${DJANGO_DEBUG}
+      DJANGO_ALLOWED_HOSTS: "*"
+      DJANGO_CSRF_TRUSTED_ORIGINS: ${DJANGO_CSRF_TRUSTED_ORIGINS}
+      DB_ENGINE: django.db.backends.mysql
+      DB_NAME: mis_changeover_db
+      DB_USER: ${MYSQL_USER}
+      DB_PASSWORD: ${MYSQL_PASSWORD}
+      DB_HOST: mysql
+      DB_PORT: "3306"
+      DJANGO_SUPERUSER_USERNAME: ${DJANGO_SUPERUSER_USERNAME}
+      DJANGO_SUPERUSER_EMAIL: ${DJANGO_SUPERUSER_EMAIL}
+      DJANGO_SUPERUSER_PASSWORD: ${DJANGO_SUPERUSER_PASSWORD}
+      USE_X_FORWARDED_HOST: "true"
+      TZ: ${TZ}
+    ports:
+      - "${MIS_CHANGEOVER_BACKEND_PORT:-5006}:8000"
+    volumes:
+      # Code volume removed
+      - ./.env:/app/.env
+    networks:
+      - mis-network
+    depends_on:
+      mysql:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ===== CHANGEOVER FRONTEND (REACT/NGINX) =====
+  mis-changeover-frontend:
+    image: mis-core-changeover-frontend:v1.0
+    container_name: mis-changeover-frontend
+    ports:
+      - "${MIS_CHANGEOVER_FRONTEND_PORT:-3009}:80"
+    networks:
+      - mis-network
+    depends_on:
+      - mis-changeover-backend
+    restart: unless-stopped
+
+  # ==========================================
+  # FERRAMENTAS AUXILIARES (Phase 2)
+  # ==========================================
+
+  portainer:
+    image: portainer/portainer-ce:latest
+    container_name: mis-core-portainer
+    ports:
+      - "${PORTAINER_HOST_PORT}:9000"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - portainer_data:/data
+    networks:
+      - mis-network
+    restart: unless-stopped
+
+  n8n:
+    image: n8nio/n8n:latest
+    container_name: mis-core-n8n
+    environment:
+      - N8N_BASIC_AUTH_ACTIVE=${N8N_BASIC_AUTH_ACTIVE}
+      - N8N_BASIC_AUTH_USER=${N8N_BASIC_AUTH_USER}
+      - N8N_BASIC_AUTH_PASSWORD=${N8N_BASIC_AUTH_PASSWORD}
+      - TZ=America/Sao_Paulo
+    ports:
+      - "${N8N_HOST_PORT}:5678"
+    volumes:
+      - n8n_data:/home/node/.n8n
+    networks:
+      - mis-network
+    restart: unless-stopped
+
+  node-red:
+    image: mis-core-node-red:v1.0
+    container_name: mis-core-node-red
+    environment:
+      - TZ=America/Sao_Paulo
+    volumes:
+      - node_red_data:/data
+      - ./mis-core/node-red/settings.js:/data/settings.js
+    ports:
+      - "1880:1880"
+    networks:
+      - mis-network
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: mis-core-grafana
+    environment:
+      - TZ=America/Sao_Paulo
+      - GF_SERVER_ROOT_URL=http://localhost:3000/grafana/
+      - GF_SERVER_SERVE_FROM_SUB_PATH=true
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_SECURITY_ALLOW_EMBEDDING=true
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./mis-core/grafana/img/logo.png:/usr/share/grafana/public/img/grafana_icon.svg
+      - ./mis-core/grafana/img/logo.png:/usr/share/grafana/public/img/fav32.png
+    ports:
+      - "3004:3000"
+    networks:
+      - mis-network
+    restart: unless-stopped
+
+  emqx:
+    image: emqx/emqx:5.8.5
+    container_name: mis-core-emqx
+    user: root
+    environment:
+      EMQX_DASHBOARD__DEFAULT_USERNAME: admin
+      EMQX_DASHBOARD__DEFAULT_PASSWORD: public
+    volumes:
+      - emqx_data:/opt/emqx/data
+      - emqx_log:/opt/emqx/log
+    ports:
+      - "1883:1883"
+      - "8083:8083"
+      - "8084:8084"
+      - "8883:8883"
+      - "18083:18083"
+    networks:
+      - mis-network
+    restart: unless-stopped
+
+  # ==========================================
+  # SERVIÇOS AUXILIARES (Legacy Core)
+  # ==========================================
+
+  flask:
+    image: mis-core-flask:v2.0
+    container_name: mis-core-flask
+    environment:
+      INFLUXDB_HOST: influxdb
+      INFLUXDB_PORT: 8086
+      INFLUXDB_DATABASE: ${INFLUXDB_DATABASE}
+      INFLUXDB_USER: ${INFLUXDB_USER}
+      INFLUXDB_PASSWORD: ${INFLUXDB_PASSWORD}
+      DJANGO_HOST: django
+      DJANGO_PORT: 8000
+      DJANGO_API_URL: http://django:8000/api
+      TZ: ${TZ}
+    ports:
+      - "${FLASK_HOST_PORT}:5000"
+    networks:
+      - mis-network
+    depends_on:
+      django:
+        condition: service_healthy
+    restart: unless-stopped
+
+  coletor:
+    image: mis-core-coletor:v2.0
+    container_name: mis-core-coletor
+    environment:
+      DJANGO_API_URL: http://django:8000/api
+      FLASK_API_URL: http://flask:5000/api
+    networks:
+      - mis-network
+    restart: unless-stopped
+
+  chronograf:
+    image: chronograf:1.8
+    container_name: mis-core-chronograf
+    ports:
+      - "8889:8888"
+    environment:
+      INFLUXDB_URL: http://influxdb:8086
+      INFLUXDB_USERNAME: ${INFLUXDB_ADMIN_USER}
+      INFLUXDB_PASSWORD: ${INFLUXDB_ADMIN_PASSWORD}
+      BASE_PATH: /chronograf
+    networks:
+      - mis-network
+    restart: unless-stopped
+
+  kapacitor:
+    image: kapacitor:1.5
+    container_name: mis-core-kapacitor
+    ports:
+      - "9093:9092"
+    environment:
+      KAPACITOR_INFLUXDB_0_URLS_0: http://influxdb:8086
+      KAPACITOR_INFLUXDB_0_USERNAME: ${INFLUXDB_ADMIN_USER}
+      KAPACITOR_INFLUXDB_0_PASSWORD: ${INFLUXDB_ADMIN_PASSWORD}
+    volumes:
+      - kapacitor_data:/var/lib/kapacitor
+    networks:
+      - mis-network
+    restart: unless-stopped
+
+volumes:
+  mysql_data:
+    name: mis-core-mysql-data
+  influxdb_data:
+    name: mis-core-influxdb-data
+  kapacitor_data:
+    name: mis-core-kapacitor-data
+  n8n_data:
+    name: mis-core-n8n-data
+  portainer_data:
+    name: mis-core-portainer-data
+  node_red_data:
+    name: mis-core-node-red-data
+  grafana_data:
+    name: mis-core-grafana-data
+  emqx_data:
+    name: mis-core-emqx-data
+  emqx_log:
+    name: mis-core-emqx-log
+  django_static:
+    name: mis-core-django-static
+
+networks:
+  mis-network:
+    name: mis-hub-network
+    driver: bridge

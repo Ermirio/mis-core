@@ -7,3 +7,11 @@ start.json
 stop.json
 targets.json
 temp.json
+
+# Deploy offline (imagens Docker muito grandes para Git)
+dist/
+
+
+# Sockets Unix
+*.ctl
+

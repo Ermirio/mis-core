@@ -11,6 +11,7 @@ class ApiClient {
   async request(endpoint, options = {}) {
     const url = `${API_BASE_URL}${endpoint}`
     const config = {
+      credentials: 'include', // Assegura envio cross/same origin de cookies
       headers: {
         'Content-Type': 'application/json',
         ...options.headers,
@@ -22,6 +23,10 @@ class ApiClient {
       const response = await fetch(url, config)
 
       if (!response.ok) {
+        if (response.status === 401) {
+          const currentPath = window.location.pathname;
+          window.location.href = window.location.origin + '/mis-core/login?next=' + encodeURIComponent(currentPath);
+        }
         const errorData = await response.json().catch(() => ({}))
         throw new Error(errorData.error || `HTTP error! status: ${response.status}`)
       }

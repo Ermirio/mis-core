@@ -1,3 +1,4 @@
+// Dentro de App.tsx
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import MainLayout from "./components/layout/MainLayout";
 
@@ -11,6 +12,9 @@ import FactoryManagementPanel from "./pages/FactoryManagementPanel";
 import LineAnalytics from "./pages/LineAnalytics";
 import WasteAnalysisDashboard from "./pages/WasteAnalysisDashboard";
 import GiveAwayDashboard from "./pages/GiveAwayDashboard";
+
+// Auth e Login
+import Login from "./pages/Login";
 
 // Admin Imports
 import AdminLayout from "./pages/admin/AdminLayout";
@@ -35,6 +39,10 @@ function App() {
         <SplashScreen onComplete={() => setShowSplash(false)} />
       ) : (
         <Routes>
+          {/* Rotas Públicas */}
+          <Route path="/login" element={<Login />} />
+
+          {/* Rotas Protegidas do Hub */}
           <Route path="/" element={<MainLayout />}>
             <Route index element={<Home />} />
             <Route path="linha/:linhaId" element={<LinhaDetalhes />} />

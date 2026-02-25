@@ -1,1 +1,0 @@
-[{"auto_generated":true,"confidence_std_dev":null,"data_source":"auto_reference","id":2467,"measured_value":5.0,"model_id":null,"opc_values":{"ns=2;s=casa.machine.Discharge_Valve":9.0,"ns=2;s=casa.machine.Fill_Valve":7.0,"ns=2;s=casa.machine.Level_Meter":3.5409998893737793},"predicted_value":null,"target_id":7,"timestamp":"2026-02-02T15:34:35"}]

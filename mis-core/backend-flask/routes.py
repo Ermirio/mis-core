@@ -28,6 +28,19 @@ DJANGO_API_URL = config('DJANGO_API_URL', default='http://localhost:8000/api')
 
 api_bp = Blueprint('api', __name__)
 
+from auth import jwt_required_cookie
+@api_bp.before_request
+def check_jwt():
+    # Rotas isentas de validação de token (healthcheck, reset do turno interno)
+    if request.path in ['/api/health', '/api/shift/reset'] or request.method == 'OPTIONS':
+        return None
+        
+    @jwt_required_cookie
+    def validate():
+        return None
+        
+    return validate()
+
 logger = logging.getLogger(__name__)
 
 from constants import ESTADOS_MAQUINA
@@ -1209,7 +1222,7 @@ def get_linha_kpis(linha_nome):
         perc_descarte = 0.0
         
         try:
-            from services.influx_data_provider import get_influx_client
+            from influx_data_provider import get_client as get_influx_client
             client = current_app.extensions.get('influx_client')
             if client:
                 # Query ultimo ponto da measurement line_metrics

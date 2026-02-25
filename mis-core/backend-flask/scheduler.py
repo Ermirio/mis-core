@@ -121,7 +121,7 @@ def job_aggregate_line_metrics():
     Executa a cada 1 minuto.
     """
     try:
-        from services.influx_data_provider import get_influx_client
+        from influx_data_provider import get_client as get_influx_client
         influx_client = current_app.extensions.get('influx_client')
         if not influx_client: return
 

@@ -38,6 +38,18 @@ logging.basicConfig(
 app = Flask(__name__)
 CORS(app, resources={r"/api/*": {"origins": "*"}})
 
+from auth import jwt_required_cookie
+@app.before_request
+def check_jwt():
+    if request.path in ['/', '/api/health'] or not request.path.startswith('/api/') or request.method == 'OPTIONS':
+        return None
+        
+    @jwt_required_cookie
+    def validate():
+        return None
+        
+    return validate()
+
 # ==================== INICIALIZAÇÃO DO BANCO DE DADOS ====================
 try:
     os.makedirs("logs", exist_ok=True)

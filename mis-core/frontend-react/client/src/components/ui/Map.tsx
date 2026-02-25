@@ -78,7 +78,7 @@
 
 import { useEffect, useRef } from "react";
 import { usePersistFn } from "@/hooks/usePersistFn";
-import { cn } from "@/lib/utils";
+import { cn } from "@/utils/utils";
 
 declare global {
   interface Window {

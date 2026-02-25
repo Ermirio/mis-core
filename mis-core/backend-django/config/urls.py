@@ -2,11 +2,11 @@ from django.contrib import admin
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from analytics.views import AnalyticsProfileViewSet
+from config.auth_views import CookieTokenObtainPairView, CookieTokenRefreshView, LogoutView
 
 # Router para analytics
 analytics_router = DefaultRouter()
 analytics_router.register(r'analytics-profiles', AnalyticsProfileViewSet)
-
 
 from django.http import JsonResponse
 def health_check(request):
@@ -15,10 +15,13 @@ def health_check(request):
 urlpatterns = [
     path('api/health/', health_check),
     path('mis-core-admin/', admin.site.urls),
+    
+    # NOVAS ROTAS DE SSO / JWT via COOKIE
+    path('api/auth/login/', CookieTokenObtainPairView.as_view(), name='token_obtain_pair'),
+    path('api/auth/refresh/', CookieTokenRefreshView.as_view(), name='token_refresh'),
+    path('api/auth/logout/', LogoutView.as_view(), name='auth_logout'),
+    
     path('api/', include('equipamentos.urls')),
     path('api/bi/', include('equipamentos.urls_bi')),  # Endpoints de BI (side-by-side)
     path('api/', include(analytics_router.urls)),  # Analytics profiles
 ]
-
-
-

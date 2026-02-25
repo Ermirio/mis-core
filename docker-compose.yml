@@ -131,12 +131,14 @@ services:
       dockerfile: Dockerfile
     container_name: mis-core-proxy
     ports:
-      - "3000:80"
+      - "${PROXY_HOST_PORT}:80"
     networks:
       - mis-network
     volumes:
       - ./proxy-reverse/html:/usr/share/nginx/html/hub
       - ./proxy-reverse/imagens:/usr/share/nginx/html/imagens
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     restart: unless-stopped
 
   # ==========================================
@@ -145,6 +147,7 @@ services:
 
   # ===== AI BACKEND (FLASK) =====
   mis-ai-backend:
+    image: mis-core-ai-backend:v1.0
     build:
       context: ./mis-ai/backend
     container_name: mis-ai-backend
@@ -173,6 +176,7 @@ services:
 
   # ===== AI FRONTEND (REACT) =====
   mis-ai-frontend:
+    image: mis-core-ai-frontend:v1.0
     build:
       context: ./mis-ai/frontend
     container_name: mis-ai-frontend
@@ -193,6 +197,7 @@ services:
 
   # ===== ENERGY BACKEND (FLASK) =====
   mis-energy-backend:
+    image: mis-core-energy-backend:v1.0
     build:
       context: ./mis-energy/backend
     container_name: mis-energy-backend
@@ -223,6 +228,7 @@ services:
 
   # ===== ENERGY FRONTEND (REACT) =====
   mis-energy-frontend:
+    image: mis-core-energy-frontend:v1.0
     build:
       context: ./mis-energy/frontend
     container_name: mis-energy-frontend
@@ -239,6 +245,7 @@ services:
 
   # ===== ENERGY COLLECTOR (PYTHON) =====
   mis-energy-collector:
+    image: mis-core-energy-collector:v1.0
     build:
       context: ./mis-energy/collector
     container_name: mis-energy-collector
@@ -257,6 +264,7 @@ services:
 
   # ===== CHANGEOVER BACKEND (DJANGO) =====
   mis-changeover-backend:
+    image: mis-core-changeover-backend:v1.0
     build:
       context: ./mis-change-over/Backend
       dockerfile: Dockerfile
@@ -266,7 +274,7 @@ services:
       DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY}
       DJANGO_DEBUG: ${DJANGO_DEBUG}
       DJANGO_ALLOWED_HOSTS: "*"
-      DJANGO_CSRF_TRUSTED_ORIGINS: "http://changeover.mis.local:3000,http://192.168.15.20:3000,http://localhost:3000"
+      DJANGO_CSRF_TRUSTED_ORIGINS: ${DJANGO_CSRF_TRUSTED_ORIGINS}
       DB_ENGINE: django.db.backends.mysql
       DB_NAME: mis_changeover_db
       DB_USER: ${MYSQL_USER}
@@ -291,6 +299,7 @@ services:
 
   # ===== CHANGEOVER FRONTEND (REACT/NGINX) =====
   mis-changeover-frontend:
+    image: mis-core-changeover-frontend:v1.0
     build:
       context: ./mis-change-over/Frontend
       dockerfile: dockerfile
@@ -307,7 +316,36 @@ services:
   # FERRAMENTAS AUXILIARES (Phase 2)
   # ==========================================
 
+  portainer:
+    image: portainer/portainer-ce:latest
+    container_name: mis-core-portainer
+    ports:
+      - "${PORTAINER_HOST_PORT}:9000"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - portainer_data:/data
+    networks:
+      - mis-network
+    restart: unless-stopped
+
+  n8n:
+    image: n8nio/n8n:latest
+    container_name: mis-core-n8n
+    environment:
+      - N8N_BASIC_AUTH_ACTIVE=${N8N_BASIC_AUTH_ACTIVE}
+      - N8N_BASIC_AUTH_USER=${N8N_BASIC_AUTH_USER}
+      - N8N_BASIC_AUTH_PASSWORD=${N8N_BASIC_AUTH_PASSWORD}
+      - TZ=America/Sao_Paulo
+    ports:
+      - "${N8N_HOST_PORT}:5678"
+    volumes:
+      - n8n_data:/home/node/.n8n
+    networks:
+      - mis-network
+    restart: unless-stopped
+
   node-red:
+    image: mis-core-node-red:v1.0
     build:
       context: ./mis-core/node-red
     container_name: mis-core-node-red
@@ -329,7 +367,7 @@ services:
       - TZ=America/Sao_Paulo
       # Fix: Remove Domain to fallback to Host header default
       # Fix: Hardcoded URL avoids expansion issues
-      - GF_SERVER_ROOT_URL=http://localhost:3000/grafana/
+      - GF_SERVER_ROOT_URL=%(protocol)s://%(domain)s:%(http_port)s/grafana/
       - GF_SERVER_SERVE_FROM_SUB_PATH=true
       - GF_AUTH_ANONYMOUS_ENABLED=true
       - GF_SECURITY_ALLOW_EMBEDDING=true
@@ -449,6 +487,10 @@ volumes:
     name: mis-core-influxdb-data
   kapacitor_data:
     name: mis-core-kapacitor-data
+  n8n_data:
+    name: mis-core-n8n-data
+  portainer_data:
+    name: mis-core-portainer-data
   node_red_data:
     name: mis-core-node-red-data
   grafana_data:
