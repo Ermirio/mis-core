@@ -60,6 +60,176 @@ interface TrendChart {
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Badge } from "@/components/ui/badge";
 
+// --- Componente isolado para a Matriz de Correlação ---
+// Resolve problema de contexto JSX em closures/IIFEs dentro de componentes grandes
+interface CorrMatrixProps {
+    matrix: {
+        columns: string[];
+        values: number[][];
+        p_values: number[][];
+        method: string;
+        n_points: number;
+        resample_rule: string;
+    };
+    corrMinFilter: number;
+    pvalToStars: (p: number) => string;
+    timeseriesData: any;
+    setScatterX: (v: string) => void;
+    setScatterY: (v: string) => void;
+    setActiveTab: (v: string) => void;
+    handleRunAnalysis: (mode: 'stats' | 'correlation' | 'timeseries') => Promise<void>;
+}
+
+const CorrMatrixPlot = ({
+    matrix, corrMinFilter, pvalToStars, timeseriesData,
+    setScatterX, setScatterY, setActiveTab, handleRunAnalysis
+}: CorrMatrixProps): React.ReactElement => {
+    const { columns, values, p_values, method } = matrix;
+
+    const textMatrix = values.map((row: number[], i: number) =>
+        row.map((v: number, j: number) => {
+            if (i === j) return '1.00';
+            if (Math.abs(v) < corrMinFilter) return '';
+            const stars = p_values ? pvalToStars(p_values[i][j]) : '';
+            return `${(v * 100).toFixed(1)}%${stars}`;
+        })
+    );
+
+
+    const hoverMatrix = values.map((row: number[], i: number) =>
+        row.map((v: number, j: number) => {
+            const p = p_values?.[i]?.[j];
+            const pStr = (p !== undefined && i !== j)
+                ? `<br>p-value: ${p < 0.0001 ? '<0.0001' : p.toFixed(4)}${pvalToStars(p) ? ` ${pvalToStars(p)}` : ' (ns)'}`
+                : '';
+            return `<b>${columns[j]}</b> x <b>${columns[i]}</b><br>r = ${v.toFixed(4)}${pStr}`;
+        })
+    );
+
+    const handleClick = (data: any) => {
+        const pt = data?.points?.[0];
+        if (!pt) return;
+        const xVar = pt.x as string;
+        const yVar = pt.y as string;
+        if (xVar === yVar) return;
+        setScatterX(xVar);
+        setScatterY(yVar);
+        if (timeseriesData?.[xVar] && timeseriesData?.[yVar]) {
+            setActiveTab('scatter');
+        } else {
+            handleRunAnalysis('timeseries').then(() => setActiveTab('scatter'));
+        }
+    };
+
+    return (
+        <Card>
+            <CardHeader>
+                <CardTitle>
+                    Matriz de Correlação — {method === 'spearman' ? 'Spearman' : 'Pearson'}
+                </CardTitle>
+                <CardDescription className="text-xs">
+                    Clique numa célula para abrir o gráfico de dispersão do par. Células em branco estão abaixo do filtro mínimo.
+                </CardDescription>
+            </CardHeader>
+            <CardContent>
+                <Plot
+                    data={[{
+                        z: values,
+                        x: columns,
+                        y: columns,
+                        type: 'heatmap',
+                        colorscale: 'RdBu',
+                        zmin: -1, zmax: 1,
+                        text: textMatrix,
+                        texttemplate: '%{text}',
+                        textfont: { size: 11, color: 'black' },
+                        hovertemplate: '%{customdata}<extra></extra>',
+                        customdata: hoverMatrix,
+                        xgap: 3,
+                        ygap: 3,
+                    } as any]}
+                    layout={{
+                        height: 600,
+                        autosize: true,
+                        title: { text: '' },
+                        margin: { l: 160, r: 20, t: 20, b: 160 },
+                        xaxis: { tickangle: -40 },
+                        yaxis: { tickangle: 0 }
+                    }}
+                    useResizeHandler={true}
+                    className="w-full"
+                    onClick={handleClick}
+                />
+            </CardContent>
+        </Card>
+    );
+};
+
+// --- Componente isolado para Scatter com Trend Line ---
+interface ScatterPlotProps {
+    xKey: string;
+    yKey: string;
+    timeseriesData: any;
+    calcLinearRegression: (x: number[], y: number[]) => { slope: number; intercept: number; xMin: number; xMax: number } | null;
+}
+
+const ScatterPlot = ({ xKey, yKey, timeseriesData, calcLinearRegression }: ScatterPlotProps): React.ReactElement => {
+    const xVals: number[] = timeseriesData[xKey]?.values ?? [];
+    const yVals: number[] = timeseriesData[yKey]?.values ?? [];
+    const reg = calcLinearRegression(xVals, yVals);
+    const n = xVals.length;
+    const xMean = n ? xVals.reduce((a, b) => a + b, 0) / n : 0;
+    const yMean = n ? yVals.reduce((a, b) => a + b, 0) / n : 0;
+    const num = xVals.reduce((acc, xi, i) => acc + (xi - xMean) * (yVals[i] - yMean), 0);
+    const den = Math.sqrt(
+        xVals.reduce((acc, xi) => acc + (xi - xMean) ** 2, 0) *
+        yVals.reduce((acc, yi) => acc + (yi - yMean) ** 2, 0)
+    );
+    const r = den === 0 ? 0 : num / den;
+    const rLabel = r >= 0.7 ? 'Forte positiva' : r <= -0.7 ? 'Forte negativa' : Math.abs(r) >= 0.3 ? 'Moderada' : 'Fraca';
+    const trendTraces: any[] = reg ? [{
+        x: [reg.xMin, reg.xMax],
+        y: [reg.slope * reg.xMin + reg.intercept, reg.slope * reg.xMax + reg.intercept],
+        mode: 'lines',
+        type: 'scatter',
+        name: `Tendência (r=${r.toFixed(3)})`,
+        line: { color: 'red', width: 2, dash: 'dash' }
+    }] : [];
+    return (
+        <div>
+            <div className="flex flex-wrap gap-3 mb-3 text-sm">
+                <span className="bg-slate-100 px-3 py-1 rounded font-mono">r = {r.toFixed(4)}</span>
+                <span className="bg-slate-100 px-3 py-1 rounded">{rLabel}</span>
+                {reg && (
+                    <span className="bg-slate-100 px-3 py-1 rounded font-mono text-xs">
+                        y = {reg.slope.toFixed(4)}x + {reg.intercept.toFixed(4)}
+                    </span>
+                )}
+                <span className="text-gray-400 text-xs self-center">n = {n} pontos</span>
+            </div>
+            <Plot
+                data={[
+                    {
+                        x: xVals, y: yVals,
+                        mode: 'markers', type: 'scatter', name: 'Dados',
+                        marker: { color: 'rgba(59,130,246,0.5)', size: 7, line: { color: 'rgba(59,130,246,0.8)', width: 1 } }
+                    },
+                    ...trendTraces
+                ]}
+                layout={{
+                    autosize: true, height: 480,
+                    xaxis: { title: { text: xKey } },
+                    yaxis: { title: { text: yKey } },
+                    legend: { orientation: 'h', y: -0.15 },
+                    margin: { l: 50, r: 20, t: 20, b: 60 }
+                }}
+                useResizeHandler={true}
+                className="w-full"
+            />
+        </div>
+    );
+};
+
 const LineAnalytics: React.FC = () => {
     const [linhas, setLinhas] = useState<Linha[]>([]);
     // Removed selectedLinhaId
@@ -80,6 +250,8 @@ const LineAnalytics: React.FC = () => {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [searchTerm, setSearchTerm] = useState('');
+    const [corrMethod, setCorrMethod] = useState<'pearson' | 'spearman'>('pearson');
+    const [corrMinFilter, setCorrMinFilter] = useState<number>(0);
 
     // Fetch Structure
     useEffect(() => {
@@ -102,11 +274,11 @@ const LineAnalytics: React.FC = () => {
             const end = new Date(); // Now
             const start = subHours(end, parseInt(hoursBack));
 
-            const payload = {
+            const payload: any = {
                 variables: selectedTags.map(t => ({
-                    tag_influx: t.tag_influxdb, // Use correct field
+                    tag_influx: t.tag_influxdb,
                     equipamento_code: t.equipamento_code,
-                    alias: `${t.linha_nome} - ${t.equipamento_nome} - ${t.nome}`, // Formato legível: Linha - Equipamento - Variável
+                    alias: `${t.linha_nome} - ${t.equipamento_nome} - ${t.nome}`,
                     lsl: t.lsl,
                     usl: t.usl,
                     nominal: t.nominal
@@ -114,6 +286,9 @@ const LineAnalytics: React.FC = () => {
                 start_time: start.toISOString(),
                 end_time: end.toISOString()
             };
+            if (mode === 'correlation') {
+                payload.method = corrMethod;
+            }
 
             let endpoint = '';
             if (mode === 'stats') endpoint = '/analyze/stats';
@@ -135,6 +310,11 @@ const LineAnalytics: React.FC = () => {
                 setStatsData(res.data);
                 setActiveTab('stats');
             } else if (mode === 'correlation') {
+                if (res.data?.error) {
+                    setError(`Correlação: ${res.data.error}. Verifique se há dados para as variáveis selecionadas no período.`);
+                    setLoading(false);
+                    return;
+                }
                 setCorrelationData(res.data);
                 setActiveTab('correlation');
             } else {
@@ -241,6 +421,54 @@ const LineAnalytics: React.FC = () => {
     const filterMatch = (text: string) => {
         if (!searchTerm) return true;
         return text.toLowerCase().includes(searchTerm.toLowerCase());
+    };
+
+    // Regressão linear simples para trend line no scatter
+    const calcLinearRegression = (xArr: number[], yArr: number[]) => {
+        const n = xArr.length;
+        if (n < 2) return null;
+        const xMean = xArr.reduce((a, b) => a + b, 0) / n;
+        const yMean = yArr.reduce((a, b) => a + b, 0) / n;
+        const ssXY = xArr.reduce((acc, xi, i) => acc + (xi - xMean) * (yArr[i] - yMean), 0);
+        const ssXX = xArr.reduce((acc, xi) => acc + (xi - xMean) ** 2, 0);
+        if (ssXX === 0) return null;
+        const slope = ssXY / ssXX;
+        const intercept = yMean - slope * xMean;
+        const xMin = Math.min(...xArr);
+        const xMax = Math.max(...xArr);
+        return { slope, intercept, xMin, xMax };
+    };
+
+    // P-value → marcador de significância
+    const pvalToStars = (p: number) => {
+        if (p < 0.001) return '***';
+        if (p < 0.01) return '**';
+        if (p < 0.05) return '*';
+        return '';
+    };
+
+    // Export CSV da matriz de correlação
+    const downloadCorrelationCSV = () => {
+        if (!correlationData?.correlation_matrix) return;
+        const { columns, values, p_values } = correlationData.correlation_matrix;
+        let csv = 'Variável,' + columns.join(',') + '\n';
+        values.forEach((row: number[], i: number) => {
+            const cells = row.map((v: number, j: number) => {
+                const p = p_values?.[i]?.[j];
+                const stars = p !== undefined ? pvalToStars(p) : '';
+                return `${v.toFixed(4)}${stars}`;
+            });
+            csv += `${columns[i]},${cells.join(',')}\n`;
+        });
+        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `correlacao_${corrMethod}_${new Date().toISOString().slice(0, 10)}.csv`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
     };
 
     const downloadCSV = () => {
@@ -531,21 +759,51 @@ const LineAnalytics: React.FC = () => {
                                         )}
                                     </CardHeader>
                                     <CardContent>
-                                        {!res.error && res.histogram && (
-                                            <Plot
-                                                data={[
-                                                    {
-                                                        x: res.histogram.bins,
-                                                        y: res.histogram.counts,
-                                                        type: 'bar',
-                                                        name: 'Distribuição'
-                                                    }
-                                                ]}
-                                                layout={{ width: undefined, height: 300, autosize: true, title: { text: 'Histograma' } }}
-                                                useResizeHandler={true}
-                                                className="w-full"
-                                            />
-                                        )}
+                                        {!res.error && res.histogram && (() => {
+                                            const bins: number[] = res.histogram.bins;
+                                            const counts: number[] = res.histogram.counts;
+                                            const mean: number = res.stats?.mean ?? 0;
+                                            const std: number = res.stats?.std ?? 1;
+                                            const n: number = res.stats?.count ?? 1;
+                                            const binWidth = bins.length > 1 ? bins[1] - bins[0] : 1;
+                                            // Gera curva normal usando os centros dos bins
+                                            const xCurve = bins.slice(0, -1).map(b => b + binWidth / 2);
+                                            const yCurve = xCurve.map(x =>
+                                                n * binWidth * (1 / (std * Math.sqrt(2 * Math.PI))) * Math.exp(-0.5 * ((x - mean) / std) ** 2)
+                                            );
+                                            return (
+                                                <Plot
+                                                    data={[
+                                                        {
+                                                            x: bins,
+                                                            y: counts,
+                                                            type: 'bar',
+                                                            name: 'Frequência',
+                                                            marker: { color: 'rgba(59,130,246,0.6)', line: { color: 'rgba(59,130,246,1)', width: 1 } }
+                                                        },
+                                                        {
+                                                            x: xCurve,
+                                                            y: yCurve,
+                                                            type: 'scatter',
+                                                            mode: 'lines',
+                                                            name: 'Dist. Normal',
+                                                            line: { color: 'red', width: 2, dash: 'dash' }
+                                                        }
+                                                    ]}
+                                                    layout={{
+                                                        height: 320,
+                                                        autosize: true,
+                                                        title: { text: 'Histograma com Distribuição Normal' },
+                                                        bargap: 0.05,
+                                                        legend: { orientation: 'h', y: -0.2 },
+                                                        xaxis: { title: { text: 'Valor' } },
+                                                        yaxis: { title: { text: 'Frequência' } }
+                                                    }}
+                                                    useResizeHandler={true}
+                                                    className="w-full"
+                                                />
+                                            );
+                                        })()}
                                     </CardContent>
                                 </Card>
                             ))}
@@ -687,21 +945,36 @@ const LineAnalytics: React.FC = () => {
                                                 <CardContent>
                                                     {chart.selectedAliases.length > 0 ? (
                                                         <Plot
-                                                            data={chart.selectedAliases.map(alias => ({
+                                                            data={chart.selectedAliases.map((alias: string, idx: number) => ({
                                                                 x: timeseriesData[alias]?.timestamps || [],
                                                                 y: timeseriesData[alias]?.values || [],
                                                                 type: 'scatter',
                                                                 mode: 'lines',
-                                                                name: alias
+                                                                name: alias.split(' - ').pop() || alias,
+                                                                hovertext: alias,
+                                                                yaxis: idx === 0 ? 'y' : `y${idx + 1}`,
                                                             }))}
                                                             layout={{
                                                                 title: undefined,
                                                                 autosize: true,
                                                                 height: 350,
-                                                                margin: { l: 40, r: 20, t: 20, b: 40 },
+                                                                margin: { l: 60, r: 60, t: 20, b: 60 },
                                                                 showlegend: true,
-                                                                legend: { orientation: 'h', y: -0.2 }
-                                                            }}
+                                                                legend: { orientation: 'h', y: -0.25 },
+                                                                xaxis: { type: 'date' },
+                                                                ...Object.fromEntries(
+                                                                    chart.selectedAliases.map((_: string, idx: number) => [
+                                                                        idx === 0 ? 'yaxis' : `yaxis${idx + 1}`,
+                                                                        {
+                                                                            title: { text: '' },
+                                                                            overlaying: idx === 0 ? undefined : 'y',
+                                                                            side: idx % 2 === 0 ? 'left' : 'right',
+                                                                            showgrid: idx === 0,
+                                                                            autorange: true,
+                                                                        }
+                                                                    ])
+                                                                )
+                                                            } as any}
                                                             useResizeHandler={true}
                                                             className="w-full"
                                                         />
@@ -746,29 +1019,62 @@ const LineAnalytics: React.FC = () => {
                         </TabsContent>
 
                         <TabsContent value="correlation">
-                            {correlationData?.correlation_matrix && (
-                                <Card>
-                                    <CardHeader><CardTitle>Matriz de Correlação</CardTitle></CardHeader>
-                                    <CardContent>
-                                        <Plot
-                                            data={[{
-                                                z: correlationData.correlation_matrix.values,
-                                                x: correlationData.correlation_matrix.columns,
-                                                y: correlationData.correlation_matrix.columns,
-                                                type: 'heatmap',
-                                                colorscale: 'RdBu',
-                                                zmin: -1, zmax: 1
-                                            }]}
-                                            layout={{ width: undefined, height: 600, title: { text: 'Heatmap de Correlação (Pearson)' }, autosize: true }}
-                                            useResizeHandler={true}
-                                            className="w-full"
-                                        />
-                                    </CardContent>
-                                </Card>
-                            )}
-                            {!correlationData && !loading && (
-                                <div className="flex items-center justify-center h-64 border-2 border-dashed rounded-lg text-gray-400">
-                                    Clique em Analisar Correlação para gerar a matriz
+                            {/* Controles da aba de correlação */}
+                            <div className="flex flex-wrap items-center gap-4 mb-4 p-3 bg-white dark:bg-slate-900 rounded-lg border shadow-sm">
+                                <div className="flex items-center gap-2">
+                                    <Label className="text-xs font-semibold text-gray-500 whitespace-nowrap">Método</Label>
+                                    <Select value={corrMethod} onValueChange={(v: string) => setCorrMethod(v as 'pearson' | 'spearman')}>
+                                        <SelectTrigger className="w-36 h-8 text-xs"><SelectValue /></SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="pearson">Pearson (linear)</SelectItem>
+                                            <SelectItem value="spearman">Spearman (rank)</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                                <div className="flex items-center gap-2 flex-1 min-w-[200px]">
+                                    <Label className="text-xs font-semibold text-gray-500 whitespace-nowrap">
+                                        Filtro mínimo: {(corrMinFilter * 100).toFixed(0)}%
+                                    </Label>
+                                    <input
+                                        type="range" min="0" max="0.99" step="0.05"
+                                        value={corrMinFilter}
+                                        onChange={(e: React.ChangeEvent<HTMLInputElement>) => setCorrMinFilter(parseFloat(e.target.value))}
+                                        className="flex-1 h-2 accent-blue-600 cursor-pointer"
+                                    />
+                                </div>
+                                {correlationData?.correlation_matrix && (
+                                    <div className="flex items-center gap-3 text-xs text-gray-500">
+                                        <span className="bg-slate-100 px-2 py-1 rounded font-mono">
+                                            n={correlationData.correlation_matrix.n_points} pts
+                                        </span>
+                                        <span className="bg-slate-100 px-2 py-1 rounded font-mono">
+                                            resample: {correlationData.correlation_matrix.resample_rule}
+                                        </span>
+                                        <span className="text-[10px] text-gray-400">
+                                            {'* p<0.05  ** p<0.01  *** p<0.001'}
+                                        </span>
+                                        <Button variant="outline" size="sm" className="h-7 text-xs gap-1" onClick={downloadCorrelationCSV}>
+                                            <Download className="h-3 w-3" /> CSV
+                                        </Button>
+                                    </div>
+                                )}
+                            </div>
+
+                            {correlationData?.correlation_matrix ? (
+                                <CorrMatrixPlot
+                                    matrix={correlationData.correlation_matrix}
+                                    corrMinFilter={corrMinFilter}
+                                    pvalToStars={pvalToStars}
+                                    timeseriesData={timeseriesData}
+                                    setScatterX={setScatterX}
+                                    setScatterY={setScatterY}
+                                    setActiveTab={setActiveTab}
+                                    handleRunAnalysis={handleRunAnalysis}
+                                />
+                            ) : !loading && (
+                                <div className="flex flex-col items-center justify-center h-64 border-2 border-dashed rounded-lg text-gray-400 gap-2">
+                                    <Grid className="h-8 w-8 opacity-40" />
+                                    <span>Configure o método acima e clique em Correlação</span>
                                 </div>
                             )}
                         </TabsContent>
@@ -804,20 +1110,10 @@ const LineAnalytics: React.FC = () => {
                                         </div>
                                     </CardHeader>
                                     <CardContent>
-                                        {scatterX && scatterY ? (
-                                            <Plot
-                                                data={[{
-                                                    x: timeseriesData[scatterX].values,
-                                                    y: timeseriesData[scatterY].values,
-                                                    mode: 'markers',
-                                                    type: 'scatter',
-                                                    marker: { color: 'blue', size: 8, opacity: 0.6 }
-                                                }]}
-                                                layout={{ title: { text: `${scatterX} vs ${scatterY}` }, xaxis: { title: { text: scatterX } }, yaxis: { title: { text: scatterY } }, autosize: true, height: 500 }}
-                                                useResizeHandler={true}
-                                                className="w-full"
-                                            />
-                                        ) : <div className="p-8 text-center text-gray-500">Selecione as variáveis para os Eixos X e Y.</div>}
+                                        {scatterX && scatterY
+                                            ? <ScatterPlot xKey={scatterX} yKey={scatterY} timeseriesData={timeseriesData} calcLinearRegression={calcLinearRegression} />
+                                            : <div className="p-8 text-center text-gray-500">Selecione as variáveis para os Eixos X e Y.</div>
+                                        }
                                     </CardContent>
                                 </Card>
                             ) : <div className="text-center p-8 text-gray-500">Clique em "Gerar Gráficos" para visualizar.</div>}

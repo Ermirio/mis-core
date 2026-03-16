@@ -28,18 +28,6 @@ DJANGO_API_URL = config('DJANGO_API_URL', default='http://localhost:8000/api')
 
 api_bp = Blueprint('api', __name__)
 
-from auth import jwt_required_cookie
-@api_bp.before_request
-def check_jwt():
-    # Rotas isentas de validação de token (healthcheck, reset do turno interno)
-    if request.path in ['/api/health', '/api/shift/reset'] or request.method == 'OPTIONS':
-        return None
-        
-    @jwt_required_cookie
-    def validate():
-        return None
-        
-    return validate()
 
 logger = logging.getLogger(__name__)
 

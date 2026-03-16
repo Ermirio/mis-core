@@ -55,7 +55,7 @@ services:
 
   # ===== DJANGO (CORE BACKEND) =====
   django:
-    image: mis-core-django:v2.0
+    image: mis-core-django:v3.0
     build:
       context: ./mis-core/backend-django
       dockerfile: Dockerfile
@@ -83,7 +83,6 @@ services:
     ports:
       - "${DJANGO_HOST_PORT}:8000"
     volumes:
-      - ./mis-core/backend-django:/app
       - ./.env:/app/.env
       - django_static:/app/staticfiles
     networks:
@@ -102,7 +101,7 @@ services:
 
   # ===== FRONTEND CORE (NGINX) =====
   frontend:
-    image: mis-core-frontend:v2.1
+    image: mis-core-frontend:v4.0
     build:
       context: ./mis-core/frontend-react
       dockerfile: Dockerfile
@@ -125,7 +124,7 @@ services:
 
   # ===== PROXY REVERSO =====
   nginx-proxy:
-    image: mis-core-proxy:v2.0
+    image: mis-core-proxy:v3.5
     build:
       context: ./proxy-reverse
       dockerfile: Dockerfile
@@ -135,6 +134,7 @@ services:
     networks:
       - mis-network
     volumes:
+      - ./proxy-reverse/nginx.conf:/etc/nginx/conf.d/default.conf:ro
       - ./proxy-reverse/html:/usr/share/nginx/html/hub
       - ./proxy-reverse/imagens:/usr/share/nginx/html/imagens
     extra_hosts:
@@ -299,7 +299,7 @@ services:
 
   # ===== CHANGEOVER FRONTEND (REACT/NGINX) =====
   mis-changeover-frontend:
-    image: mis-core-changeover-frontend:v1.0
+    image: mis-core-changeover-frontend:v3.5
     build:
       context: ./mis-change-over/Frontend
       dockerfile: dockerfile
@@ -410,7 +410,7 @@ services:
 
   # Legado Core Flask (Manter ou Remover? Mantendo por compatibilidade)
   flask:
-    image: mis-core-flask:v2.0
+    image: mis-core-flask:v4.0
     build:
       context: ./mis-core/backend-flask
       dockerfile: Dockerfile
@@ -427,8 +427,6 @@ services:
       TZ: ${TZ}
     ports:
       - "${FLASK_HOST_PORT}:5000"
-    volumes:
-      - ./mis-core/backend-flask:/app
     networks:
       - mis-network
     depends_on:
@@ -437,7 +435,7 @@ services:
     restart: unless-stopped
 
   coletor:
-    image: mis-core-coletor:v2.0
+    image: mis-core-coletor:v3.0
     build:
       context: ./mis-core/coletor
       dockerfile: Dockerfile
@@ -445,8 +443,6 @@ services:
     environment:
       DJANGO_API_URL: http://django:8000/api
       FLASK_API_URL: http://flask:5000/api
-    volumes:
-      - ./mis-core/coletor:/app
     networks:
       - mis-network
     restart: unless-stopped

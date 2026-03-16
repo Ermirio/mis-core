@@ -1,6 +1,7 @@
 from flask import Blueprint, request, jsonify, current_app
 import pandas as pd
 import numpy as np
+from scipy import stats as scipy_stats
 from datetime import datetime, timedelta
 import pytz
 import logging
@@ -8,13 +9,13 @@ import logging
 analytics_bp = Blueprint('analytics', __name__)
 logger = logging.getLogger(__name__)
 
-def query_influx_to_df(client, tags, start_time, end_time):
+def query_influx_to_df(client, tags, start_time, end_time, interval=None):
     """
     Queries InfluxDB for multiple tags and returns a single aligned DataFrame.
-    Supports both equipment-level and line-level (consolidated) metrics.
-    
-    Line-level metrics are detected by tag_influx patterns like:
-    - producao_linha_tons, descarte_linha_tons, oee_linha, etc.
+
+    interval: se fornecido (ex: '5s', '1m'), usa GROUP BY time(interval) LAST()
+              diretamente no InfluxDB — preserva oscilações reais dos sensores.
+              Se None, retorna dados raw sem agregação (para stats/correlação).
     """
     try:
         import requests as http_requests
@@ -170,8 +171,12 @@ def query_influx_to_df(client, tags, start_time, end_time):
 
             else:
 
-                # Standard equipment-level query (original logic)
-                query = f"SELECT \"{field}\" FROM \"production\" WHERE \"equipment\" = '{eq_code}' AND time >= '{start_time}' AND time <= '{end_time}'"
+                # Standard equipment-level query
+                if interval:
+                    # GROUP BY no InfluxDB: preserva resolução real dos dados
+                    query = f"SELECT LAST(\"{field}\") AS \"{field}\" FROM \"production\" WHERE \"equipment\" = '{eq_code}' AND time >= '{start_time}' AND time <= '{end_time}' GROUP BY time({interval}) fill(none)"
+                else:
+                    query = f"SELECT \"{field}\" FROM \"production\" WHERE \"equipment\" = '{eq_code}' AND time >= '{start_time}' AND time <= '{end_time}'"
                 
                 rs = client.query(query)
                 points = list(rs.get_points())
@@ -291,50 +296,113 @@ def analyze_stats():
 @analytics_bp.route('/analyze/correlation', methods=['POST'])
 def analyze_correlation():
     """
-    Calculates Correlation Matrix and Scatter Data.
-    Payload: Same as stats.
-    Requires resampling to align timestamps.
+    Calculates Correlation Matrix (Pearson or Spearman) with p-values and Scatter Data.
+    Payload:
+    {
+        "variables": [...],
+        "start_time": "ISO...",
+        "end_time": "ISO...",
+        "method": "pearson" | "spearman"  (optional, default pearson)
+    }
     """
     data = request.json
     variables = data.get('variables', [])
     start_time = data.get('start_time')
     end_time = data.get('end_time')
-    resample_rule = data.get('resample', '1min') # Default 1 min alignment
-    
+
+    # Validate correlation method — never trust user input directly
+    method = data.get('method', 'pearson')
+    if method not in ('pearson', 'spearman'):
+        method = 'pearson'
+
     influx_client = current_app.extensions.get('influx_client')
     if not influx_client:
         return jsonify({'error': 'DB not connected'}), 500
 
     df = query_influx_to_df(influx_client, variables, start_time, end_time)
-    
+
     if df.empty:
         return jsonify({'error': 'No data'}), 404
 
-    # Resample to align
-    df_resampled = df.resample(resample_rule).mean().dropna() # Use mean for downsampling
-    
-    if df_resampled.empty:
+    # --- Resample dinâmico baseado no volume de dados ---
+    # Calcula intervalo ideal para manter ~2000 pontos no resultado
+    if len(df) > 2000:
+        total_seconds = (df.index[-1] - df.index[0]).total_seconds()
+        target_points = 2000
+        interval_seconds = max(60, int(total_seconds / target_points))
+        # Arredonda para intervalos amigáveis
+        if interval_seconds < 120:
+            resample_rule = '1min'
+        elif interval_seconds < 300:
+            resample_rule = '2min'
+        elif interval_seconds < 600:
+            resample_rule = '5min'
+        elif interval_seconds < 1800:
+            resample_rule = '10min'
+        elif interval_seconds < 3600:
+            resample_rule = '30min'
+        else:
+            resample_rule = '1h'
+    else:
+        resample_rule = '1min'
+
+    df_resampled = df.resample(resample_rule).last()
+
+    if df_resampled.dropna(how='all').empty:
         return jsonify({'error': 'Insufficient overlap data'}), 400
-        
-    # Correlation Matrix
-    corr_matrix = df_resampled.corr(method='pearson').fillna(0)
-    
-    # Prepare Scatter Data (matrix of scatter plots? No, usually frontend requests pairs, or we return the full dataset for frontend to scatter?)
-    # Return full dataset (JSON optimized) so Plotly can do Scatter Matrix gl
-    # Limit rows if too huge
-    
+
+    # Remove colunas sem nenhum dado (variáveis deselectionadas ou sem dados no período)
+    df_resampled = df_resampled.dropna(axis=1, how='all')
+
+    if df_resampled.shape[1] < 2:
+        return jsonify({'error': 'Insufficient variables with data'}), 400
+
+    # --- Correlation Matrix (pairwise — cada par usa apenas as linhas onde ambos têm dados) ---
+    corr_matrix = df_resampled.corr(method=method, min_periods=3).fillna(0)
+    cols = corr_matrix.columns.tolist()
+    n = len(df_resampled)
+
+    # --- P-values matrix via scipy ---
+    p_values = pd.DataFrame(np.ones((len(cols), len(cols))), index=cols, columns=cols)
+    for i, c1 in enumerate(cols):
+        for j, c2 in enumerate(cols):
+            if i == j:
+                p_values.loc[c1, c2] = 0.0
+            elif i < j:
+                s1 = df_resampled[c1].dropna()
+                s2 = df_resampled[c2].dropna()
+                common = s1.index.intersection(s2.index)
+                if len(common) >= 3:
+                    if method == 'spearman':
+                        _, pv = scipy_stats.spearmanr(s1[common], s2[common])
+                    else:
+                        _, pv = scipy_stats.pearsonr(s1[common], s2[common])
+                    p_values.loc[c1, c2] = float(pv)
+                    p_values.loc[c2, c1] = float(pv)
+
+    # --- Scatter Data (limita a 5000 pontos preservando a sequência temporal) ---
     limit = 5000
     if len(df_resampled) > limit:
-        df_resampled = df_resampled.sample(n=limit).sort_index()
+        step = max(1, len(df_resampled) // limit)
+        df_scatter = df_resampled.iloc[::step]
+    else:
+        df_scatter = df_resampled
 
     return jsonify({
         'correlation_matrix': {
-            'columns': corr_matrix.columns.tolist(),
-            'values': corr_matrix.values.tolist() # List of lists
+            'columns': cols,
+            'values': corr_matrix.values.tolist(),
+            'p_values': p_values.values.tolist(),
+            'method': method,
+            'n_points': n,
+            'resample_rule': resample_rule
         },
         'scatter_data': {
-            'index': df_resampled.index.astype(str).tolist(),
-            'data': df_resampled.to_dict(orient='list') # { 'col1': [v1, v2...], 'col2': ... }
+            'index': df_scatter.index.astype(str).tolist(),
+            'data': {
+                col: [None if (isinstance(v, float) and np.isnan(v)) else v for v in vals]
+                for col, vals in df_scatter.to_dict(orient='list').items()
+            }
         }
     })
 
@@ -349,28 +417,37 @@ def analyze_timeseries():
     variables = data.get('variables', [])
     start_time = data.get('start_time')
     end_time = data.get('end_time')
-    # Resample is optional here. For SPC we might want raw data points if count is low, 
-    # but for visualization usually we want some alignment or limit.
-    # Let's verify data density. If huge, we resample to '1min' or '5min'.
-    # For now, let's use a dynamic resample if range > 24h.
-    
+
     influx_client = current_app.extensions.get('influx_client')
     if not influx_client:
         return jsonify({'error': 'DB not connected'}), 500
 
-    # Query without resampling first? Or query_influx_to_df handles it?
-    # query_influx_to_df fetches raw points.
-    df = query_influx_to_df(influx_client, variables, start_time, end_time)
-    
+    # Calcula intervalo ideal para o GROUP BY no InfluxDB.
+    # Meta: máximo ~10000 pontos, resolução mínima de 5s.
+    # O agrupamento acontece no banco — não no Python — para preservar oscilações reais.
+    try:
+        from datetime import datetime as _dt
+        _start = _dt.fromisoformat(start_time.replace('Z', '+00:00'))
+        _end   = _dt.fromisoformat(end_time.replace('Z', '+00:00'))
+        total_seconds = abs((_end - _start).total_seconds())
+    except Exception:
+        total_seconds = 28800  # fallback 8h
+
+    TARGET_MAX_POINTS = 10000
+    MIN_INTERVAL_S    = 5
+    ideal_s = max(MIN_INTERVAL_S, int(total_seconds / TARGET_MAX_POINTS))
+
+    if   ideal_s <= 5:   influx_interval = '5s'
+    elif ideal_s <= 10:  influx_interval = '10s'
+    elif ideal_s <= 30:  influx_interval = '30s'
+    elif ideal_s <= 60:  influx_interval = '1m'
+    elif ideal_s <= 300: influx_interval = '5m'
+    else:                influx_interval = '10m'
+
+    df = query_influx_to_df(influx_client, variables, start_time, end_time, interval=influx_interval)
+
     if df.empty:
         return jsonify({'error': 'No data'}), 404
-
-    # If rows > 5000, resample to avoid frontend lag
-    if len(df) > 5000:
-        # Determine interval suitable for the range
-        # Simple rule: limit to 2000 points?
-        rule = '1min' 
-        df = df.resample(rule).mean().dropna()
 
     results = {}
     
@@ -390,7 +467,7 @@ def analyze_timeseries():
         lcl = mean - (3 * std)
         
         results[col] = {
-            'timestamps': series.index.astype(str).tolist(),
+            'timestamps': series.index.strftime('%Y-%m-%dT%H:%M:%S').tolist(),
             'values': series.values.tolist(),
             'stats': {
                 'mean': mean,

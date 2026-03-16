@@ -1,0 +1,61 @@
+# =============================================================
+# docker-compose.server.yml  —  OVERRIDE para servidor OT offline
+#
+# OPÇÃO A — Recomendada (mais simples, sem este arquivo):
+#   docker compose up -d --no-build --pull never
+#
+#   --no-build  : ignora qualquer bloco `build:` do compose
+#   --pull never: nunca tenta fazer pull do registry
+#   Resultado   : usa EXCLUSIVAMENTE imagens locais (docker load)
+#
+# OPÇÃO B — Com este override (Docker Compose v2.24+):
+#   docker compose -f docker-compose.yml -f docker-compose.server.yml up -d
+#
+# =============================================================
+
+version: "3.8"
+
+services:
+
+  # pull_policy: never  →  falha com erro claro se imagem não encontrada,
+  # em vez de tentar pull silenciosamente.
+  # Os blocos build: do arquivo base são ignorados com --no-build.
+
+  django:
+    pull_policy: never
+
+  frontend:
+    pull_policy: never
+
+  nginx-proxy:
+    pull_policy: never
+
+  flask:
+    pull_policy: never
+
+  coletor:
+    pull_policy: never
+
+  node-red:
+    pull_policy: never
+
+  mis-ai-backend:
+    pull_policy: never
+
+  mis-ai-frontend:
+    pull_policy: never
+
+  mis-energy-backend:
+    pull_policy: never
+
+  mis-energy-frontend:
+    pull_policy: never
+
+  mis-energy-collector:
+    pull_policy: never
+
+  mis-changeover-backend:
+    pull_policy: never
+
+  mis-changeover-frontend:
+    pull_policy: never
