@@ -17,7 +17,7 @@ python manage.py migrate --noinput
 
 # Coleta de arquivos estáticos
 echo "[entrypoint] Collecting static files..."
-python manage.py collectstatic --noinput 2>/dev/null || true
+python manage.py collectstatic --noinput
 
 # Criar superuser se não existir
 echo "[entrypoint] Creating superuser if not exists..."
@@ -36,6 +36,6 @@ echo "[entrypoint] Starting gunicorn..."
 exec gunicorn digitalfactory.wsgi:application \
     --bind 0.0.0.0:8000 \
     --workers 4 \
-    --timeout 120 \
+    --timeout 300 \
     --access-logfile - \
     --error-logfile -

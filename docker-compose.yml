@@ -264,7 +264,7 @@ services:
 
   # ===== CHANGEOVER BACKEND (DJANGO) =====
   mis-changeover-backend:
-    image: mis-core-changeover-backend:v1.0
+    image: mis-core-changeover-backend:3.5
     build:
       context: ./mis-change-over/Backend
       dockerfile: Dockerfile
@@ -286,10 +286,10 @@ services:
       DJANGO_SUPERUSER_PASSWORD: ${DJANGO_SUPERUSER_PASSWORD}
       USE_X_FORWARDED_HOST: "true"
       TZ: ${TZ}
+    volumes:
+      - ./mis-change-over/Backend/entrypoint.sh:/entrypoint.sh:ro
     ports:
       - "${MIS_CHANGEOVER_BACKEND_PORT:-5006}:8000"
-    volumes:
-      - ./mis-change-over/Backend:/app
     networks:
       - mis-network
     depends_on:
