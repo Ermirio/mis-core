@@ -50,6 +50,9 @@ class Variavel(models.Model):
     TIPO_CHOICES = [
         ('REAL', 'Real'),
         ('DINT', 'Double Integer'),
+        ('UDINT', 'Unsigned Double Integer (UDINT)'),
+        ('INT', 'Integer'),
+        ('UINT', 'Unsigned Integer (UINT)'),
         ('BOOL', 'Boolean'),
         ('STRING', 'String'),
     ]

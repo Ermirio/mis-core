@@ -7,7 +7,7 @@
 // --- Constants (Environment Variables or Defaults) ---
 const BASE_URL = process.env.REACT_APP_TROCA_AUTOMATICA_BASE_URL || '/api';
 const SYNC_SKUS_PATH = process.env.REACT_APP_SYNC_SKUS_ENDPOINT || '/sincronizar-skus/';
-const HISTORICO_TROCAS_PATH = process.env.REACT_APP_HISTORICO_TROCAS_PATH || '/linha/{line}';
+const HISTORICO_TROCAS_PATH = process.env.REACT_APP_HISTORICO_TROCAS_ENDPOINT || '/linha/{line}';
 const TROCAR_SKU_PATH = process.env.REACT_APP_TROCAR_SKU_PATH || '/trocar_sku/';
 const HEALTH_CHECK_PATH = '/health/';
 

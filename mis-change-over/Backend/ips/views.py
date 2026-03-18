@@ -159,7 +159,9 @@ def escrever_plc(equipamento, variaveis_dados):
                 if tipo_django == "REAL":
                     valor_escrita = ua.DataValue(ua.Variant(float(valor_convertido), ua.VariantType.Float))
                 elif tipo_django == "DINT":
-                    valor_escrita = ua.DataValue(ua.Variant(int(valor_convertido), ua.VariantType.Int32)) # Corrigido de Double
+                    valor_escrita = ua.DataValue(ua.Variant(int(valor_convertido), ua.VariantType.Int32))
+                elif tipo_django == "UDINT":
+                    valor_escrita = ua.DataValue(ua.Variant(int(valor_convertido), ua.VariantType.UInt32))
                 elif tipo_django == "UINT":
                     valor_escrita = ua.DataValue(ua.Variant(int(valor_convertido), ua.VariantType.UInt32))
                 elif tipo_django == "INT":
@@ -240,7 +242,7 @@ def convert_value(tipo, valor):
             return float(valor)
         # --- ALTERAÇÃO AQUI ---
         # Adiciona UINT e INT à lógica de conversão para inteiro
-        elif tipo == "DINT" or tipo == "UINT" or tipo == "INT": 
+        elif tipo in ("DINT", "UDINT", "UINT", "INT"):
             print(f"Tipo {tipo}")
             return int(valor)
         # --- FIM DA ALTERAÇÃO ---

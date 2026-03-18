@@ -16,7 +16,7 @@ COPY . .
 ENV REACT_APP_SIDEBAR_API_BASE_URL=/mis-change-over-api
 ENV REACT_APP_TROCA_AUTOMATICA_BASE_URL=/mis-change-over-api
 ENV REACT_APP_DATA_API_ENDPOINT=/mis-change-over-data-api
-ENV REACT_APP_HISTORICO_TROCAS_ENDPOINT=/mis-change-over-api/linha/{line}
+ENV REACT_APP_HISTORICO_TROCAS_ENDPOINT=/linha/{line}/
 
 # Gera o build de produção do React
 RUN npm run build

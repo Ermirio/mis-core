@@ -128,13 +128,21 @@ USE_I18N = True
 USE_TZ = True
 
 # === Arquivos estáticos ===
-STATIC_URL = '/static/'
+STATIC_URL = '/mis-change-over-static/'
 STATICFILES_DIRS = []
 STATIC_ROOT = BASE_DIR / "staticfiles"
 STATICFILES_FINDERS = [
     'django.contrib.staticfiles.finders.FileSystemFinder',
     'django.contrib.staticfiles.finders.AppDirectoriesFinder',
 ]
+STORAGES = {
+    "default": {
+        "BACKEND": "django.core.files.storage.FileSystemStorage",
+    },
+    "staticfiles": {
+        "BACKEND": "whitenoise.storage.CompressedStaticFilesStorage",
+    },
+}
 
 # === CORS ===
 CORS_ALLOW_ALL_ORIGINS = DEBUG

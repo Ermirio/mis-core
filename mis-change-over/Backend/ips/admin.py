@@ -1,13 +1,36 @@
 # admin.py
 
-from django.contrib import admin
+from django.contrib import admin, messages
 from django import forms
+from django.db import transaction
+from django.shortcuts import get_object_or_404, redirect
+from django.template.response import TemplateResponse
+from django.urls import path, reverse
 from .models import (
-    ConexaoOPCUAServidor, Variavel, Linha, Equipamento, Impressora, InkjetPrinter, 
+    ConexaoOPCUAServidor, Variavel, Linha, Equipamento, Impressora, InkjetPrinter,
     Produto, Formato, FormatoVariavel, ConfiguracaoEquipamentoVariavel,
     DiscrepanciaSKU, TrocaSKU, LogEquipamentoTroca, StatusLinha,
-    AssociacaoProdutoLinha  # Importar o novo modelo
+    AssociacaoProdutoLinha
 )
+
+
+# ==================== FORM: DUPLICAR FORMATO ====================
+
+class DuplicarFormatoForm(forms.Form):
+    novo_nome = forms.CharField(
+        max_length=100,
+        label="Novo nome do formato",
+        help_text="Deve ser único. Ex.: '800g-L21 — Cópia'",
+        widget=forms.TextInput(attrs={'size': '60'}),
+    )
+
+    def clean_novo_nome(self):
+        nome = self.cleaned_data['novo_nome'].strip()
+        if not nome:
+            raise forms.ValidationError("O nome não pode ser vazio.")
+        if Formato.objects.filter(nome=nome).exists():
+            raise forms.ValidationError(f"Já existe um formato com o nome \"{nome}\".")
+        return nome
 
 # ==================== ADMIN PARA MODELOS BASE ====================
 
@@ -177,7 +200,7 @@ class FormatoAdmin(admin.ModelAdmin):
     search_fields = ('nome', 'descricao')
     list_filter = ('criado_em', 'atualizado_em')
     readonly_fields = ('criado_por', 'atualizado_por', 'criado_em', 'atualizado_em')
-    inlines = [FormatoVariavelInline]  # Adiciona o inline de variáveis
+    inlines = [FormatoVariavelInline]
     fieldsets = (
         ('Informações do Formato', {
             'fields': ('nome', 'descricao')
@@ -188,22 +211,88 @@ class FormatoAdmin(admin.ModelAdmin):
         }),
     )
 
+    # ---- métodos de exibição ----
+
     def get_variaveis_count(self, obj):
-        """Retorna a quantidade de variáveis do formato"""
         return obj.variaveis.count()
     get_variaveis_count.short_description = "Qtd. Variáveis"
 
     def get_produtos_count(self, obj):
-        """Retorna a quantidade de produtos que usam este formato"""
         return AssociacaoProdutoLinha.objects.filter(formato=obj).count()
     get_produtos_count.short_description = "Qtd. Produtos"
 
     def save_model(self, request, obj, form, change):
-        """Salva o modelo com informações de auditoria"""
         if not change:
             obj.criado_por = request.user
         obj.atualizado_por = request.user
         super().save_model(request, obj, form, change)
+
+    # ---- duplicar formato ----
+
+    def get_urls(self):
+        custom_urls = [
+            path(
+                '<int:pk>/duplicar/',
+                self.admin_site.admin_view(self.duplicar_view),
+                name='ips_formato_duplicar',
+            ),
+        ]
+        return custom_urls + super().get_urls()
+
+    def change_view(self, request, object_id, form_url='', extra_context=None):
+        extra_context = extra_context or {}
+        extra_context['duplicar_url'] = reverse('admin:ips_formato_duplicar', args=[object_id])
+        return super().change_view(request, object_id, form_url, extra_context)
+
+    def duplicar_view(self, request, pk):
+        formato_original = get_object_or_404(Formato, pk=pk)
+
+        if not self.has_add_permission(request):
+            self.message_user(request, "Sem permissão para criar formatos.", messages.ERROR)
+            return redirect(reverse('admin:ips_formato_change', args=[pk]))
+
+        if request.method == 'POST':
+            form = DuplicarFormatoForm(request.POST)
+            if form.is_valid():
+                novo_nome = form.cleaned_data['novo_nome']
+                with transaction.atomic():
+                    novo_formato = Formato.objects.create(
+                        nome=novo_nome,
+                        descricao=formato_original.descricao,
+                        criado_por=request.user,
+                        atualizado_por=request.user,
+                    )
+                    FormatoVariavel.objects.bulk_create([
+                        FormatoVariavel(
+                            formato=novo_formato,
+                            variavel=fv.variavel,
+                            valor=fv.valor,
+                            criado_por=request.user,
+                            atualizado_por=request.user,
+                        )
+                        for fv in formato_original.variaveis.select_related('variavel').all()
+                    ])
+                n = novo_formato.variaveis.count()
+                self.message_user(
+                    request,
+                    f'Formato "{novo_formato.nome}" criado com {n} variável(is) copiada(s).',
+                    messages.SUCCESS,
+                )
+                return redirect(reverse('admin:ips_formato_change', args=[novo_formato.pk]))
+        else:
+            form = DuplicarFormatoForm(
+                initial={'novo_nome': f'{formato_original.nome} — Cópia'}
+            )
+
+        context = {
+            **self.admin_site.each_context(request),
+            'title': f'Duplicar Formato: {formato_original.nome}',
+            'form': form,
+            'formato': formato_original,
+            'opts': self.model._meta,
+            'has_view_permission': self.has_view_permission(request),
+        }
+        return TemplateResponse(request, 'admin/ips/formato/duplicar.html', context)
 
 @admin.register(FormatoVariavel)
 class FormatoVariavelAdmin(admin.ModelAdmin):
