@@ -10,7 +10,8 @@ from .models import (
     ConexaoOPCUAServidor, Variavel, Linha, Equipamento, Impressora, InkjetPrinter,
     Produto, Formato, FormatoVariavel, ConfiguracaoEquipamentoVariavel,
     DiscrepanciaSKU, TrocaSKU, LogEquipamentoTroca, StatusLinha,
-    AssociacaoProdutoLinha
+    AssociacaoProdutoLinha,
+    Controle, IntertravamentoLinha, HistoricoIntertravamento
 )
 
 
@@ -568,6 +569,45 @@ class StatusLinhaAdmin(admin.ModelAdmin):
         """Retorna a taxa de equipamentos ativos"""
         return f"{obj.get_taxa_equipamentos_ativos()}%"
     get_taxa_equipamentos_ativos.short_description = "Taxa Equipamentos Ativos"
+
+# ==================== ADMIN PARA INTERTRAVAMENTOS ====================
+
+class HistoricoInline(admin.TabularInline):
+    model = HistoricoIntertravamento
+    readonly_fields = ['campo', 'valor_anterior', 'valor_novo', 
+                       'origem', 'usuario', 'observacao', 'timestamp']
+    extra = 0
+    can_delete = False
+    ordering = ['-timestamp']
+    max_num = 20  # mostra últimas 20 entradas
+
+class IntertravamentoLinhaInline(admin.TabularInline):
+    model = IntertravamentoLinha
+    extra = 1
+    fields = ['linha', 'conexao_opcua', 'node_id_tag', 
+              'estado_opc', 'habilitado_software', 'modificado_por']
+    readonly_fields = ['estado_opc', 'modificado_por']
+
+@admin.register(Controle)
+class ControleAdmin(admin.ModelAdmin):
+    inlines = [IntertravamentoLinhaInline]
+    list_display = ['nome', 'area', 'critico', 'ativo']
+    list_filter = ['area', 'critico', 'ativo']
+    search_fields = ['nome', 'descricao']
+
+@admin.register(IntertravamentoLinha)
+class IntertravamentoLinhaAdmin(admin.ModelAdmin):
+    inlines = [HistoricoInline]
+    list_display  = ['controle', 'linha', 'get_bypass_detectado', 'estado_opc', 'habilitado_software', 'modificado_por', 'modificado_em']
+    list_filter   = ['controle__area', 'linha', 'estado_opc', 'habilitado_software']
+    search_fields = ['controle__nome', 'linha__nome', 'node_id_tag']
+    readonly_fields = ['estado_opc', 'modificado_por']
+
+    def get_bypass_detectado(self, obj):
+        return obj.bypass_detectado
+    get_bypass_detectado.boolean = True
+    get_bypass_detectado.short_description = "Bypass Detectado?"
+
 
 # Configurações adicionais do admin
 admin.site.site_header = "Administração do Sistema de Produção"

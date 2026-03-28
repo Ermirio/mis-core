@@ -546,3 +546,112 @@ class StatusLinha(models.Model):
         verbose_name = "Status da Linha"
         verbose_name_plural = "Status das Linhas"
 
+
+# ==================== INTERTRAVAMENTOS ====================
+
+class AreaControle(models.TextChoices):
+    QUALIDADE  = 'QUALIDADE',  'Qualidade'
+    MANUTENCAO = 'MANUTENCAO', 'Manutenção'
+    PROCESSOS  = 'PROCESSOS',  'Processos'
+
+
+class Controle(models.Model):
+    """
+    Catálogo de controles/intertravamentos.
+    Define o QUE é o controle, independente de onde está instalado.
+    """
+    nome     = models.CharField(max_length=100)          # "Verificação Código de Barras"
+    area     = models.CharField(max_length=20, choices=AreaControle.choices)
+    descricao = models.TextField(blank=True)
+    critico  = models.BooleanField(default=False)         # True = alerta crítico quando offline
+    ativo    = models.BooleanField(default=True)
+    criado_em = models.DateTimeField(auto_now_add=True)
+    atualizado_em = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Controle'
+        verbose_name_plural = 'Controles'
+        ordering = ['area', 'nome']
+        unique_together = [['nome', 'area']]
+
+    def __str__(self):
+        return f'[{self.area}] {self.nome}'
+
+
+class IntertravamentoLinha(models.Model):
+    """
+    Instância de um Controle em uma linha específica.
+    Define ONDE está instalado, como ler via OPC e o estado atual.
+    """
+    controle     = models.ForeignKey(Controle, on_delete=models.CASCADE, related_name='instancias')
+    linha        = models.ForeignKey(Linha, on_delete=models.CASCADE, related_name='intertravamentos')
+    conexao_opcua = models.ForeignKey(
+        ConexaoOPCUAServidor,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        help_text='Conexão OPC do equipamento onde a tag é lida'
+    )
+    node_id_tag  = models.CharField(
+        max_length=200, blank=True,
+        help_text='Endereço OPC UA único da tag de intertravamento (Leitura/Escrita)'
+    )
+
+    # ── Estado em tempo real ──
+    estado_opc       = models.BooleanField(default=True)   # lido automaticamente do CLP
+    habilitado_software = models.BooleanField(default=True)  # alterado por usuário na tela
+
+    # ── Auditoria ──
+    modificado_por = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True
+    )
+    modificado_em = models.DateTimeField(auto_now=True)
+    criado_em     = models.DateTimeField(auto_now_add=True)
+
+    @property
+    def bypass_detectado(self):
+        """
+        Calcula se o usuário no software quer HABILITADO (True), 
+        mas no CLP a tag física está DESABILITADO (False).
+        Isso caracteriza desabilitação local por um técnico (bypass).
+        """
+        return self.habilitado_software and not self.estado_opc
+
+    class Meta:
+        verbose_name = 'Intertravamento de Linha'
+        verbose_name_plural = 'Intertravamentos de Linha'
+        ordering = ['linha', 'controle__area', 'controle__nome']
+        unique_together = [['controle', 'linha']]
+
+    def __str__(self):
+        return f'{self.controle.nome} — {self.linha.nome}'
+
+
+class HistoricoIntertravamento(models.Model):
+    """
+    Registro imutável de toda mudança de estado de um intertravamento.
+    """
+    ORIGEM_CHOICES = [
+        ('OPC',    'Leitura OPC UA'),
+        ('MANUAL', 'Alteração Manual'),
+        ('SISTEMA','Sistema'),
+    ]
+
+    intertravamento = models.ForeignKey(
+        IntertravamentoLinha,
+        on_delete=models.CASCADE,
+        related_name='historico'
+    )
+    campo          = models.CharField(max_length=20)   # 'estado_opc' | 'habilitado_software'
+    valor_anterior = models.BooleanField()
+    valor_novo     = models.BooleanField()
+    origem         = models.CharField(max_length=10, choices=ORIGEM_CHOICES)
+    usuario        = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True
+    )
+    observacao     = models.TextField(blank=True)
+    timestamp      = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Histórico de Intertravamento'
+        verbose_name_plural = 'Histórico de Intertravamentos'
+        ordering = ['-timestamp']

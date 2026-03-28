@@ -34,6 +34,7 @@ import ProcessVariablesContent from './components/ProcessVariablesContent';
 import ReportsContent from './components/ReportsContent';
 import MachineChat from './components/MachineChat';
 import HistoricoDataContent from './components/HistoricoDataContent'; // Componente de histórico de dados
+import IntertravamentosContent from './components/IntertravamentosContent'; // Módulo de Intertravamentos
 
 // Estilos
 import './styles/App.css';
@@ -147,6 +148,10 @@ const AppContent = () => {
               <Route
                 path="/historico-data"
                 element={<HistoricoDataContent selectedLine={selectedLine} />}
+              />
+              <Route
+                path="/intertravamentos"
+                element={<IntertravamentosContent selectedLine={selectedLine} />}
               />
 
               {/* Rota de fallback */}

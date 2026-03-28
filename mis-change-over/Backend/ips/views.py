@@ -1350,3 +1350,190 @@ class OPCCoordinatorConfigView(APIView):
         }
         return Response(response_data, status=status.HTTP_200_OK)
 
+from rest_framework import viewsets
+from .models import Controle, IntertravamentoLinha, HistoricoIntertravamento
+from .serializers import (
+    ControleSerializer, IntertravamentoLinhaSerializer,
+    HistoricoIntertravamentoSerializer
+)
+from .permissions import PodeAlterarIntertravamento
+
+# ==================== VIEWS PARA INTERTRAVAMENTOS ====================
+
+class ControleViewSet(viewsets.ModelViewSet):
+    queryset = Controle.objects.all()
+    serializer_class = ControleSerializer
+    permission_classes = [PodeAlterarIntertravamento]
+    
+    def get_queryset(self):
+        qs = super().get_queryset()
+        area = self.request.query_params.get('area')
+        if area:
+            qs = qs.filter(area=area)
+        return qs
+
+from rest_framework.decorators import action
+
+class IntertravamentoLinhaViewSet(viewsets.ModelViewSet):
+    queryset = IntertravamentoLinha.objects.select_related(
+        'controle', 'linha', 'conexao_opcua', 'modificado_por'
+    ).all()
+    serializer_class = IntertravamentoLinhaSerializer
+    permission_classes = [PodeAlterarIntertravamento]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        linha = self.request.query_params.get('linha')
+        area  = self.request.query_params.get('area')
+        if linha:
+            qs = qs.filter(Q(linha__nome=linha))
+        if area:
+            qs = qs.filter(controle__area=area)
+        return qs
+
+    @action(detail=False, methods=['get'], url_path='por-linha/(?P<linha_nome>[^/.]+)')
+    def por_linha(self, request, linha_nome=None):
+        """
+        Retorna intertravamentos de uma linha agrupados por área.
+        """
+        qs = self.get_queryset().filter(Q(linha__nome=linha_nome))
+        
+        resultado = {}
+        from .models import Controle
+        areas = [choice[0] for choice in Controle._meta.get_field('area').choices]
+        for area in areas:
+            itens = qs.filter(controle__area=area)
+            resultado[area] = IntertravamentoLinhaSerializer(itens, many=True).data
+        
+        return Response(resultado)
+
+    @action(detail=False, methods=['get'], url_path='status-summary')
+    def status_summary(self, request):
+        """
+        Retorna contadores agregados para o badge.
+        """
+        linha = request.query_params.get('linha')
+        qs = self.get_queryset()
+        if linha:
+            qs = qs.filter(Q(linha__nome=linha))
+        
+        total = qs.count()
+        opc_offline = qs.filter(estado_opc=False).count()
+        desabilitados = qs.filter(habilitado_software=False).count()
+        
+        # Bypass detectado (Software ON, PLC OFF)
+        bypassed_offline = qs.filter(habilitado_software=True, estado_opc=False).count()
+        
+        criticos_offline = qs.filter(
+            Q(estado_opc=False) | Q(habilitado_software=False),
+            controle__critico=True
+        ).count()
+        
+        return Response({
+            'total': total,
+            'habilitados': qs.filter(habilitado_software=True, estado_opc=True).count(),
+            'desabilitados_manual': desabilitados,
+            'opc_offline': opc_offline,
+            'criticos_offline': criticos_offline,
+            'bypassed_offline': bypassed_offline
+        })
+
+    @action(detail=True, methods=['post'])
+    def toggle(self, request, pk=None):
+        """
+        Liga/desliga o habilitado_software do intertravamento.
+        """
+        intertravamento = self.get_object()
+        
+        novo_estado = request.data.get('habilitado')
+        observacao  = request.data.get('observacao', '').strip()
+        
+        if novo_estado is None:
+            return Response({'detail': 'Campo "habilitado" obrigatório.'}, status=400)
+        if not observacao:
+            return Response({'detail': 'Campo "observacao" obrigatório para alterações manuais.'}, status=400)
+        
+        valor_anterior = intertravamento.habilitado_software
+        novo_estado_bool = bool(novo_estado)
+        
+        if valor_anterior == novo_estado_bool:
+            return Response({'detail': 'Estado já é o solicitado.'}, status=400)
+        
+        intertravamento.habilitado_software = novo_estado_bool
+        intertravamento.modificado_por = request.user
+        intertravamento.save(update_fields=['habilitado_software', 'modificado_por', 'modificado_em'])
+
+        # ── Escrever no CLP via OPC UA ─────────────────────────────────────
+        opc_obs = ''
+        if intertravamento.conexao_opcua and intertravamento.node_id_tag:
+            from .services import write_opc_node
+            ok, err = write_opc_node(
+                intertravamento.conexao_opcua.url,
+                intertravamento.node_id_tag,
+                novo_estado_bool
+            )
+            if ok:
+                # Confirmar estado_opc com o valor escrito
+                intertravamento.estado_opc = novo_estado_bool
+                intertravamento.save(update_fields=['estado_opc'])
+                opc_obs = ' | OPC: escrito com sucesso'
+            else:
+                opc_obs = f' | OPC: falha na escrita ({err})'
+                import logging
+                logging.getLogger(__name__).warning(
+                    f"Falha ao escrever OPC {intertravamento.node_id_tag}: {err}"
+                )
+
+        HistoricoIntertravamento.objects.create(
+            intertravamento=intertravamento,
+            campo='habilitado_software',
+            valor_anterior=valor_anterior,
+            valor_novo=novo_estado_bool,
+            origem='MANUAL',
+            usuario=request.user,
+            observacao=observacao + opc_obs
+        )
+
+        return Response(IntertravamentoLinhaSerializer(intertravamento).data)
+
+    @action(detail=True, methods=['post'])
+    def resync(self, request, pk=None):
+        """
+        Reenvia o valor atual de habilitado_software ao CLP via OPC UA.
+        Usado para sincronizar quando o CLP foi alterado localmente (bypass).
+        """
+        intertravamento = self.get_object()
+
+        if not intertravamento.conexao_opcua or not intertravamento.node_id_tag:
+            return Response({'detail': 'Sem conexão OPC configurada para este intertravamento.'}, status=400)
+
+        from .services import write_opc_node
+        valor_atual = intertravamento.habilitado_software
+        ok, err = write_opc_node(
+            intertravamento.conexao_opcua.url,
+            intertravamento.node_id_tag,
+            valor_atual
+        )
+
+        if ok:
+            intertravamento.estado_opc = valor_atual
+            intertravamento.save(update_fields=['estado_opc'])
+            HistoricoIntertravamento.objects.create(
+                intertravamento=intertravamento,
+                campo='estado_opc',
+                valor_anterior=not valor_atual,
+                valor_novo=valor_atual,
+                origem='MANUAL',
+                usuario=request.user,
+                observacao='Sincronização forçada: reenvio do estado habilitado_software ao CLP.'
+            )
+            return Response(IntertravamentoLinhaSerializer(intertravamento).data)
+        else:
+            return Response({'detail': f'Falha ao escrever no CLP: {err}'}, status=502)
+
+    @action(detail=True, methods=['get'])
+    def historico(self, request, pk=None):
+        intertravamento = self.get_object()
+        historico = intertravamento.historico.all()[:50]
+        return Response(HistoricoIntertravamentoSerializer(historico, many=True).data)
+

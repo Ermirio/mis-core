@@ -4,7 +4,8 @@ from rest_framework_simplejwt.views import TokenObtainPairView
 from .models import (
     Produto, Linha, Equipamento, Variavel, Formato, FormatoVariavel, 
     ConfiguracaoEquipamentoVariavel, InkjetPrinter, Impressora, 
-    ConexaoOPCUAServidor, DiscrepanciaSKU, TrocaSKU, LogEquipamentoTroca
+    ConexaoOPCUAServidor, DiscrepanciaSKU, TrocaSKU, LogEquipamentoTroca,
+    Controle, IntertravamentoLinha, HistoricoIntertravamento
 )
 
 # ==================== SERIALIZERS BASE ====================
@@ -437,3 +438,50 @@ class MyTokenObtainPairSerializer(TokenObtainPairSerializer):
 # Crie uma View customizada que usa esse Serializer
 class MyTokenObtainPairView(TokenObtainPairView):
     serializer_class = MyTokenObtainPairSerializer
+
+# ==================== SERIALIZERS PARA INTERTRAVAMENTOS ====================
+
+class ControleSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Controle
+        fields = ['id', 'nome', 'area', 'descricao', 'critico', 'ativo']
+
+
+class IntertravamentoLinhaSerializer(serializers.ModelSerializer):
+    controle_nome = serializers.CharField(source='controle.nome', read_only=True)
+    controle_area = serializers.CharField(source='controle.area', read_only=True)
+    controle_critico = serializers.BooleanField(source='controle.critico', read_only=True)
+    linha_nome    = serializers.CharField(source='linha.nome', read_only=True)
+    bypass_detectado = serializers.BooleanField(read_only=True)
+    modificado_por_nome = serializers.SerializerMethodField()
+
+    def get_modificado_por_nome(self, obj):
+        return obj.modificado_por.username if obj.modificado_por else None
+
+    class Meta:
+        model = IntertravamentoLinha
+        fields = [
+            'id', 'controle', 'controle_nome', 'controle_area', 'controle_critico',
+            'linha', 'linha_nome',
+            'conexao_opcua', 'node_id_tag',
+            'estado_opc', 'habilitado_software', 'bypass_detectado',
+            'modificado_por_nome', 'modificado_em'
+        ]
+        read_only_fields = ['estado_opc', 'modificado_por', 'modificado_em', 'bypass_detectado']
+
+
+class HistoricoIntertravamentoSerializer(serializers.ModelSerializer):
+    usuario_nome = serializers.CharField(source='usuario.username', read_only=True, default=None)
+
+    class Meta:
+        model = HistoricoIntertravamento
+        fields = ['id', 'campo', 'valor_anterior', 'valor_novo',
+                  'origem', 'usuario_nome', 'observacao', 'timestamp']
+
+
+class IntertravamentoSummarySerializer(serializers.Serializer):
+    total = serializers.IntegerField()
+    habilitados = serializers.IntegerField()
+    desabilitados = serializers.IntegerField()
+    opc_offline = serializers.IntegerField()
+    criticos_offline = serializers.IntegerField()

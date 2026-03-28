@@ -101,7 +101,7 @@ services:
 
   # ===== FRONTEND CORE (NGINX) =====
   frontend:
-    image: mis-core-frontend:v4.0
+    image: mis-core-frontend:5.0
     build:
       context: ./mis-core/frontend-react
       dockerfile: Dockerfile
@@ -133,6 +133,7 @@ services:
       - "${PROXY_HOST_PORT}:80"
     networks:
       - mis-network
+      - shared-network
     volumes:
       - ./proxy-reverse/nginx.conf:/etc/nginx/conf.d/default.conf:ro
       - ./proxy-reverse/html:/usr/share/nginx/html/hub
@@ -410,7 +411,7 @@ services:
 
   # Legado Core Flask (Manter ou Remover? Mantendo por compatibilidade)
   flask:
-    image: mis-core-flask:v4.0
+    image: mis-core-flask:5.0
     build:
       context: ./mis-core/backend-flask
       dockerfile: Dockerfile
@@ -502,3 +503,5 @@ networks:
   mis-network:
     name: mis-hub-network
     driver: bridge
+  shared-network:
+    external: true

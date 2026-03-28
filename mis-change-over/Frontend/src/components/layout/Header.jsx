@@ -20,7 +20,8 @@ import {
   FaHistory,
   FaChartLine,
   FaFileAlt,
-  FaRobot
+  FaRobot,
+  FaShieldAlt
 } from 'react-icons/fa';
 import './Header.css';
 
@@ -58,6 +59,13 @@ const Header = () => {
           <NavLink to="/process-variables" className="nav-link-custom new-feature">
             <FaChartLine className="nav-icon" />
             <span>Variáveis de Processo</span>
+          </NavLink>
+        </Nav.Item>
+
+        <Nav.Item>
+          <NavLink to="/intertravamentos" className="nav-link-custom new-feature">
+            <FaShieldAlt className="nav-icon" />
+            <span>Intertravamentos</span>
           </NavLink>
         </Nav.Item>
         

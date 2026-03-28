@@ -97,7 +97,7 @@ services:
 
   # ===== FRONTEND CORE (NGINX) =====
   frontend:
-    image: mis-core-frontend:v2.1
+    image: mis-core-frontend:5.0
     container_name: mis-core-frontend
     environment:
       TZ: ${TZ}
@@ -367,7 +367,7 @@ services:
   # ==========================================
 
   flask:
-    image: mis-core-flask:v2.0
+    image: mis-core-flask:5.0
     container_name: mis-core-flask
     environment:
       INFLUXDB_HOST: influxdb

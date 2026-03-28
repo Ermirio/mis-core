@@ -1,6 +1,7 @@
 from django.urls import path, include
 from . import views
-from ips.views import OPCCoordinatorConfigView
+from ips.views import OPCCoordinatorConfigView, ControleViewSet, IntertravamentoLinhaViewSet
+from rest_framework.routers import DefaultRouter
 from rest_framework_simplejwt.views import (
  TokenRefreshView,
 )
@@ -11,7 +12,12 @@ from ips.serializers import MyTokenObtainPairView
 
 # ==================== URLs PRINCIPAIS ====================
 
+router = DefaultRouter()
+router.register(r'api/controles', ControleViewSet, basename='controle')
+router.register(r'api/intertravamentos', IntertravamentoLinhaViewSet, basename='intertravamento')
+
 urlpatterns = [
+    path('', include(router.urls)),
     # Rotas de Autenticação JWT
     path('api/token/', MyTokenObtainPairView.as_view(), name='token_obtain_pair'),
     path('api/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
