@@ -112,7 +112,7 @@ services:
 
   # ===== PROXY REVERSO =====
   nginx-proxy:
-    image: mis-core-proxy:v2.0
+    image: mis-core-proxy:v7.0
     container_name: mis-core-proxy
     ports:
       - "${PROXY_HOST_PORT}:80"
@@ -234,7 +234,7 @@ services:
 
   # ===== CHANGEOVER BACKEND (DJANGO) =====
   mis-changeover-backend:
-    image: mis-core-changeover-backend:v1.0
+    image: mis-core-changeover-backend:v7.0
     container_name: mis-changeover-backend
     environment:
       DJANGO_SETTINGS_MODULE: digitalfactory.settings
@@ -267,7 +267,7 @@ services:
 
   # ===== CHANGEOVER FRONTEND (REACT/NGINX) =====
   mis-changeover-frontend:
-    image: mis-core-changeover-frontend:v1.0
+    image: mis-core-changeover-frontend:v7.0
     container_name: mis-changeover-frontend
     ports:
       - "${MIS_CHANGEOVER_FRONTEND_PORT:-3009}:80"
