@@ -1,0 +1,52 @@
+version: '3.8'
+
+services:
+  # === Frontend (React) ===
+  frontend:
+    build: ./Frontend
+    image: mis-frontend:7.0
+    container_name: mis_frontend_dev
+    ports:
+      - "3005:80"
+    depends_on:
+      - backend
+    networks:
+      - app_network
+      - shared-network
+
+  # === Backend (Django) ===
+  backend:
+    build: ./Backend
+    image: mis-backend:7.0
+    container_name: mis_backend_dev
+    ports:
+      - "8000:8000"
+    environment:
+      DJANGO_SETTINGS_MODULE: digitalfactory.settings
+      DJANGO_SECRET_KEY: sua_chave_secreta_aqui
+      DJANGO_DEBUG: "True"
+      DJANGO_ALLOWED_HOSTS: "*"
+      DJANGO_CSRF_TRUSTED_ORIGINS: "http://localhost:3000,http://127.0.0.1:3000,http://192.168.15.13:3000,http://192.168.30.71:3000,http://192.168.30.78:3000,http://10.168.79:3000"
+
+      DB_ENGINE: django.db.backends.mysql
+      DB_NAME: ips
+      DB_USER: root
+      DB_PASSWORD: root123
+      DB_HOST: host.docker.internal
+      DB_PORT: 3308
+
+      USE_X_FORWARDED_HOST: "true"
+      SECURE_PROXY_SSL_HEADER: "HTTP_X_FORWARDED_PROTO,https"
+
+    command: python manage.py runserver 0.0.0.0:8000
+    networks:
+      - app_network
+      - shared-network
+
+volumes: {}
+
+networks:
+  app_network:
+    driver: bridge
+  shared-network:
+    external: true

@@ -1,0 +1,50 @@
+{
+  "_type": "export",
+  "__export_format": 4,
+  "__export_date": "2026-03-21",
+  "__export_source": "mis-changeover",
+  "resources": [
+    {
+      "_id": "wrk_aplipack",
+      "_type": "workspace",
+      "name": "Aplipack - WsOffLineCom",
+      "description": "Requisições SOAP para o web service Aplipack"
+    },
+    {
+      "_id": "req_getlistaop_all",
+      "_type": "request",
+      "parentId": "wrk_aplipack",
+      "name": "GetListaOP - Todas as linhas",
+      "method": "POST",
+      "url": "http://192.168.30.42:82/WsOffLineCom.asmx?op=GetListaOP",
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "text/xml"
+        }
+      ],
+      "body": {
+        "mimeType": "application/xml",
+        "text": "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<soap12:Envelope xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\"\n                 xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\"\n                 xmlns:soap12=\"http://www.w3.org/2003/05/soap-envelope\">\n  <soap12:Body>\n    <GetListaOP xmlns=\"http://www.aplipack.com.br/\">\n      <UserSoftware>test</UserSoftware>\n      <PasswordSoftware>1234</PasswordSoftware>\n      <LinhaProducao></LinhaProducao>\n    </GetListaOP>\n  </soap12:Body>\n</soap12:Envelope>"
+      }
+    },
+    {
+      "_id": "req_getlistaop_linha",
+      "_type": "request",
+      "parentId": "wrk_aplipack",
+      "name": "GetListaOP - Linha específica (L1IP)",
+      "method": "POST",
+      "url": "http://192.168.30.42:82/WsOffLineCom.asmx?op=GetListaOP",
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "text/xml"
+        }
+      ],
+      "body": {
+        "mimeType": "application/xml",
+        "text": "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<soap12:Envelope xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\"\n                 xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\"\n                 xmlns:soap12=\"http://www.w3.org/2003/05/soap-envelope\">\n  <soap12:Body>\n    <GetListaOP xmlns=\"http://www.aplipack.com.br/\">\n      <UserSoftware>test</UserSoftware>\n      <PasswordSoftware>1234</PasswordSoftware>\n      <LinhaProducao>L1IP</LinhaProducao>\n    </GetListaOP>\n  </soap12:Body>\n</soap12:Envelope>"
+      }
+    }
+  ]
+}

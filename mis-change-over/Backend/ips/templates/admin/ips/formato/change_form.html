@@ -1,0 +1,13 @@
+{% extends "admin/change_form.html" %}
+{% load i18n %}
+
+{% block object-tools-items %}
+  {% if duplicar_url %}
+    <li>
+      <a href="{{ duplicar_url }}" class="button">
+        &#10697; Duplicar Formato
+      </a>
+    </li>
+  {% endif %}
+  {{ block.super }}
+{% endblock %}

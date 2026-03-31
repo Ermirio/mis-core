@@ -255,6 +255,10 @@ def analyze_stats():
         median = float(series.median())
         count = int(series.count())
         
+        n_unique = int(series.nunique())
+        # Heurística: se tem poucos valores únicos (<= 15) em relação ao total, consideramos discreta
+        is_discrete = bool(n_unique <= 15 or n_unique < (count * 0.05))
+        
         # Cp/Cpk
         lsl = var.get('lsl')
         usl = var.get('usl')
@@ -269,11 +273,24 @@ def analyze_stats():
             cpk = min(cpu, cpl)
             
         # Histogram
-        # Numpy histogram
-        hist, bin_edges = np.histogram(series, bins='auto') # or 20 bins? 'auto' is good
+        if is_discrete:
+            # Para variáveis discretas, contamos as ocorrências de cada valor
+            val_counts = series.value_counts().sort_index()
+            histogram_data = {
+                'counts': val_counts.tolist(),
+                'bins': val_counts.index.tolist()
+            }
+        else:
+            hist, bin_edges = np.histogram(series, bins='auto')
+            histogram_data = {
+                'counts': hist.tolist(),
+                'bins': bin_edges.tolist()
+            }
         
         results.append({
             'variable': col_name,
+            'n_unique': n_unique,
+            'is_discrete': is_discrete,
             'stats': {
                 'mean': mean,
                 'std': std,
@@ -284,10 +301,7 @@ def analyze_stats():
                 'cp': cp,
                 'cpk': cpk
             },
-            'histogram': {
-                'counts': hist.tolist(),
-                'bins': bin_edges.tolist() # Edges has length N+1
-            },
+            'histogram': histogram_data,
             'raw_data_head': series.head(100).tolist() # Optional preview
         })
 

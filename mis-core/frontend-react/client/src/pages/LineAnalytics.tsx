@@ -24,6 +24,22 @@ import { ptBR } from "date-fns/locale";
 
 import { DJANGO_API_URL as DJANGO_API, FLASK_API_URL as FLASK_API } from '@/config/api';
 
+const ESTADO_VALUE_MAPPING: Record<number, { label: string; color: string }> = {
+    1:   { label: 'Produzindo',              color: '#16a34a' },
+    2:   { label: 'Aguard. Anterior',        color: '#06b6d4' },
+    3:   { label: 'Seguinte Bloqueado',      color: '#f97316' },
+    4:   { label: 'Falha / Parado',          color: '#dc2626' },
+    5:   { label: 'Setup / Troca SKU',       color: '#a855f7' },
+    6:   { label: 'Teste de Projeto',        color: '#0ea5e9' },
+    7:   { label: 'Aguard. Manutenção',      color: '#78716c' },
+    8:   { label: 'Em Manutenção',           color: '#991b1b' },
+    9:   { label: 'Falta de Material',       color: '#d97706' },
+    11:  { label: 'Partindo',               color: '#84cc16' },
+    12:  { label: 'Aguard. Condições',      color: '#64748b' },
+    13:  { label: 'Parando',               color: '#f59e0b' },
+    999: { label: 'Offline',               color: '#6b7280' },
+};
+
 interface Tag {
     id: number;
     nome: string; // Sensor name
@@ -34,6 +50,9 @@ interface Tag {
     lsl?: number;
     usl?: number;
     nominal?: number;
+    isStandard?: boolean;
+    isDiscrete?: boolean;           // ← NOVO: flag para variável discreta/categórica
+    valueMapping?: Record<number, { label: string; color: string }>;  // ← NOVO: mapeamento valor→legenda
 }
 
 interface Equipamento {
@@ -382,7 +401,8 @@ const LineAnalytics: React.FC = () => {
             { nome: 'Velocidade', tag: 'velocidade_atual' },
             { nome: 'OEE', tag: 'oee' },
             { nome: 'Produção', tag: 'contagem_saida' },
-            { nome: 'Descarte', tag: 'descarte' }
+            { nome: 'Descarte', tag: 'descarte' },
+            { nome: 'Estado', tag: 'estado', isDiscrete: true, valueMapping: ESTADO_VALUE_MAPPING }
         ];
 
         standardMetrics.forEach(m => {
@@ -393,7 +413,9 @@ const LineAnalytics: React.FC = () => {
                 equipamento_nome: eq.nome,
                 equipamento_code: eq.codigo,
                 linha_nome: linha.nome,
-                isStandard: true
+                isStandard: true,
+                isDiscrete: (m as any).isDiscrete ?? false,
+                valueMapping: (m as any).valueMapping ?? undefined,
             });
         });
 
@@ -527,7 +549,14 @@ const LineAnalytics: React.FC = () => {
 
     // Carregar perfil salvo
     const loadProfile = (config: any) => {
-        setSelectedTags(config.selectedTags || []);
+        setSelectedTags(
+            (config.selectedTags || []).map((t: any) => {
+                if (t.tag_influxdb === 'estado' && !t.isDiscrete) {
+                    return { ...t, isDiscrete: true, valueMapping: ESTADO_VALUE_MAPPING };
+                }
+                return t;
+            })
+        );
         setHoursBack(config.hoursBack || '8');
         setActiveTab(config.activeTab || 'stats');
         setTrendCharts(config.trendCharts || []);
@@ -733,7 +762,12 @@ const LineAnalytics: React.FC = () => {
 
                         {/* TABS CONTENT (Reused) */}
                         <TabsContent value="stats" className="space-y-4">
-                            {statsData.map((res, idx) => (
+                            {statsData.map((res, idx) => {
+                                const tagMatch = selectedTags.find(t => `${t.linha_nome} - ${t.equipamento_nome} - ${t.nome}` === res.variable);
+                                const isDiscrete = tagMatch?.isDiscrete || res.is_discrete;
+                                const mapping = tagMatch?.valueMapping;
+
+                                return (
                                 <Card key={idx}>
                                     <CardHeader>
                                         <CardTitle>{res.variable}</CardTitle>
@@ -743,17 +777,27 @@ const LineAnalytics: React.FC = () => {
                                             </div>
                                         ) : (
                                             <div className="flex gap-4 text-sm text-gray-500">
-                                                <span>Média: {res.stats?.mean?.toFixed(2) ?? 'N/A'}</span>
-                                                <span>Std: {res.stats?.std?.toFixed(2) ?? 'N/A'}</span>
-                                                {res.stats?.cpk !== undefined && res.stats.cpk !== null && (
-                                                    <span className={res.stats.cpk < 1.33 ? 'text-red-500 font-bold' : 'text-green-600 font-bold'}>
-                                                        Cpk: {res.stats.cpk.toFixed(2)}
-                                                    </span>
+                                                {!isDiscrete && (
+                                                    <>
+                                                        <span>Média: {res.stats?.mean?.toFixed(2) ?? 'N/A'}</span>
+                                                        <span>Std: {res.stats?.std?.toFixed(2) ?? 'N/A'}</span>
+                                                        {res.stats?.cpk !== undefined && res.stats.cpk !== null && (
+                                                            <span className={res.stats.cpk < 1.33 ? 'text-red-500 font-bold' : 'text-green-600 font-bold'}>
+                                                                Cpk: {res.stats.cpk.toFixed(2)}
+                                                            </span>
+                                                        )}
+                                                        {res.stats?.cp !== undefined && res.stats.cp !== null && (
+                                                            <span className={res.stats.cp < 1.33 ? 'text-red-500 font-bold ml-4' : 'text-green-600 font-bold ml-4'}>
+                                                                Cp: {res.stats.cp.toFixed(2)}
+                                                            </span>
+                                                        )}
+                                                    </>
                                                 )}
-                                                {res.stats?.cp !== undefined && res.stats.cp !== null && (
-                                                    <span className={res.stats.cp < 1.33 ? 'text-red-500 font-bold ml-4' : 'text-green-600 font-bold ml-4'}>
-                                                        Cp: {res.stats.cp.toFixed(2)}
-                                                    </span>
+                                                {isDiscrete && (
+                                                    <>
+                                                        <span>Valores Únicos: {res.n_unique || res.stats?.count || 'N/A'}</span>
+                                                        <span>Contagem Total: {res.stats?.count || 'N/A'}</span>
+                                                    </>
                                                 )}
                                             </div>
                                         )}
@@ -762,13 +806,42 @@ const LineAnalytics: React.FC = () => {
                                         {!res.error && res.histogram && (() => {
                                             const bins: number[] = res.histogram.bins;
                                             const counts: number[] = res.histogram.counts;
+
+                                            if (isDiscrete) {
+                                                const colors = bins.map(val => mapping?.[val]?.color || '#3b82f6');
+                                                const labels = bins.map(val => mapping?.[val]?.label || `Valor: ${val}`);
+
+                                                return (
+                                                    <Plot
+                                                        data={[{
+                                                            x: labels,
+                                                            y: counts,
+                                                            type: 'bar',
+                                                            name: 'Frequência',
+                                                            marker: { color: colors, line: { color: colors, width: 1 } }
+                                                        }]}
+                                                        layout={{
+                                                            height: 320,
+                                                            autosize: true,
+                                                            title: { text: 'Distribuição de Frequência' },
+                                                            bargap: 0.2,
+                                                            xaxis: { title: { text: 'Estado/Categoria' } },
+                                                            yaxis: { title: { text: 'Contagem' } }
+                                                        }}
+                                                        useResizeHandler={true}
+                                                        className="w-full"
+                                                    />
+                                                );
+                                            }
+
+                                            // Continuous format
                                             const mean: number = res.stats?.mean ?? 0;
                                             const std: number = res.stats?.std ?? 1;
                                             const n: number = res.stats?.count ?? 1;
                                             const binWidth = bins.length > 1 ? bins[1] - bins[0] : 1;
                                             // Gera curva normal usando os centros dos bins
                                             const xCurve = bins.slice(0, -1).map(b => b + binWidth / 2);
-                                            const yCurve = xCurve.map(x =>
+                                            const yCurve = xCurve.map((x: number) =>
                                                 n * binWidth * (1 / (std * Math.sqrt(2 * Math.PI))) * Math.exp(-0.5 * ((x - mean) / std) ** 2)
                                             );
                                             return (
@@ -806,7 +879,7 @@ const LineAnalytics: React.FC = () => {
                                         })()}
                                     </CardContent>
                                 </Card>
-                            ))}
+                            )})}
                             {statsData.length === 0 && !loading && (
                                 <div className="flex items-center justify-center h-64 border-2 border-dashed rounded-lg text-gray-400">
                                     Selecione variáveis na árvore e clique em Analisar
@@ -945,15 +1018,20 @@ const LineAnalytics: React.FC = () => {
                                                 <CardContent>
                                                     {chart.selectedAliases.length > 0 ? (
                                                         <Plot
-                                                            data={chart.selectedAliases.map((alias: string, idx: number) => ({
-                                                                x: timeseriesData[alias]?.timestamps || [],
-                                                                y: timeseriesData[alias]?.values || [],
-                                                                type: 'scatter',
-                                                                mode: 'lines',
-                                                                name: alias.split(' - ').pop() || alias,
-                                                                hovertext: alias,
-                                                                yaxis: idx === 0 ? 'y' : `y${idx + 1}`,
-                                                            }))}
+                                                            data={chart.selectedAliases.map((alias: string, idx: number) => {
+                                                                const tagMatch = selectedTags.find(t => `${t.linha_nome} - ${t.equipamento_nome} - ${t.nome}` === alias);
+                                                                const isDiscrete = tagMatch?.isDiscrete;
+                                                                return {
+                                                                    x: timeseriesData[alias]?.timestamps || [],
+                                                                    y: timeseriesData[alias]?.values || [],
+                                                                    type: 'scatter',
+                                                                    mode: 'lines',
+                                                                    line: { shape: isDiscrete ? 'hv' : 'linear' },
+                                                                    name: alias.split(' - ').pop() || alias,
+                                                                    hovertext: alias,
+                                                                    yaxis: idx === 0 ? 'y' : `y${idx + 1}`,
+                                                                };
+                                                            })}
                                                             layout={{
                                                                 title: undefined,
                                                                 autosize: true,
@@ -963,16 +1041,25 @@ const LineAnalytics: React.FC = () => {
                                                                 legend: { orientation: 'h', y: -0.25 },
                                                                 xaxis: { type: 'date' },
                                                                 ...Object.fromEntries(
-                                                                    chart.selectedAliases.map((_: string, idx: number) => [
-                                                                        idx === 0 ? 'yaxis' : `yaxis${idx + 1}`,
-                                                                        {
-                                                                            title: { text: '' },
-                                                                            overlaying: idx === 0 ? undefined : 'y',
-                                                                            side: idx % 2 === 0 ? 'left' : 'right',
-                                                                            showgrid: idx === 0,
-                                                                            autorange: true,
-                                                                        }
-                                                                    ])
+                                                                    chart.selectedAliases.map((alias: string, idx: number) => {
+                                                                        const tagMatch = selectedTags.find(t => `${t.linha_nome} - ${t.equipamento_nome} - ${t.nome}` === alias);
+                                                                        const isDiscrete = tagMatch?.isDiscrete;
+                                                                        const mapping = tagMatch?.valueMapping;
+                                                                        return [
+                                                                            idx === 0 ? 'yaxis' : `yaxis${idx + 1}`,
+                                                                            {
+                                                                                title: { text: '' },
+                                                                                overlaying: idx === 0 ? undefined : 'y',
+                                                                                side: idx % 2 === 0 ? 'left' : 'right',
+                                                                                showgrid: idx === 0,
+                                                                                autorange: true,
+                                                                                ...(isDiscrete && mapping ? {
+                                                                                    tickvals: Object.keys(mapping).map(Number),
+                                                                                    ticktext: Object.keys(mapping).map(k => mapping[Number(k)].label),
+                                                                                } : {})
+                                                                            }
+                                                                        ];
+                                                                    })
                                                                 )
                                                             } as any}
                                                             useResizeHandler={true}
@@ -996,29 +1083,78 @@ const LineAnalytics: React.FC = () => {
                         <TabsContent value="spc">
                             {timeseriesData ? (
                                 <div className="space-y-4">
-                                    {Object.entries(timeseriesData).map(([alias, d]: [string, any]) => (
-                                        <Card key={alias}>
-                                            <CardHeader><CardTitle>SPC - {alias}</CardTitle></CardHeader>
-                                            <CardContent>
-                                                <Plot
-                                                    data={[
-                                                        { x: d.timestamps, y: d.values, type: 'scatter', mode: 'lines+markers', name: 'Valor Real' },
-                                                        { x: d.timestamps, y: Array(d.timestamps.length).fill(d.stats?.mean ?? 0), type: 'scatter', mode: 'lines', name: 'Média', line: { color: 'green', dash: 'dash' } },
-                                                        { x: d.timestamps, y: Array(d.timestamps.length).fill(d.stats?.ucl ?? 0), type: 'scatter', mode: 'lines', name: 'UCL (+3σ)', line: { color: 'red' } },
-                                                        { x: d.timestamps, y: Array(d.timestamps.length).fill(d.stats?.lcl ?? 0), type: 'scatter', mode: 'lines', name: 'LCL (-3σ)', line: { color: 'red' } },
-                                                    ]}
-                                                    layout={{ title: { text: `Carta de Controle: ${alias}` }, autosize: true, height: 400 }}
-                                                    useResizeHandler={true}
-                                                    className="w-full"
-                                                />
-                                            </CardContent>
-                                        </Card>
-                                    ))}
+                                    {Object.entries(timeseriesData).map(([alias, d]: [string, any]) => {
+                                        const tagMatch = selectedTags.find(t => `${t.linha_nome} - ${t.equipamento_nome} - ${t.nome}` === alias);
+                                        const isDiscrete = tagMatch?.isDiscrete;
+                                        const mapping = tagMatch?.valueMapping;
+
+                                        if (isDiscrete) {
+                                            const counts: Record<number, number> = {};
+                                            d.values.forEach((v: number) => { counts[v] = (counts[v] || 0) + 1; });
+                                            const x = Object.keys(counts).map(Number);
+                                            const y = Object.values(counts);
+                                            const colors = x.map(val => mapping?.[val]?.color || '#94a3b8');
+                                            const labels = x.map(val => mapping?.[val]?.label || `Val: ${val}`);
+
+                                            return (
+                                                <Card key={alias}>
+                                                    <CardHeader><CardTitle>Frequência de Estados - {alias}</CardTitle></CardHeader>
+                                                    <CardContent>
+                                                        <Plot
+                                                            data={[{
+                                                                x: labels,
+                                                                y: y,
+                                                                type: 'bar',
+                                                                marker: { color: colors }
+                                                            }]}
+                                                            layout={{ title: { text: `Distribuição de Tempo: ${alias}` }, autosize: true, height: 400, yaxis: { title: 'Registros (Freq)' } }}
+                                                            useResizeHandler={true}
+                                                            className="w-full"
+                                                        />
+                                                    </CardContent>
+                                                </Card>
+                                            );
+                                        }
+
+                                        return (
+                                            <Card key={alias}>
+                                                <CardHeader><CardTitle>SPC - {alias}</CardTitle></CardHeader>
+                                                <CardContent>
+                                                    <Plot
+                                                        data={[
+                                                            { x: d.timestamps, y: d.values, type: 'scatter', mode: 'lines+markers', name: 'Valor Real' },
+                                                            { x: d.timestamps, y: Array(d.timestamps.length).fill(d.stats?.mean ?? 0), type: 'scatter', mode: 'lines', name: 'Média', line: { color: 'green', dash: 'dash' } },
+                                                            { x: d.timestamps, y: Array(d.timestamps.length).fill(d.stats?.ucl ?? 0), type: 'scatter', mode: 'lines', name: 'UCL (+3σ)', line: { color: 'red' } },
+                                                            { x: d.timestamps, y: Array(d.timestamps.length).fill(d.stats?.lcl ?? 0), type: 'scatter', mode: 'lines', name: 'LCL (-3σ)', line: { color: 'red' } },
+                                                        ]}
+                                                        layout={{ title: { text: `Carta de Controle: ${alias}` }, autosize: true, height: 400 }}
+                                                        useResizeHandler={true}
+                                                        className="w-full"
+                                                    />
+                                                </CardContent>
+                                            </Card>
+                                        );
+                                    })}
                                 </div>
                             ) : <div className="text-center p-8 text-gray-500">Clique em "Gerar Gráficos" para visualizar.</div>}
                         </TabsContent>
 
                         <TabsContent value="correlation">
+                            {/* Aviso de Spearman caso haja vars discretas */}
+                            {selectedTags.some(t => t.isDiscrete) && (
+                                <div className="mb-4 p-3 bg-blue-50 text-blue-700 dark:bg-blue-900/20 dark:text-blue-300 rounded border border-blue-200 dark:border-blue-800 text-sm flex items-start gap-2">
+                                    <Info className="h-5 w-5 shrink-0 mt-0.5" />
+                                    <div>
+                                        <strong>Variáveis Discretas Detectadas.</strong> Como existem variáveis categóricas/ordinais selecionadas (ex: Estado), é recomendado utilizar o método de correlação de <strong>Spearman</strong> ao invés de Pearson.
+                                        {corrMethod === 'pearson' && (
+                                            <Button variant="link" size="sm" className="p-0 h-auto ml-2 text-blue-700 dark:text-blue-300 underline font-semibold" onClick={() => setCorrMethod('spearman')}>
+                                                Mudar para Spearman
+                                            </Button>
+                                        )}
+                                    </div>
+                                </div>
+                            )}
+                            
                             {/* Controles da aba de correlação */}
                             <div className="flex flex-wrap items-center gap-4 mb-4 p-3 bg-white dark:bg-slate-900 rounded-lg border shadow-sm">
                                 <div className="flex items-center gap-2">
