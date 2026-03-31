@@ -234,7 +234,7 @@ services:
 
   # ===== CHANGEOVER BACKEND (DJANGO) =====
   mis-changeover-backend:
-    image: mis-core-changeover-backend:v7.0
+    image: mis-core-changeover-backend:v7.1
     container_name: mis-changeover-backend
     environment:
       DJANGO_SETTINGS_MODULE: digitalfactory.settings
