@@ -294,10 +294,10 @@ def escrever_impressora_3m(linha, codigo_sku, sku, descricao, dun14, validade, d
         print(f"[{impressora.nome}] Conectando via SMB em {impressora.ip}")
 
         try:
-            conn = SMBConnection('', '', 'mis-server', impressora.nome, use_ntlm_v2=True, is_direct_tcp=False)
-            connected = conn.connect(impressora.ip, 139, timeout=10)
+            conn = SMBConnection('', '', 'mis-server', impressora.nome, use_ntlm_v2=True, is_direct_tcp=True)
+            connected = conn.connect(impressora.ip, 445, timeout=10)
             if not connected:
-                erros.append(f"[{impressora.nome}] Falha ao conectar via SMB em {impressora.ip}:139")
+                erros.append(f"[{impressora.nome}] Falha ao conectar via SMB em {impressora.ip}:445")
                 continue
 
             conteudo_bytes = io.BytesIO(conteudo.encode('utf-8'))
