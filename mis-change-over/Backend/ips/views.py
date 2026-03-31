@@ -267,8 +267,11 @@ def escrever_impressora_3m(linha, codigo_sku, sku, descricao, dun14, validade, d
         erros.append(f"[{linha.nome}] Nenhuma impressora 3M associada à linha.")
         return erros
 
-    dia_atual = datetime.now().strftime("%d%m%Y")
-    hora_atual = datetime.now().strftime("%H%M%S")
+    import pytz
+    tz_br = pytz.timezone('America/Sao_Paulo')
+    agora = datetime.now(tz_br)
+    dia_atual = agora.strftime("%d%m%Y")
+    hora_atual = agora.strftime("%H%M%S")
     dia = dia or dia_atual
     hora = hora or hora_atual
 
@@ -283,7 +286,7 @@ def escrever_impressora_3m(linha, codigo_sku, sku, descricao, dun14, validade, d
     dia_param = dia or ""
     hora_param = hora or ""
 
-    conteudo = f";;{codigo_sku};{descricao_param};{sku_param};{dun14_param};{validade_param};{dia_atual};{hora_atual};;\r\n"
+    conteudo = f";;{descricao_param};{sku_param};{dun14_param};{validade_param};{dia_atual};{hora_atual};;\r\n"
     conteudo02 = f";;;;;;;{dia_atual};{hora_atual};;\r\n"
     print(f"Conteúdo a ser escrito: {conteudo}")
 
