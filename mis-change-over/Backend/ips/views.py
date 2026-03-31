@@ -2,6 +2,8 @@ import time
 import json
 import requests
 import socket
+import io
+from smb.SMBConnection import SMBConnection
 import xml.etree.ElementTree as ET
 from datetime import datetime
 from django.shortcuts import render, redirect, get_object_or_404
@@ -289,26 +291,28 @@ def escrever_impressora_3m(linha, codigo_sku, sku, descricao, dun14, validade, d
         if not impressora.ip:
             erros.append(f"[{impressora.nome}] IP não configurado.")
             continue
-        caminho_arquivo = f"\\\\{impressora.ip}\\nandflash\\AUTO\\ARQ_auto.txt"
-        print(f"[{impressora.nome}] Caminho do arquivo: {caminho_arquivo}")
+        print(f"[{impressora.nome}] Conectando via SMB em {impressora.ip}")
 
         try:
-            with open(caminho_arquivo, 'w', encoding='utf-8') as arquivo:
-                arquivo.write(conteudo)
-            print(f"[{impressora.nome}] Arquivo escrito com sucesso em {caminho_arquivo}: {conteudo}")
+            conn = SMBConnection('', '', 'mis-server', impressora.nome, use_ntlm_v2=True, is_direct_tcp=False)
+            connected = conn.connect(impressora.ip, 139, timeout=10)
+            if not connected:
+                erros.append(f"[{impressora.nome}] Falha ao conectar via SMB em {impressora.ip}:139")
+                continue
+
+            conteudo_bytes = io.BytesIO(conteudo.encode('utf-8'))
+            conn.storeFile('nandflash', '/AUTO/ARQ_auto.txt', conteudo_bytes)
+            print(f"[{impressora.nome}] Arquivo escrito com sucesso via SMB: {conteudo}")
+
             time.sleep(5)
-            with open(caminho_arquivo, 'w', encoding='utf-8') as arquivo:
-                arquivo.write(conteudo02)
-            print(f"[{impressora.nome}] SKU: {sku_param} definido como atual. Arquivo: {caminho_arquivo}: {conteudo02}")
-        except PermissionError as e:
-            erros.append(f"[{impressora.nome}] Erro de permissão ao escrever no arquivo {caminho_arquivo}: {str(e)}")
-        except FileNotFoundError as e:
-            erros.append(f"[{impressora.nome}] Caminho do arquivo {caminho_arquivo} não encontrado: {str(e)}")
-        except OSError as e:
-            erros.append(f"[{impressora.nome}] Erro de sistema ao acessar {caminho_arquivo}: {str(e)}")
-            print(f"[{impressora.nome}] Detalhes do erro: {traceback.format_exc()}")
+
+            conteudo02_bytes = io.BytesIO(conteudo02.encode('utf-8'))
+            conn.storeFile('nandflash', '/AUTO/ARQ_auto.txt', conteudo02_bytes)
+            print(f"[{impressora.nome}] SKU: {sku_param} definido como atual via SMB: {conteudo02}")
+
+            conn.close()
         except Exception as e:
-            erros.append(f"[{impressora.nome}] Erro inesperado ao escrever no arquivo {caminho_arquivo}: {str(e)}")
+            erros.append(f"[{impressora.nome}] Erro ao escrever via SMB em {impressora.ip}: {str(e)}")
             print(f"[{impressora.nome}] Detalhes do erro: {traceback.format_exc()}")
 
     return erros
