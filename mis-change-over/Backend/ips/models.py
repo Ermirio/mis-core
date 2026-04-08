@@ -114,14 +114,21 @@ class Formato(models.Model):
     """Formato de produto (ex: '800g-L21', 'Caixa de 6 Latas-L01')"""
     nome = models.CharField(max_length=100, unique=True, help_text="Nome do formato. Use um sufixo como '-L21' para indicar a linha.")
     descricao = models.TextField(blank=True)
-    
+    # Andretti: peso em gramas para identificação via OPC (ex: 4000 = 4kg)
+    gramas = models.PositiveIntegerField(
+        null=True, blank=True,
+        help_text="Peso em gramas do formato (ex: 4000 = 4kg). Usado pelo módulo Andretti para identificar o formato via OPC UA."
+    )
+
     # Campos de auditoria
     criado_por = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='formatos_criados')
     atualizado_por = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='formatos_atualizados')
     criado_em = models.DateTimeField(auto_now_add=True)
     atualizado_em = models.DateTimeField(auto_now=True)
-    
+
     def __str__(self):
+        if self.gramas:
+            return f"{self.nome} ({self.gramas}g)"
         return self.nome
     
     class Meta:
@@ -180,7 +187,24 @@ class Linha(models.Model):
     nome = models.CharField(max_length=10, unique=True)
     descricao = models.CharField(max_length=200, blank=True)
     ativa = models.BooleanField(default=True)
-    
+
+    # Andretti: tag OPC para leitura de velocidade da linha
+    tag_velocidade_opc = models.CharField(
+        max_length=300, blank=True, null=True,
+        help_text=(
+            "Tag OPC UA para leitura de velocidade. "
+            "Ex: ns=2;s=Program:MainProgram.VelocidadeAtual"
+        )
+    )
+    # Andretti: tag OPC para leitura do formato atual em gramas (ex: 4000 = 4kg)
+    tag_formato_opc = models.CharField(
+        max_length=300, blank=True, null=True,
+        help_text=(
+            "Tag OPC UA que retorna o formato atual em gramas. "
+            "Ex: ns=2;s=Program:MainProgram.FormatoAtualGramas — valor esperado: 4000 para 4kg."
+        )
+    )
+
     # Relacionamentos many-to-many atualizados
     equipamentos = models.ManyToManyField(Equipamento, blank=True, related_name='linhas')
     impressoras_3m = models.ManyToManyField(Impressora, blank=True, related_name='linhas')
@@ -379,6 +403,7 @@ class TrocaSKU(models.Model):
     usuario = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
     ip_origem = models.GenericIPAddressField(null=True, blank=True)
     tempo_execucao = models.FloatField(null=True, blank=True)  # em segundos
+    primeira_rodada = models.BooleanField(default=False, help_text='Indica se este foi o primeiro registro bem-sucedido deste SKU nesta linha.')
     
     def __str__(self):
         return f"Troca {self.linha} - {self.sku_trocado} ({self.data_hora.strftime('%Y-%m-%d %H:%M:%S')})"

@@ -5,10 +5,12 @@ import socket
 import io
 from smb.SMBConnection import SMBConnection
 import xml.etree.ElementTree as ET
-from datetime import datetime
+from datetime import datetime, timedelta
 from django.shortcuts import render, redirect, get_object_or_404
 from django.http import HttpResponse, JsonResponse
-from django.db.models import Q
+from django.db.models import Q, Count, Avg
+from django.db.models.functions import TruncMonth
+from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
@@ -462,7 +464,11 @@ def linha_detalhes(request, linha_nome):
         page_number = 1
         per_page = 10
 
-    all_trocas = TrocaSKU.objects.filter(linha=linha_nome).select_related('usuario').order_by('-data_hora')
+    sku_filter = request.GET.get('sku', '').strip()
+    qs_trocas = TrocaSKU.objects.filter(linha=linha_nome)
+    if sku_filter:
+        qs_trocas = qs_trocas.filter(sku_trocado__icontains=sku_filter)
+    all_trocas = qs_trocas.select_related('usuario').order_by('-data_hora')
     paginator = Paginator(all_trocas, per_page)
 
     try:
@@ -526,7 +532,103 @@ def linha_detalhes(request, linha_nome):
 
     return JsonResponse(data)
 
-# ... (resto do seu arquivo views.py) ...
+
+def analytics_trocas(request, linha_nome):
+    """
+    Retorna analytics agregados de trocas para uma linha.
+    GET /api/analytics/trocas/<linha_nome>/
+    """
+    get_object_or_404(Linha, nome=linha_nome)
+
+    agora = timezone.now()
+    hoje_inicio = agora.replace(hour=0, minute=0, second=0, microsecond=0)
+    semana_inicio = agora - timedelta(days=7)
+    mes_inicio = agora.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    ano_inicio = agora.replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
+    doze_meses_atras = agora - timedelta(days=365)
+
+    qs_base = TrocaSKU.objects.filter(linha=linha_nome)
+
+    def _resumo(qs):
+        total = qs.count()
+        sucessos = qs.filter(sucesso=True).count()
+        taxa = round(sucessos / total * 100, 1) if total > 0 else 0
+        return {"trocas": total, "taxa_sucesso": taxa}
+
+    tempo_medio_resultado = (
+        qs_base.filter(tempo_execucao__isnull=False)
+        .aggregate(media=Avg('tempo_execucao'))
+    )
+    tempo_medio = round(tempo_medio_resultado['media'] or 0, 1)
+
+    resumo = {
+        "hoje": _resumo(qs_base.filter(data_hora__gte=hoje_inicio)),
+        "semana": _resumo(qs_base.filter(data_hora__gte=semana_inicio)),
+        "mes_atual": _resumo(qs_base.filter(data_hora__gte=mes_inicio)),
+        "ano": _resumo(qs_base.filter(data_hora__gte=ano_inicio)),
+        "total_geral": _resumo(qs_base),
+        "tempo_medio_seg": tempo_medio,
+    }
+
+    # Tendência mensal — últimos 12 meses
+    por_mes = (
+        qs_base
+        .filter(data_hora__gte=doze_meses_atras)
+        .annotate(mes=TruncMonth('data_hora'))
+        .values('mes')
+        .annotate(
+            trocas=Count('id'),
+            sucessos=Count('id', filter=Q(sucesso=True)),
+            tempo_medio=Avg('tempo_execucao'),
+        )
+        .order_by('mes')
+    )
+
+    tendencia_mensal = []
+    for entry in por_mes:
+        total = entry['trocas']
+        taxa = round(entry['sucessos'] / total * 100, 1) if total > 0 else 0
+        tendencia_mensal.append({
+            "mes": entry['mes'].strftime('%b/%y'),
+            "mes_iso": entry['mes'].strftime('%Y-%m'),
+            "trocas": total,
+            "taxa_sucesso": taxa,
+            "tempo_medio": round(entry['tempo_medio'] or 0, 1),
+        })
+
+    # Top 10 SKUs mais trocados no último ano
+    top_skus_qs = (
+        qs_base
+        .filter(data_hora__gte=doze_meses_atras)
+        .values('sku_trocado', 'descricao')
+        .annotate(
+            trocas=Count('id'),
+            sucessos=Count('id', filter=Q(sucesso=True)),
+            tempo_medio=Avg('tempo_execucao'),
+        )
+        .order_by('-trocas')[:10]
+    )
+
+    top_skus = []
+    for entry in top_skus_qs:
+        total = entry['trocas']
+        taxa = round(entry['sucessos'] / total * 100, 1) if total > 0 else 0
+        top_skus.append({
+            "sku": entry['sku_trocado'],
+            "descricao": entry['descricao'],
+            "trocas": total,
+            "taxa_sucesso": taxa,
+            "tempo_medio": round(entry['tempo_medio'] or 0, 1),
+        })
+
+    return JsonResponse({
+        "linha": linha_nome,
+        "resumo": resumo,
+        "tendencia_mensal": tendencia_mensal,
+        "top_skus": top_skus,
+    })
+
+
 def buscar_skus(request):
     """
     Busca SKUs com base em critérios de pesquisa.
@@ -689,6 +791,13 @@ def trocar_sku(request):
                 "erros": [f"Por favor, associe um formato para este produto na linha '{linha_val}' na área de administração."]
             }, status=400)
 
+        # Verifica se este SKU já rodou com sucesso nesta linha antes desta troca
+        ja_rodou_antes = TrocaSKU.objects.filter(
+            linha=linha_val,
+            sku_trocado=sku,
+            sucesso=True
+        ).exists()
+
         # Criar a instância de TrocaSKU
         troca = TrocaSKU(
             linha=linha_val,
@@ -699,7 +808,8 @@ def trocar_sku(request):
             numero_op=data.get("numero_op", ""),
             usuario=usuario_logado, # Salva o objeto User
             # usuario_id=usuario_id, # Campo obsoleto, não mais usado
-            ip_origem=ip_origem
+            ip_origem=ip_origem,
+            primeira_rodada=not ja_rodou_antes,
         )
         troca.save()
 
@@ -898,7 +1008,8 @@ def trocar_sku(request):
             "sucesso": not bool(general_equipment_errors),
             "resumo_execucao": troca.get_resumo_execucao(),
             "erros": general_equipment_errors,
-            "troca_id": troca.id
+            "troca_id": troca.id,
+            "primeira_rodada": troca.primeira_rodada,
         }
 
         file_logger.log_response(status.HTTP_200_OK if not general_equipment_errors else status.HTTP_400_BAD_REQUEST, json.dumps(response_data))
@@ -1121,7 +1232,15 @@ def get_skus_aplipack(request):
         data = json.loads(lista_json)
         ordens_producao = data.get("OrdensProducao", [])
         print(f"[GET_SKUS_APLIPACK] Total de ordens encontradas: {len(ordens_producao)}")
-        
+
+        # Busca em uma única query todos os SKUs que já rodaram com sucesso nesta linha
+        skus_que_ja_rodaram = set(
+            TrocaSKU.objects.filter(linha=linha_nome, sucesso=True)
+            .values_list('sku_trocado', flat=True)
+            .distinct()
+        )
+        print(f"[GET_SKUS_APLIPACK] SKUs com histórico nesta linha: {len(skus_que_ja_rodaram)}")
+
         for i, ordem in enumerate(ordens_producao):
             codigo_sku = ordem.get("CodigoSKU")
             descricao_sku = ordem.get("DescricaoSKU")
@@ -1134,9 +1253,9 @@ def get_skus_aplipack(request):
             validade = ordem.get("Validade")
             quantidade_por_pallet = ordem.get("QuantidadePorPallet")
             status_op = ordem.get("StatusOP")
-            
+
             print(f"[GET_SKUS_APLIPACK] Processando ordem {i+1}/{len(ordens_producao)}: {codigo_sku}")
-            
+
             skus_aplipack.append({
                 "codigo_sku": codigo_sku,
                 "descricao_sku": descricao_sku,
@@ -1147,6 +1266,7 @@ def get_skus_aplipack(request):
                 "validade": validade,
                 "quantidade_por_pallet": quantidade_por_pallet,
                 "status_op": status_op,
+                "ja_rodou_nesta_linha": codigo_sku in skus_que_ja_rodaram,
             })
     except json.JSONDecodeError as e:
         print(f"[GET_SKUS_APLIPACK] ERRO JSON: {str(e)}")
@@ -1541,6 +1661,19 @@ class IntertravamentoLinhaViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['get'])
     def historico(self, request, pk=None):
         intertravamento = self.get_object()
-        historico = intertravamento.historico.all()[:50]
-        return Response(HistoricoIntertravamentoSerializer(historico, many=True).data)
+        qs = intertravamento.historico.order_by('-timestamp')
+        per_page = min(int(request.query_params.get('per_page', 20)), 100)
+        page     = max(int(request.query_params.get('page', 1)), 1)
+        total    = qs.count()
+        total_pages = max((total + per_page - 1) // per_page, 1)
+        page    = min(page, total_pages)
+        offset  = (page - 1) * per_page
+        items   = qs[offset: offset + per_page]
+        return Response({
+            'results':     HistoricoIntertravamentoSerializer(items, many=True).data,
+            'page':        page,
+            'per_page':    per_page,
+            'total_pages': total_pages,
+            'total':       total,
+        })
 

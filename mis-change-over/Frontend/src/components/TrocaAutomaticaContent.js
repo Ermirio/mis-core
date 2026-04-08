@@ -68,6 +68,7 @@ const TrocaAutomaticaContent = ({ selectedLine }) => {
   const [modalError, setModalError] = useState(null);
   const [progress, setProgress] = useState(0); // NOVO: Progresso da troca
   const [retryMode, setRetryMode] = useState(false); // NOVO: Modo de re-tentativa
+  const [showPrimeiraRodadaAviso, setShowPrimeiraRodadaAviso] = useState(false); // Aviso primeira rodada
 
   const [historico, setHistorico] = useState([]);
   const [loadingHistorico, setLoadingHistorico] = useState(false);
@@ -153,11 +154,16 @@ const TrocaAutomaticaContent = ({ selectedLine }) => {
     setModalError(null);
     setProgress(0);
     setRetryMode(false);
+    setShowPrimeiraRodadaAviso(false);
   }, []);
 
   const handleShowModal = useCallback((sku) => {
     setSelectedSku(sku);
-    setShowModal(true);
+    if (!sku.ja_rodou_nesta_linha) {
+      setShowPrimeiraRodadaAviso(true);
+    } else {
+      setShowModal(true);
+    }
   }, []);
 
   // loadHistorico precisa ser definido ANTES de handleConfirmSend
@@ -809,11 +815,21 @@ const TrocaAutomaticaContent = ({ selectedLine }) => {
                             </thead>
                             <tbody>
                               {filteredSkus.map((sku, index) => (
-                                <tr key={sku.id_ordem_prod || index} className="border-bottom">
+                                <tr
+                                  key={sku.id_ordem_prod || index}
+                                  className={`border-bottom${!sku.ja_rodou_nesta_linha ? ' table-warning' : ''}`}
+                                >
                                   <td>
-                                    <strong className="text-primary">
-                                      <HighlightText text={sku.codigo_sku} highlight={searchTerm} />
-                                    </strong>
+                                    <div className="d-flex align-items-center gap-2">
+                                      <strong className="text-primary">
+                                        <HighlightText text={sku.codigo_sku} highlight={searchTerm} />
+                                      </strong>
+                                      {!sku.ja_rodou_nesta_linha && (
+                                        <Badge bg="warning" text="dark" title="Este SKU nunca rodou nesta linha">
+                                          Novo nesta linha
+                                        </Badge>
+                                      )}
+                                    </div>
                                   </td>
                                   <td>
                                     <div className="text-truncate" style={{ maxWidth: '200px' }} title={sku.descricao_sku}>
@@ -864,6 +880,42 @@ const TrocaAutomaticaContent = ({ selectedLine }) => {
           </Card>
         </Col>
       </Row>
+
+      {/* Modal de aviso: SKU nunca rodou nesta linha */}
+      <Modal show={showPrimeiraRodadaAviso} onHide={() => setShowPrimeiraRodadaAviso(false)} centered>
+        <Modal.Header closeButton className="border-0" style={{ background: '#fff3cd' }}>
+          <Modal.Title className="fw-bold text-warning-emphasis">
+            <FaExclamationTriangle className="me-2 text-warning" />
+            Atenção — SKU Novo nesta Linha
+          </Modal.Title>
+        </Modal.Header>
+        <Modal.Body className="px-4 py-3">
+          <p className="mb-2">
+            O SKU <strong className="text-primary">{selectedSku?.codigo_sku}</strong> —{' '}
+            <span className="text-muted">{selectedSku?.descricao_sku}</span> —{' '}
+            <strong>nunca foi rodado nesta linha</strong>.
+          </p>
+          <p className="mb-0">
+            Fique atento a possíveis ajustes de qualidade, parâmetros de equipamento e
+            regulagens específicas para este produto neste equipamento.
+          </p>
+        </Modal.Body>
+        <Modal.Footer className="border-0">
+          <Button variant="secondary" onClick={() => setShowPrimeiraRodadaAviso(false)}>
+            Cancelar
+          </Button>
+          <Button
+            variant="warning"
+            onClick={() => {
+              setShowPrimeiraRodadaAviso(false);
+              setShowModal(true);
+            }}
+          >
+            <FaCheckCircle className="me-2" />
+            Estou ciente — Prosseguir
+          </Button>
+        </Modal.Footer>
+      </Modal>
 
       <Modal show={showModal} onHide={handleCloseModal} centered size="lg">
         <Modal.Header closeButton className="bg-gradient-warning text-dark border-0">

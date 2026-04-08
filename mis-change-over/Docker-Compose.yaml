@@ -3,7 +3,8 @@ version: '3.8'
 services:
   # === Frontend (React) ===
   frontend:
-    image: mis-frontend:1.1
+    image: mis-frontend:v8.5
+    pull_policy: never
     container_name: mis_frontend_container
     ports:
       - "3005:80"
@@ -18,7 +19,8 @@ services:
 
   # === Backend (Django) ===
   backend:
-    image: mis-backend:1.8
+    image: mis-backend:v8.5
+    pull_policy: never
     container_name: mis_backend_container
     ports:
       - "8000:8000"
