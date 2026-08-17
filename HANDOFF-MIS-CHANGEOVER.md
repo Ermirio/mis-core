@@ -10,7 +10,7 @@
 
 - **O que é:** sistema industrial de **troca de SKU / changeover** de linhas de produção (rede OT/fábrica), com leitura de CLPs via **OPC UA**, sincronismo de receitas, validações de qualidade e monitor de receita em tempo real.
 - **Onde está o código:** monorepo local `C:\Users\ermir\OneDrive\Documentos\GitHub\mis-core`; a aplicação fica na subpasta **`mis-change-over/`**.
-- **⚠️ Fonte da verdade = árvore LOCAL, não o GitHub.** O remoto está em **v8.5**; o que está em produção é **v11.1**, com **~164 arquivos não commitados**. Ver §7.
+- **Repositório:** `https://github.com/Ermirio/mis-core.git`, branch **`mis-admin-modules`** — **sincronizado com a v11.1** (commit `77932e9a`, 2026-08-17). Ver §7.
 - **Deploy:** **offline**, por imagens Docker (`docker save`→`.tar`→`scp`→`docker load`) para um servidor Linux OT sem internet. Ver §8. Regra de ouro: **sempre subir o número da versão** e **transferir arquivos por `scp`, nunca copiar/colar**.
 - **Produção:** servidor OT `administrator@192.168.30.71`, hub em **`~/Documents/dist/`**.
 
@@ -154,11 +154,9 @@ Menu condicional em `Frontend/src/components/layout/Header.jsx`: "Gestão de Usu
 ## 7. Estado do GitHub (IMPORTANTE)
 
 - **Remoto:** `https://github.com/Ermirio/mis-core.git` — branch de trabalho **`mis-admin-modules`** (branch principal do repo é `master`).
-- **Último commit:** `6e8ce325 feat(changeover): v8.5 …`
-- **Realidade:** produção roda **v11.1**. Há **~164 arquivos modificados/não commitados** (todo o trabalho de v9→v11.1 está **apenas na árvore local**).
-- **Consequência:** se um modelo/pessoa clonar o GitHub, verá **código v8.5 (defasado)**. Para revisão/feature fiel, use a **árvore local** OU **commite+faça push** antes.
-
-**Recomendado antes de pedir revisão externa:** consolidar o estado atual no Git (commit + push da branch `mis-admin-modules`) para o GitHub virar a fonte da verdade. *(Isso é uma ação que altera o repositório — peça explicitamente que eu faça, ou rode você mesmo.)*
+- **Estado (2026-08-17):** ✅ **sincronizado com a v11.1** — commit `77932e9a` "feat(changeover): v11.1 — validação por caixas + formato travado na máquina" (consolidou v9→v11.1, 240 arquivos).
+- **O que NÃO está no Git (por design):** `dist/` (pacotes `.tar` de deploy), `.env` (segredos), `node_modules/`, `venv/`, `__pycache__/`. Os pacotes de deploy são artefatos de build, gerados localmente.
+- **Para clonar e revisar:** `git clone -b mis-admin-modules https://github.com/Ermirio/mis-core.git` já traz o código fiel ao que roda em produção.
 
 ---
 
