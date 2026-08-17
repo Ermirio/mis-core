@@ -43,6 +43,9 @@ urlpatterns = [
     
     # Detalhes de linha específica
     path('api/linha/<str:linha_nome>/', views.linha_detalhes, name='linha_detalhes'),
+
+    # Analytics de trocas por linha
+    path('api/analytics/trocas/<str:linha_nome>/', views.analytics_trocas, name='analytics_trocas'),
     
     # Buscar SKUs por linha
     path('buscar-skus/', views.buscar_skus, name='buscar_skus'),
@@ -90,6 +93,41 @@ urlpatterns = [
     path('test-skus-page/', views.test_skus_page, name='test_skus_page'),
     
     path('api/opc-configs/', OPCCoordinatorConfigView.as_view(), name='opc-configs'),
+
+    # ==================== VALIDAÇÕES v9.0 ====================
+    path('api/validacoes/', views.validacoes_pipeline, name='validacoes_pipeline'),
+    path('api/validacoes/sap/liberar/', views.validacoes_sap_liberar, name='validacoes_sap_liberar'),
+    path('api/validacoes/qualidade/engenheiro-aprovar/', views.validacoes_qualidade_engenheiro_aprovar, name='validacoes_qualidade_engenheiro_aprovar'),
+    path('api/validacoes/qualidade/<int:validacao_id>/aprovar/', views.validacoes_qualidade_aprovar, name='validacoes_qualidade_aprovar'),
+
+    # ==================== STATUS DO PRODUTO v9.0 ====================
+    path('api/status-produto/<str:linha_nome>/', views.status_produto, name='status_produto'),
+    path('api/ultima-troca/<str:linha_nome>/', views.ultima_troca, name='ultima_troca'),
+
+    # ==================== INSIGHTS DE FORMATOS v9.0 ====================
+    path('api/analytics/formatos/<str:linha_nome>/', views.analytics_formatos, name='analytics_formatos'),
+
+    # ==================== RECIPE MONITOR (mis-recipe-intelligent) ====================
+    # Sincronismo CLP → FormatoVariavel. Permissão: TIM / Engenharia / Coordenação.
+    path('api/recipe-monitor/formato/<int:formato_id>/sincronizar/',
+         views.recipe_monitor_sincronizar,
+         name='recipe_monitor_sincronizar'),
+    path('api/recipe-monitor/linha/<str:linha_nome>/formato-ativo/',
+         views.recipe_monitor_formato_ativo,
+         name='recipe_monitor_formato_ativo'),
+
+    # ==================== GESTÃO DE USUÁRIOS (item 3 — só superuser) ====================
+    path('api/gestao-usuarios/', views.gestao_usuarios_listar, name='gestao_usuarios_listar'),
+    path('api/gestao-usuarios/<int:user_id>/renovar/', views.gestao_usuarios_renovar, name='gestao_usuarios_renovar'),
+
+    # ==================== COMUNICAÇÃO v9.2 ====================
+    path('api/chat/mencoes/nao-lidas/', views.chat_mencoes_nao_lidas, name='chat_mencoes_nao_lidas'),
+    path('api/chat/nao-lidas-por-linha/', views.chat_nao_lidas_por_linha, name='chat_nao_lidas_por_linha'),
+    path('api/chat/usuarios/', views.chat_usuarios, name='chat_usuarios'),
+    path('api/chat/<str:linha_nome>/', views.chat_mensagens, name='chat_mensagens'),
+    path('api/chat/<str:linha_nome>/enviar/', views.chat_enviar, name='chat_enviar'),
+    path('api/chat/<str:linha_nome>/resumir/', views.resumir_turno, name='resumir_turno'),
+    path('api/chat/<str:linha_nome>/visualizar/', views.chat_marcar_visualizado, name='chat_marcar_visualizado'),
 ]
 
 # ==================== COMENTÁRIOS SOBRE MUDANÇAS ====================

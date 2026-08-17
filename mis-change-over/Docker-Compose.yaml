@@ -3,7 +3,7 @@ version: '3.8'
 services:
   # === Frontend (React) ===
   frontend:
-    image: mis-frontend:v8.5
+    image: mis-frontend:v9.6
     pull_policy: never
     container_name: mis_frontend_container
     ports:
@@ -19,7 +19,7 @@ services:
 
   # === Backend (Django) ===
   backend:
-    image: mis-backend:v8.5
+    image: mis-backend:v9.6
     pull_policy: never
     container_name: mis_backend_container
     ports:
@@ -34,12 +34,17 @@ services:
       DB_ENGINE: django.db.backends.mysql
       DB_NAME: ips
       DB_USER: root
-      DB_PASSWORD: ixvq10A@10
+      DB_PASSWORD: root123
       DB_HOST: host.docker.internal
-      DB_PORT: 3307
+      DB_PORT: 3308
 
       USE_X_FORWARDED_HOST: "true"
       SECURE_PROXY_SSL_HEADER: "HTTP_X_FORWARDED_PROTO,https"
+
+      # LM Studio — resumo de turno no chat
+      # Se o LM Studio roda no próprio servidor OT (fora do Docker): use host.docker.internal
+      # Se roda em outra máquina: use o IP da máquina, ex: http://192.168.30.50:1234
+      LM_STUDIO_URL: "http://host.docker.internal:1234"
 
     command: python manage.py runserver 0.0.0.0:8000
     networks:

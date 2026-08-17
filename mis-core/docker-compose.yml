@@ -1,0 +1,294 @@
+# =============================================================================
+# docker-compose.yml  —  Stack de DESENVOLVIMENTO do mis-core
+# =============================================================================
+#
+# O QUE ESTE ARQUIVO É (e o que NÃO é):
+#   Este compose é para quem CLONA o repo e quer "docker compose up" em máquina
+#   com internet. Ele BUILDA as imagens a partir do código local (contexts:).
+#
+#   Para deploy offline na rede OT (sem internet no servidor), use o compose
+#   em ./mis-core-offline/docker-compose.yml que consome imagens já salvas
+#   como tarball (docker save / docker load). Ver ./docs/DEPLOY_OT.md.
+#
+# ARQUITETURA DE REDE INTERNA (Strangler Pattern):
+#
+#   navegador --> frontend:80 (nginx SPA + reverse-proxy)
+#                    │
+#                    ├─ /api/django/  -> django:8000    (legado)
+#                    ├─ /api/flask/   -> flask:5000     (legado)
+#                    ├─ /api/v2/      -> fastapi:8000   (camada nova)
+#                    └─ /             -> SPA React (static)
+#
+#   coletor (OPC UA) --> POST Django/Flask --> MySQL + InfluxDB
+#
+# POR QUE O PADRÃO DE URL IMPORTA:
+#   Para poder migrar um endpoint por vez sem quebrar clientes antigos, o
+#   FastAPI v2 espelha os paths do Flask (ex.: /analyze/stats) apenas trocando
+#   o prefixo /api -> /api/v2. Isso é contrato sagrado deste compose.
+# =============================================================================
+
+version: "3.9"
+
+x-common-env: &common-env
+  TZ: America/Sao_Paulo
+
+services:
+  # ---------------------------------------------------------------------------
+  # FRONTEND (Vite build + nginx serve + reverse-proxy interno)
+  # ---------------------------------------------------------------------------
+  frontend:
+    build:
+      context: ./frontend-react
+      args:
+        # Caminhos relativos que o proxy-reverse do hub já conhece:
+        #   /api       → hub roteia para django:8000/api/
+        #   /flask-api → hub roteia (rewrite) para flask:5000/api/
+        #   /api/v2    → hub roteia para fastapi:8000 (rota nova adicionada)
+        # O nginx INTERNO do frontend também aceita esses mesmos prefixos
+        # (via location /api/ e /flask-api/) para modo standalone sem hub.
+        VITE_DJANGO_API_URL: /api
+        VITE_FLASK_API_URL: /flask-api
+        VITE_FASTAPI_V2_URL: /api/v2
+        VITE_APP_TITLE: "MIS Core"
+    image: mis-core-frontend:dev
+    container_name: mis-core-frontend
+    restart: unless-stopped
+    ports:
+      - "8080:80"
+    environment:
+      <<: *common-env
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://127.0.0.1/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    depends_on:
+      django:
+        condition: service_healthy
+      flask:
+        condition: service_healthy
+      fastapi:
+        condition: service_healthy
+    networks: [mis-network]
+
+  # ---------------------------------------------------------------------------
+  # DJANGO  (ORM + CRUD de linhas/equipamentos/metadata)
+  # ---------------------------------------------------------------------------
+  django:
+    build:
+      context: ./backend-django
+    image: mis-core-django:dev
+    container_name: mis-core-django
+    restart: unless-stopped
+    environment:
+      <<: *common-env
+      # MySQL
+      MYSQL_HOST: mysql
+      MYSQL_PORT: 3306
+      MYSQL_DB: mis_core_db
+      MYSQL_DATABASE: mis_core_db
+      MYSQL_USER: mis
+      MYSQL_PASSWORD: mis123
+      # InfluxDB
+      INFLUXDB_HOST: influxdb
+      INFLUXDB_PORT: 8086
+      INFLUXDB_DATABASE: industrial_db
+      INFLUXDB_USER: admin
+      INFLUXDB_PASSWORD: admin123
+      # Django
+      DJANGO_SECRET_KEY: django-insecure-dev-key-change-in-production
+      DJANGO_DEBUG: "True"
+      DJANGO_ALLOWED_HOSTS: "*"
+      DJANGO_SUPERUSER_USERNAME: admin
+      DJANGO_SUPERUSER_EMAIL: admin@example.com
+      DJANGO_SUPERUSER_PASSWORD: admin123
+    volumes:
+      - django_static:/app/staticfiles
+    depends_on:
+      mysql:
+        condition: service_healthy
+      influxdb:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health/"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 40s
+    networks: [mis-network]
+
+  # ---------------------------------------------------------------------------
+  # FLASK  (analytics legado + WCM endpoints — será estrangulado)
+  # ---------------------------------------------------------------------------
+  flask:
+    build:
+      context: ./backend-flask
+    image: mis-core-flask:dev
+    container_name: mis-core-flask
+    restart: unless-stopped
+    environment:
+      <<: *common-env
+      INFLUXDB_HOST: influxdb
+      INFLUXDB_PORT: 8086
+      INFLUXDB_DATABASE: industrial_db
+      INFLUXDB_USER: admin
+      INFLUXDB_PASSWORD: admin123
+      DJANGO_HOST: django
+      DJANGO_PORT: 8000
+      DJANGO_API_URL: http://django:8000/api
+    depends_on:
+      django:
+        condition: service_healthy
+      influxdb:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 20s
+    networks: [mis-network]
+
+  # ---------------------------------------------------------------------------
+  # FASTAPI v2  (NOVA camada de analytics — ISO 22400, OFF-mask, EDA)
+  #
+  # Mantém o MESMO shape de URL do Flask (ex.: /analyze/stats) só trocando o
+  # prefixo, para que o frontend migre um componente por vez sem quebrar.
+  # ---------------------------------------------------------------------------
+  fastapi:
+    build:
+      context: ./backend-fastapi
+    image: mis-core-fastapi:dev
+    container_name: mis-core-fastapi
+    restart: unless-stopped
+    environment:
+      <<: *common-env
+      APP_NAME: mis-core-fastapi
+      ENVIRONMENT: dev
+      DEBUG: "true"
+      API_V2_PREFIX: /api/v2
+      LOG_LEVEL: INFO
+      # CORS liberado em dev; restringir em prod
+      CORS_ORIGINS: '["http://localhost:8080","http://localhost:5173","http://frontend"]'
+      # InfluxDB (mesmo banco que o legado consome)
+      INFLUX_HOST: influxdb
+      INFLUX_PORT: 8086
+      INFLUX_DB: industrial_db
+      INFLUX_USERNAME: admin
+      INFLUX_PASSWORD: admin123
+      INFLUX_TIMEOUT_S: 10
+      # Apontadores legado
+      DJANGO_API_URL: http://django:8000/api
+      FLASK_API_URL: http://flask:5000/api
+      # JWT — MESMO secret do Django para tokens cruzados valerem
+      JWT_SECRET: django-insecure-dev-key-change-in-production
+      JWT_ALGORITHM: HS256
+      # Postgres é placeholder para features futuras (metadata via asyncpg)
+      PG_DSN: postgresql://user:pass@localhost:5432/mis_core
+      MAX_POINTS_PER_RESPONSE: 10000
+      MAX_CORRELATION_VARIABLES: 25
+      PROMETHEUS_ENABLED: "true"
+    depends_on:
+      influxdb:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v2/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 20s
+    networks: [mis-network]
+
+  # ---------------------------------------------------------------------------
+  # COLETOR OPC UA  (asyncua + watchdog + OfflineBuffer SQLite)
+  # ---------------------------------------------------------------------------
+  coletor:
+    build:
+      context: ./coletor
+    image: mis-core-coletor:dev
+    container_name: mis-core-coletor
+    restart: unless-stopped
+    environment:
+      <<: *common-env
+      DJANGO_API_URL: http://django:8000/api
+      FLASK_API_URL: http://flask:5000/api
+      INTERVALO_COLETA: "2"
+      TIMEOUT_REQUEST: "10"
+    depends_on:
+      django:
+        condition: service_healthy
+      flask:
+        condition: service_healthy
+    networks: [mis-network]
+
+  # ---------------------------------------------------------------------------
+  # MYSQL  (metadata relacional: linhas, equipamentos, ordens, produtos)
+  # ---------------------------------------------------------------------------
+  mysql:
+    image: mysql:8.0
+    container_name: mis-core-mysql
+    restart: unless-stopped
+    command: --default-authentication-plugin=mysql_native_password
+    environment:
+      <<: *common-env
+      MYSQL_DATABASE: mis_core_db
+      MYSQL_USER: mis
+      MYSQL_PASSWORD: mis123
+      MYSQL_ROOT_PASSWORD: root123
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-proot123"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+    networks: [mis-network]
+
+  # ---------------------------------------------------------------------------
+  # INFLUXDB 1.8  (time-series: OPC UA raw + KPIs consolidados)
+  # ---------------------------------------------------------------------------
+  influxdb:
+    image: influxdb:1.8-alpine
+    container_name: mis-core-influxdb
+    restart: unless-stopped
+    environment:
+      <<: *common-env
+      INFLUXDB_DB: industrial_db
+      INFLUXDB_ADMIN_USER: admin
+      INFLUXDB_ADMIN_PASSWORD: admin123
+      INFLUXDB_HTTP_AUTH_ENABLED: "true"
+    volumes:
+      - influxdb_data:/var/lib/influxdb
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://localhost:8086/ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks: [mis-network]
+
+  # ---------------------------------------------------------------------------
+  # CHRONOGRAF  (admin web do InfluxDB — opcional, útil em debug)
+  # ---------------------------------------------------------------------------
+  chronograf:
+    image: chronograf:1.8
+    container_name: mis-core-chronograf
+    restart: unless-stopped
+    environment:
+      <<: *common-env
+      INFLUXDB_URL: http://influxdb:8086
+      INFLUXDB_USERNAME: admin
+      INFLUXDB_PASSWORD: admin123
+    depends_on:
+      influxdb:
+        condition: service_healthy
+    networks: [mis-network]
+
+networks:
+  mis-network:
+    name: mis-core-network
+    driver: bridge
+
+volumes:
+  mysql_data:
+  influxdb_data:
+  django_static:

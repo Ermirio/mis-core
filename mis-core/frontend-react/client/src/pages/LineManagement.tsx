@@ -1,7 +1,21 @@
+/**
+ * LineManagement — gerenciamento operacional de uma linha (visão consolidada).
+ *
+ * Reescrita para o padrão da POC ISA-101 (`04_POC_UI.html`):
+ *   - Topbar com voltar, breadcrumb e refresh + auto-refresh switch
+ *   - KPI strip 5 colunas (Equipamentos, Produzidas, Descartes, OEE, Velocidade)
+ *   - Panel "Status dos Equipamentos" — tabela densa
+ *   - Grid de cards detalhados por equipamento (campos planejados/SKU/OP)
+ *
+ * Mantém: fetch Flask `/linha/<id>/status`, mock fallback, auto-refresh 10s.
+ */
 import React, { useState, useEffect } from 'react';
-import { ArrowLeft, RefreshCw, TrendingUp, AlertCircle, CheckCircle } from 'lucide-react';
+import { ArrowLeft, RefreshCw, CheckCircle } from 'lucide-react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { FLASK_API_URL } from '@/config/api';
+import { mockLinhaStatus } from '@/mocks/demoData';
+import { KpiStrip, KpiCard, Panel, Tag } from '@/components/v2';
+import { fmt as numFmt } from '@/components/v2/stats';
 
 interface EquipamentoStatus {
   equipamento: string;
@@ -39,288 +53,171 @@ interface LinhaStatusResponse {
   };
 }
 
-
-
-/**
- * LineManagement - Tela de Gerenciamento de Linha
- * 
- * Exibe status consolidado de uma linha de produção com dados reais do InfluxDB
- * - Status de todos os equipamentos
- * - Agregados da linha (OEE, velocidade, produção)
- * - Timeline de dados
- * - Alertas de problemas
- */
 const LineManagement: React.FC = () => {
   const { linhaId } = useParams<{ linhaId: string }>();
   const navigate = useNavigate();
 
   const [linhaStatus, setLinhaStatus] = useState<LinhaStatusResponse | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [autoRefresh, setAutoRefresh] = useState(true);
+  const [isDemo, setIsDemo] = useState(false);
 
-  // Busca status da linha
   const fetchLinhaStatus = async () => {
     try {
-      setError(null);
       const response = await fetch(`${FLASK_API_URL}/linha/${linhaId}/status`);
-
-      if (!response.ok) {
-        throw new Error(`Erro ao buscar status: ${response.statusText}`);
-      }
-
+      if (!response.ok) throw new Error(response.statusText);
       const data = await response.json();
-      setLinhaStatus(data);
+      if (data?.equipamentos) {
+        setLinhaStatus(data);
+        setIsDemo(false);
+      } else {
+        setLinhaStatus(mockLinhaStatus(linhaId || 'ENV-01') as any);
+        setIsDemo(true);
+      }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Erro desconhecido');
-      console.error('Erro ao buscar status da linha:', err);
+      console.error('LineManagement fetch falhou — usando mock', err);
+      setLinhaStatus(mockLinhaStatus(linhaId || 'ENV-01') as any);
+      setIsDemo(true);
     } finally {
       setLoading(false);
     }
   };
 
-  // Auto-refresh a cada 10 segundos
   useEffect(() => {
     fetchLinhaStatus();
-
     if (autoRefresh) {
       const interval = setInterval(fetchLinhaStatus, 10000);
       return () => clearInterval(interval);
     }
   }, [linhaId, autoRefresh]);
 
-  if (loading) {
+  if (loading || !linhaStatus) {
     return (
-      <div className="flex items-center justify-center h-screen">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-gray-600">Carregando dados da linha...</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="p-6 bg-red-50 border border-red-200 rounded-lg">
-        <div className="flex items-center gap-3">
-          <AlertCircle className="w-6 h-6 text-red-600" />
-          <div>
-            <h3 className="font-bold text-red-900">Erro ao carregar dados</h3>
-            <p className="text-red-700">{error}</p>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  if (!linhaStatus) {
-    return (
-      <div className="p-6 bg-yellow-50 border border-yellow-200 rounded-lg">
-        <p className="text-yellow-900">Nenhum dado disponível para esta linha</p>
+      <div className="isa-root" style={{ padding: 32, textAlign: 'center', color: 'var(--isa-text-muted)' }}>
+        Carregando dados da linha…
       </div>
     );
   }
 
   const { agregados, equipamentos } = linhaStatus;
 
-  // Determina cor do OEE
-  const getOEEColor = (valor: number): string => {
-    if (valor >= 85) return 'bg-green-100 text-green-900';
-    if (valor >= 70) return 'bg-yellow-100 text-yellow-900';
-    return 'bg-red-100 text-red-900';
-  };
-
-  // Determina cor da velocidade
-  const getVelocidadeColor = (valor: number, planejado: number): string => {
-    const percentual = (valor / planejado) * 100;
-    if (percentual >= 90) return 'text-green-600';
-    if (percentual >= 70) return 'text-yellow-600';
-    return 'text-red-600';
-  };
+  // Tone semântico para OEE — usado na tabela e nas tags
+  const oeeTone = (v: number): 'ok' | 'warn' | 'bad' =>
+    v >= 85 ? 'ok' : v >= 70 ? 'warn' : 'bad';
 
   return (
-    <div className="min-h-screen bg-gray-50 p-6">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-6">
-        <div className="flex items-center gap-4">
+    <div className="isa-root" style={{ padding: '16px 20px', minHeight: '100vh' }}>
+      {/* Topbar */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', flexWrap: 'wrap', gap: 12, marginBottom: 14 }}>
+        <div>
           <button
-            onClick={() => navigate('/home')}
-            className="p-2 hover:bg-gray-200 rounded-lg transition"
+            type="button"
+            onClick={() => navigate('/')}
+            style={{ background: 'transparent', border: 0, color: 'var(--isa-text-muted)', cursor: 'pointer', fontSize: 'var(--isa-fs-body)', display: 'flex', alignItems: 'center', gap: 4, padding: '4px 0', marginBottom: 4 }}
           >
-            <ArrowLeft className="w-6 h-6" />
+            <ArrowLeft size={14} /> Voltar
           </button>
-          <div>
-            <h1 className="text-3xl font-bold text-gray-900">Gerenciamento de Linha</h1>
-            <p className="text-gray-600">Linha: {linhaId}</p>
+          <h1 style={{ margin: 0, fontSize: 20, fontWeight: 600, color: 'var(--isa-text)', display: 'flex', alignItems: 'center', gap: 8 }}>
+            Gerenciamento de Linha · <span style={{ fontFamily: 'var(--isa-mono)', color: 'var(--isa-text-muted)', fontWeight: 400 }}>{linhaId}</span>
+            {isDemo && <Tag tone="warn">SIMULAÇÃO</Tag>}
+          </h1>
+          <div style={{ marginTop: 2, fontSize: 'var(--isa-fs-default)', color: 'var(--isa-text-muted)' }}>
+            Status consolidado · atualizado {new Date(linhaStatus.timestamp).toLocaleTimeString('pt-BR')}
           </div>
         </div>
 
-        <button
-          onClick={fetchLinhaStatus}
-          className="p-2 hover:bg-gray-200 rounded-lg transition"
-          title="Atualizar dados"
-        >
-          <RefreshCw className="w-6 h-6" />
-        </button>
+        <div className="isa-toolbar" style={{ marginBottom: 0 }}>
+          <label className="isa-switch">
+            <input type="checkbox" checked={autoRefresh} onChange={e => setAutoRefresh(e.target.checked)} />
+            Auto-atualizar (10s)
+          </label>
+          <button type="button" onClick={fetchLinhaStatus}>
+            <RefreshCw size={12} style={{ marginRight: 4, verticalAlign: -1 }} />
+            Atualizar
+          </button>
+        </div>
       </div>
 
-      {/* Auto-refresh toggle */}
-      <div className="mb-6 flex items-center gap-2">
-        <input
-          type="checkbox"
-          id="autoRefresh"
-          checked={autoRefresh}
-          onChange={(e) => setAutoRefresh(e.target.checked)}
-          className="w-4 h-4"
+      {/* KPI strip 5 col — usa cols=4 e adicionamos Velocidade ocupando o último slot do strip de 5 */}
+      <KpiStrip cols={4} style={{ gridTemplateColumns: 'repeat(5, 1fr)' }}>
+        <KpiCard label="Equipamentos Online" value={String(agregados.total_equipamentos)} />
+        <KpiCard label="Peças Produzidas"   value={agregados.total_contagem_saida.toLocaleString('pt-BR')} unit="un" />
+        <KpiCard label="Descartes"          value={String(agregados.total_descarte)} unit="un" />
+        <KpiCard
+          label="OEE Médio"
+          value={numFmt.num(agregados.media_oee, 1)}
+          unit="%"
+          delta={{
+            value: agregados.media_oee >= 85 ? 'No alvo' : agregados.media_oee >= 70 ? 'Atenção' : 'Crítico',
+            tone: oeeTone(agregados.media_oee) === 'ok' ? 'up' : 'down',
+          }}
         />
-        <label htmlFor="autoRefresh" className="text-sm text-gray-600">
-          Auto-atualizar a cada 10 segundos
-        </label>
-      </div>
+        <KpiCard label="Velocidade Média"   value={numFmt.num(agregados.media_velocidade, 0)} unit="un/min" />
+      </KpiStrip>
 
-      {/* Agregados da Linha */}
-      <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-6">
-        {/* Total de Equipamentos */}
-        <div className="bg-white p-4 rounded-lg shadow">
-          <p className="text-sm text-gray-600 mb-2">Equipamentos Online</p>
-          <p className="text-3xl font-bold text-blue-600">{agregados.total_equipamentos}</p>
-        </div>
-
-        {/* Produção Total */}
-        <div className="bg-white p-4 rounded-lg shadow">
-          <p className="text-sm text-gray-600 mb-2">Peças Produzidas</p>
-          <p className="text-3xl font-bold text-green-600">{agregados.total_contagem_saida.toLocaleString()}</p>
-        </div>
-
-        {/* Descartes */}
-        <div className="bg-white p-4 rounded-lg shadow">
-          <p className="text-sm text-gray-600 mb-2">Descartes</p>
-          <p className="text-3xl font-bold text-red-600">{agregados.total_descarte}</p>
-        </div>
-
-        {/* OEE Médio */}
-        <div className={`p-4 rounded-lg shadow ${getOEEColor(agregados.media_oee)}`}>
-          <p className="text-sm mb-2 font-semibold">OEE Médio</p>
-          <p className="text-3xl font-bold">{agregados.media_oee.toFixed(1)}%</p>
-        </div>
-
-        {/* Velocidade Média */}
-        <div className="bg-white p-4 rounded-lg shadow">
-          <p className="text-sm text-gray-600 mb-2">Velocidade Média</p>
-          <p className="text-3xl font-bold text-blue-600">{agregados.media_velocidade.toFixed(0)} un/min</p>
-        </div>
-      </div>
-
-      {/* Equipamentos */}
-      <div className="bg-white rounded-lg shadow overflow-hidden">
-        <div className="bg-gray-100 p-4 border-b">
-          <h2 className="text-lg font-bold text-gray-900">Status dos Equipamentos</h2>
-        </div>
-
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead className="bg-gray-50 border-b">
+      {/* Tabela de equipamentos */}
+      <Panel title="Status dos Equipamentos">
+        <div style={{ overflowX: 'auto' }}>
+          <table className="isa-tbl">
+            <thead>
               <tr>
-                <th className="px-4 py-3 text-left font-semibold text-gray-700">Equipamento</th>
-                <th className="px-4 py-3 text-left font-semibold text-gray-700">Status</th>
-                <th className="px-4 py-3 text-right font-semibold text-gray-700">Produzidas</th>
-                <th className="px-4 py-3 text-right font-semibold text-gray-700">Descartes</th>
-                <th className="px-4 py-3 text-right font-semibold text-gray-700">Velocidade</th>
-                <th className="px-4 py-3 text-right font-semibold text-gray-700">OEE</th>
-                <th className="px-4 py-3 text-right font-semibold text-gray-700">Temp</th>
-                <th className="px-4 py-3 text-right font-semibold text-gray-700">Pressão</th>
+                <th>Equipamento</th>
+                <th>Status</th>
+                <th style={{ textAlign: 'right' }}>Produzidas</th>
+                <th style={{ textAlign: 'right' }}>Descartes</th>
+                <th style={{ textAlign: 'right' }}>Velocidade</th>
+                <th style={{ textAlign: 'right' }}>OEE</th>
+                <th style={{ textAlign: 'right' }}>Temp</th>
+                <th style={{ textAlign: 'right' }}>Pressão</th>
               </tr>
             </thead>
             <tbody>
               {equipamentos.map((eq, idx) => (
-                <tr key={idx} className="border-b hover:bg-gray-50">
-                  <td className="px-4 py-3 font-semibold text-gray-900">{eq.equipamento}</td>
-                  <td className="px-4 py-3">
-                    <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-semibold bg-green-100 text-green-900">
-                      <CheckCircle className="w-4 h-4" />
-                      ONLINE
+                <tr key={idx}>
+                  <td style={{ fontWeight: 600 }}>{eq.equipamento}</td>
+                  <td>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: 'var(--isa-ok)', fontWeight: 600, fontSize: 'var(--isa-fs-meta)' }}>
+                      <CheckCircle size={12} /> ONLINE
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-right text-gray-900 font-semibold">
-                    {eq.medicoes.contagem_saida.toLocaleString()}
+                  <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 600 }}>{eq.medicoes.contagem_saida.toLocaleString('pt-BR')}</td>
+                  <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: 'var(--isa-bad)', fontWeight: 600 }}>{eq.medicoes.descarte}</td>
+                  <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{eq.medicoes.velocidade_atual} un/min</td>
+                  <td style={{ textAlign: 'right' }}>
+                    <Tag tone={oeeTone(eq.medicoes.oee)}>{eq.medicoes.oee.toFixed(1)}%</Tag>
                   </td>
-                  <td className="px-4 py-3 text-right text-red-600 font-semibold">
-                    {eq.medicoes.descarte}
-                  </td>
-                  <td className={`px-4 py-3 text-right font-semibold ${getVelocidadeColor(eq.medicoes.velocidade_atual, eq.medicoes.planejado_op)}`}>
-                    {eq.medicoes.velocidade_atual} un/min
-                  </td>
-                  <td className={`px-4 py-3 text-right font-semibold ${getOEEColor(eq.medicoes.oee)}`}>
-                    {eq.medicoes.oee.toFixed(1)}%
-                  </td>
-                  <td className="px-4 py-3 text-right text-gray-600">
-                    {eq.medicoes.temperatura.toFixed(1)}°C
-                  </td>
-                  <td className="px-4 py-3 text-right text-gray-600">
-                    {eq.medicoes.pressao.toFixed(2)} bar
-                  </td>
+                  <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: 'var(--isa-text-muted)' }}>{eq.medicoes.temperatura.toFixed(1)}°C</td>
+                  <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: 'var(--isa-text-muted)' }}>{eq.medicoes.pressao.toFixed(2)} bar</td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
-      </div>
+      </Panel>
 
-      {/* Detalhes de Equipamentos */}
-      <div className="mt-6 grid grid-cols-1 lg:grid-cols-2 gap-6">
+      {/* Cards detalhados por equipamento */}
+      <div style={{ marginTop: 12, display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(360px, 1fr))', gap: 12 }}>
         {equipamentos.map((eq, idx) => (
-          <div key={idx} className="bg-white rounded-lg shadow p-4">
-            <h3 className="text-lg font-bold text-gray-900 mb-4">{eq.equipamento}</h3>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <p className="text-xs text-gray-600">Descrição</p>
-                <p className="text-sm font-semibold text-gray-900">{eq.medicoes.descricao || 'N/A'}</p>
-              </div>
-
-              <div>
-                <p className="text-xs text-gray-600">SKU</p>
-                <p className="text-sm font-semibold text-gray-900">{eq.medicoes.sku_codigo || '-'}</p>
-              </div>
-
-              <div>
-                <p className="text-xs text-gray-600">Ordem Produção</p>
-                <p className="text-sm font-semibold text-gray-900">{eq.medicoes.ordem_producao || '-'}</p>
-              </div>
-
-              <div>
-                <p className="text-xs text-gray-600">Formato</p>
-                <p className="text-sm font-semibold text-gray-900">{eq.medicoes.formato_gramas}g</p>
-              </div>
-
-              <div>
-                <p className="text-xs text-gray-600">Disponibilidade</p>
-                <p className="text-sm font-semibold text-gray-900">{eq.medicoes.disponibilidade.toFixed(1)}%</p>
-              </div>
-
-              <div>
-                <p className="text-xs text-gray-600">Performance</p>
-                <p className="text-sm font-semibold text-gray-900">{eq.medicoes.performance.toFixed(1)}%</p>
-              </div>
-
-              <div>
-                <p className="text-xs text-gray-600">Qualidade</p>
-                <p className="text-sm font-semibold text-gray-900">{eq.medicoes.qualidade.toFixed(1)}%</p>
-              </div>
-
-              <div>
-                <p className="text-xs text-gray-600">% Descarte</p>
-                <p className="text-sm font-semibold text-red-600">{eq.medicoes.percentual_descarte.toFixed(2)}%</p>
-              </div>
-            </div>
-          </div>
+          <Panel key={idx} title={eq.equipamento}>
+            <dl style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, margin: 0 }}>
+              {[
+                ['Descrição',       eq.medicoes.descricao || '—'],
+                ['SKU',             eq.medicoes.sku_codigo || '—'],
+                ['Ordem Produção',  eq.medicoes.ordem_producao || '—'],
+                ['Formato',         `${eq.medicoes.formato_gramas} g`],
+                ['Disponibilidade', `${eq.medicoes.disponibilidade.toFixed(1)}%`],
+                ['Performance',     `${eq.medicoes.performance.toFixed(1)}%`],
+                ['Qualidade',       `${eq.medicoes.qualidade.toFixed(1)}%`],
+                ['% Descarte',      <span style={{ color: 'var(--isa-bad)' }}>{eq.medicoes.percentual_descarte.toFixed(2)}%</span>],
+              ].map(([lbl, val], i) => (
+                <div key={i}>
+                  <dt style={{ fontSize: 'var(--isa-fs-label)', color: 'var(--isa-text-muted)', textTransform: 'uppercase', margin: 0 }}>{lbl}</dt>
+                  <dd style={{ fontSize: 'var(--isa-fs-default)', color: 'var(--isa-text)', fontWeight: 600, margin: '2px 0 0' }}>{val}</dd>
+                </div>
+              ))}
+            </dl>
+          </Panel>
         ))}
-      </div>
-
-      {/* Timestamp */}
-      <div className="mt-6 text-center text-xs text-gray-500">
-        Última atualização: {new Date(linhaStatus.timestamp).toLocaleString('pt-BR')}
       </div>
     </div>
   );

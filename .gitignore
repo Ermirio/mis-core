@@ -11,7 +11,27 @@ temp.json
 # Deploy offline (imagens Docker muito grandes para Git)
 dist/
 
-
 # Sockets Unix
 *.ctl
 
+# ============================================================
+# AI Factory - Orquestrador Gemini + Claude
+# ============================================================
+# Variáveis de ambiente com chaves reais (nunca commitar!)
+.env
+
+# Ambiente virtual do orquestrador
+venv-agents/
+
+# Arquivo temporário gerado pelo Gemini Arquiteto
+PLANO_DE_ACAO.md
+
+# Cache Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Dependências Node (nunca commitar)
+node_modules/
+**/node_modules/

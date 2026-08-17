@@ -1,0 +1,74 @@
+[project]
+name = "mis-core-fastapi"
+version = "0.1.0"
+description = "mis-core v2 — Manufacturing Intelligence System API (FastAPI)"
+readme = "README.md"
+requires-python = ">=3.11"
+authors = [{ name = "MIS Core Team" }]
+license = { text = "Proprietary" }
+
+# --------------------------------------------------------------------------
+# Stack escolhida (ver ADR-001-fastapi-strangler.md)
+# --------------------------------------------------------------------------
+# fastapi   — web framework async com Pydantic v2 built-in
+# uvicorn   — ASGI server padrão, suficiente até ~8k rps por worker
+# pydantic  — v2: validação + serialização 10-50x mais rápida que v1
+# httpx     — cliente HTTP async (para chamar Django legacy durante migração)
+# asyncpg   — driver Postgres async (muito mais rápido que psycopg2)
+# pandas    — EDA e regras de kind-aware aggregation (mesmo uso do Flask atual)
+# numpy     — companion do pandas
+# scipy     — testes estatísticos (pearsonr, spearmanr, normaltest)
+# aioinflux — cliente InfluxDB 1.x async (compatível com o schema atual)
+# tenacity  — retry exponencial (mesmo módulo usado no coletor)
+# prometheus-client — métricas para /metrics (scrapeable pelo Prometheus)
+# structlog — logs estruturados JSON (ingeridos pelo Loki sem parsing frágil)
+# --------------------------------------------------------------------------
+dependencies = [
+    "fastapi>=0.110.0",
+    "uvicorn[standard]>=0.27.0",
+    "pydantic>=2.6.0",
+    "pydantic-settings>=2.2.0",
+    "httpx>=0.27.0",
+    "asyncpg>=0.29.0",
+    "pandas>=2.2.0",
+    "numpy>=1.26.0",
+    "scipy>=1.12.0",
+    "aioinflux>=0.9.0",
+    "tenacity>=8.2.0",
+    "prometheus-client>=0.20.0",
+    "structlog>=24.1.0",
+    "python-dotenv>=1.0.0",
+    # Auth compartilhado com Django (mesmo SIMPLE_JWT secret)
+    "pyjwt>=2.8.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+    "pytest-cov>=4.1",
+    "httpx>=0.27",  # TestClient
+    "ruff>=0.3",
+    "mypy>=1.9",
+    "types-requests",
+]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "B", "UP", "C4", "SIM", "TID"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+addopts = "-ra --strict-markers --tb=short"
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+plugins = ["pydantic.mypy"]

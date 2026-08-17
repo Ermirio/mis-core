@@ -410,6 +410,32 @@
   }
 }
 
+/* ===== BADGE DE MENSAGENS NÃO LIDAS (v9.6) ===== */
+.sidebar-unread-badge {
+  margin-left: auto;
+  background: #dc3545;
+  color: #fff;
+  font-size: 0.65rem;
+  font-weight: 700;
+  min-width: 18px;
+  height: 18px;
+  border-radius: 9px;
+  padding: 0 5px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  flex-shrink: 0;
+  animation: unread-pop 0.3s ease;
+  box-shadow: 0 1px 4px rgba(220, 53, 69, 0.45);
+}
+
+@keyframes unread-pop {
+  0%   { transform: scale(0.5); opacity: 0; }
+  70%  { transform: scale(1.15); }
+  100% { transform: scale(1);   opacity: 1; }
+}
+
 /* ===== MODO DE ALTO CONTRASTE ===== */
 
 @media (prefers-contrast: high) {

@@ -6,18 +6,12 @@ import {
   XCircle,
   RefreshCw,
   ArrowLeft,
-  Download,
-  Trash2,
-  Eye,
-  EyeOff
 } from 'lucide-react';
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Panel, Tag, AlertList, type AlertItem } from '@/components/v2';
 
 import { DJANGO_API_URL, FLASK_API_URL } from '@/config/api';
+import { MOCK_SYSTEM_HEALTH, MOCK_REALTIME_ALL } from '@/mocks/demoData';
 
 interface EquipamentoStatus {
   codigo: string;
@@ -71,15 +65,8 @@ const DiagnosticosLogs: React.FC = () => {
         }
       } catch (e) {
         console.error("Erro check health:", e);
-        setSystemHealth({ influxdb: false, django: false, coletor: false, details: { error: "Flask Unreachable" } });
-        newLogs.push({
-          timestamp: new Date().toISOString(),
-          equipamento: 'SYSTEM',
-          etapa: 'flask',
-          status: 'erro',
-          mensagem: 'Falha ao conectar Backend Flask',
-          detalhes: { error: String(e) }
-        });
+        setSystemHealth(MOCK_SYSTEM_HEALTH as any);
+        healthData = MOCK_SYSTEM_HEALTH as any;
       }
 
       if (healthData) {
@@ -152,6 +139,19 @@ const DiagnosticosLogs: React.FC = () => {
         }
       } catch (e) {
         console.error("Erro fetch realtime:", e);
+        // Mock realtime data — campos batem com a interface EquipamentoStatus
+        const listaEquipamentos: EquipamentoStatus[] = Object.entries(MOCK_REALTIME_ALL).map(([eqCode, data]: [string, any]) => ({
+          codigo: eqCode,
+          nome: eqCode,
+          linha: 'N/A',
+          status: 'online' as const,
+          ultima_leitura: data.timestamp,
+          campos_presentes: Object.keys(data.medicoes || {}),
+          campos_faltando: [],
+          dados_amostra: data.medicoes || {},
+          erros: [],
+        }));
+        setEquipamentos(listaEquipamentos);
       }
 
       setLogs(prev => [...newLogs, ...prev].slice(0, 100)); // Manter ultimos 100 logs
@@ -172,29 +172,40 @@ const DiagnosticosLogs: React.FC = () => {
     return () => clearInterval(interval);
   }, [autoRefresh]);
 
+  // Converte logs internos pra AlertItem (mesmo formato da POC)
+  const logsAsAlerts: AlertItem[] = logs.map(l => ({
+    time: new Date(l.timestamp).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+    sev: l.status === 'erro' ? 'bad' : l.status === 'aviso' ? 'warn' : 'ok',
+    msg: <><b>[{l.equipamento}]</b> {l.mensagem}</>,
+    ctx: <code style={{ fontFamily: 'var(--isa-mono)', fontSize: 'var(--isa-fs-meta)' }}>{l.etapa.toUpperCase()}</code>,
+  }));
+
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <Button variant="ghost" onClick={() => navigate('/')}>
-            <ArrowLeft className="w-4 h-4 mr-2" />
-            Voltar
-          </Button>
-          <h1 className="text-2xl font-bold">Diagnóstico do Sistema</h1>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button
-            variant={autoRefresh ? "default" : "outline"}
-            onClick={() => setAutoRefresh(!autoRefresh)}
-            size="sm"
+    <div className="isa-root" style={{ padding: '16px 20px', minHeight: '100vh', display: 'flex', flexDirection: 'column', gap: 12 }}>
+      {/* Topbar */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', flexWrap: 'wrap', gap: 12 }}>
+        <div>
+          <button
+            type="button"
+            onClick={() => navigate('/')}
+            style={{ background: 'transparent', border: 0, color: 'var(--isa-text-muted)', cursor: 'pointer', fontSize: 'var(--isa-fs-body)', display: 'flex', alignItems: 'center', gap: 4, padding: '4px 0', marginBottom: 4 }}
           >
-            {autoRefresh ? <Eye className="w-4 h-4 mr-2" /> : <EyeOff className="w-4 h-4 mr-2" />}
-            {autoRefresh ? "Auto (10s)" : "Pausado"}
-          </Button>
-          <Button variant="outline" size="sm" onClick={carregarDados} disabled={loading}>
-            <RefreshCw className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
+            <ArrowLeft size={14} /> Voltar
+          </button>
+          <h1 style={{ margin: 0, fontSize: 20, fontWeight: 600, color: 'var(--isa-text)' }}>Diagnóstico do Sistema</h1>
+          <div style={{ marginTop: 2, fontSize: 'var(--isa-fs-default)', color: 'var(--isa-text-muted)' }}>
+            Saúde do pipeline OPC → Coletor → InfluxDB → API → Frontend
+          </div>
+        </div>
+        <div className="isa-toolbar" style={{ marginBottom: 0 }}>
+          <label className="isa-switch">
+            <input type="checkbox" checked={autoRefresh} onChange={() => setAutoRefresh(!autoRefresh)} />
+            Auto-atualizar (10s)
+          </label>
+          <button type="button" onClick={carregarDados} disabled={loading}>
+            <RefreshCw size={12} style={{ marginRight: 4, verticalAlign: -1 }} />
             Atualizar
-          </Button>
+          </button>
         </div>
       </div>
 
@@ -206,150 +217,127 @@ const DiagnosticosLogs: React.FC = () => {
         </TabsList>
 
         <TabsContent value="fluxo" className="space-y-4">
-          {/* Card Explicativo do Fluxo */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Fluxo de Dados</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="flex items-center justify-between p-4 bg-slate-50 rounded-lg overflow-x-auto">
-                <div className="flex flex-col items-center">
-                  <div className="w-16 h-16 rounded-full bg-blue-100 flex items-center justify-center mb-2">
-                    <span className="text-2xl">🏭</span>
-                  </div>
-                  <span className="font-bold text-sm">CLP/Equipamento</span>
-                  <span className="text-xs text-gray-500">OPC UA / Modbus</span>
-                </div>
+          {/* Diagrama do fluxo */}
+          <Panel title="Fluxo de Dados">
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: 14, background: 'var(--isa-bg)', borderRadius: 'var(--isa-radius)', overflowX: 'auto', gap: 8 }}>
+              <FluxoNode emoji="🏭" titulo="CLP/Equipamento" sub="OPC UA / Modbus" status="ok" />
+              <Conector label="Leitura" />
+              <FluxoNode emoji="📡" titulo="Coletor Python" sub="coletor.py" status={systemHealth?.coletor ? 'ok' : 'bad'} />
+              <Conector label="JSON" />
+              <FluxoNode emoji="💾" titulo="InfluxDB" sub="Série Temporal" status={systemHealth?.influxdb ? 'ok' : 'bad'} />
+              <Conector label="Query" />
+              <FluxoNode emoji="🖥️" titulo="Frontend" sub="React" status="ok" />
+            </div>
+          </Panel>
 
-                <div className="h-0.5 w-16 bg-gray-300 relative">
-                  <div className="absolute -top-3 left-1/2 transform -translate-x-1/2 text-xs text-gray-500">Leitura</div>
-                </div>
-
-                <div className="flex flex-col items-center">
-                  <div className={`w-16 h-16 rounded-full flex items-center justify-center mb-2 ${systemHealth?.coletor ? 'bg-green-100' : 'bg-red-100'}`}>
-                    <span className="text-2xl">📡</span>
-                  </div>
-                  <span className="font-bold text-sm">Coletor Python</span>
-                  <span className="text-xs text-gray-500">coletor.py</span>
-                </div>
-
-                <div className="h-0.5 w-16 bg-gray-300 relative">
-                  <div className="absolute -top-3 left-1/2 transform -translate-x-1/2 text-xs text-gray-500">JSON</div>
-                </div>
-
-                <div className="flex flex-col items-center">
-                  <div className={`w-16 h-16 rounded-full flex items-center justify-center mb-2 ${systemHealth?.influxdb ? 'bg-green-100' : 'bg-red-100'}`}>
-                    <span className="text-2xl">💾</span>
-                  </div>
-                  <span className="font-bold text-sm">InfluxDB</span>
-                  <span className="text-xs text-gray-500">Série Temporal</span>
-                </div>
-
-                <div className="h-0.5 w-16 bg-gray-300 relative">
-                  <div className="absolute -top-3 left-1/2 transform -translate-x-1/2 text-xs text-gray-500">Query</div>
-                </div>
-
-                <div className="flex flex-col items-center">
-                  <div className="w-16 h-16 rounded-full bg-purple-100 flex items-center justify-center mb-2">
-                    <span className="text-2xl">🖥️</span>
-                  </div>
-                  <span className="font-bold text-sm">Frontend</span>
-                  <span className="text-xs text-gray-500">React + Flask</span>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Checklist de Verificação Dinâmico */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Checklist de Saúde do Sistema</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-2">
+          {/* Checklist de saúde */}
+          <Panel title="Checklist de Saúde do Sistema">
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               {[
-                { item: 'Flask API Online (Ping)', check: systemHealth ? '✓' : '❌', status: !!systemHealth },
-                { item: 'Django API Acessível (Via Flask)', check: systemHealth?.django ? '✓' : '❌', status: systemHealth?.django },
-                { item: 'InfluxDB Conectado', check: systemHealth?.influxdb ? '✓' : '❌', status: systemHealth?.influxdb },
-                { item: 'Coletor Enviando Dados (Heartbeat)', check: systemHealth?.coletor ? '✓' : '❌', status: systemHealth?.coletor },
-              ].map((item, idx) => (
-                <div key={idx} className="flex items-center gap-2 text-sm">
-                  <div className={`w-4 h-4 flex items-center justify-center rounded-full text-xs font-bold ${item.status ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
-                    {item.check}
-                  </div>
-                  <label className={`text-gray-700 ${!item.status ? 'font-semibold text-red-600' : ''}`}>
-                    {item.item}
-                  </label>
+                { item: 'Flask API Online (Ping)',          status: !!systemHealth },
+                { item: 'Django API Acessível (Via Flask)', status: systemHealth?.django },
+                { item: 'InfluxDB Conectado',               status: systemHealth?.influxdb },
+                { item: 'Coletor Enviando Dados (Heartbeat)', status: systemHealth?.coletor },
+              ].map((row, idx) => (
+                <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 'var(--isa-fs-default)' }}>
+                  {row.status
+                    ? <CheckCircle size={16} style={{ color: 'var(--isa-ok)' }} />
+                    : <XCircle size={16} style={{ color: 'var(--isa-bad)' }} />
+                  }
+                  <span style={{ color: row.status ? 'var(--isa-text)' : 'var(--isa-bad)', fontWeight: row.status ? 400 : 600 }}>
+                    {row.item}
+                  </span>
                 </div>
               ))}
 
               {systemHealth?.details && Object.keys(systemHealth.details).length > 0 && (
-                <div className="mt-4 p-2 bg-red-50 text-red-700 text-xs rounded">
-                  <strong>Detalhes de Erro:</strong>
-                  <pre>{JSON.stringify(systemHealth.details, null, 2)}</pre>
-                </div>
+                <pre style={{
+                  marginTop: 8, padding: 10,
+                  background: 'var(--isa-bad-bg)',
+                  color: 'var(--isa-bad)',
+                  fontSize: 'var(--isa-fs-meta)',
+                  fontFamily: 'var(--isa-mono)',
+                  borderRadius: 'var(--isa-radius)',
+                  whiteSpace: 'pre-wrap',
+                }}>
+                  <strong>Detalhes de Erro:</strong>{'\n'}{JSON.stringify(systemHealth.details, null, 2)}
+                </pre>
               )}
-            </CardContent>
-          </Card>
+            </div>
+          </Panel>
         </TabsContent>
 
         <TabsContent value="status">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(380px, 1fr))', gap: 12 }}>
             {equipamentos.map(eq => (
-              <Card key={eq.codigo}>
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-sm font-bold flex justify-between">
-                    {eq.nome} ({eq.codigo})
-                    <Badge variant={eq.status === 'online' ? 'default' : 'destructive'}>
-                      {eq.status.toUpperCase()}
-                    </Badge>
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="text-xs space-y-1">
-                    <p><strong>Última Leitura:</strong> {new Date(eq.ultima_leitura).toLocaleString()}</p>
-                    <p><strong>Campos Presentes:</strong> {eq.campos_presentes.length}</p>
-                    <p><strong>Campos Faltando:</strong> {eq.campos_faltando.length}</p>
-                    {eq.erros.length > 0 && (
-                      <div className="text-red-600 mt-2">
-                        {eq.erros.map((e, i) => <div key={i}>{e}</div>)}
-                      </div>
-                    )}
-                    <div className="mt-2 bg-slate-100 p-2 rounded max-h-32 overflow-auto">
-                      <pre>{JSON.stringify(eq.dados_amostra, null, 2)}</pre>
+              <Panel
+                key={eq.codigo}
+                title={
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 6, justifyContent: 'space-between' }}>
+                    <span>{eq.nome} <span style={{ fontFamily: 'var(--isa-mono)', color: 'var(--isa-text-muted)', fontWeight: 400 }}>({eq.codigo})</span></span>
+                    <Tag tone={eq.status === 'online' ? 'ok' : 'bad'}>{eq.status.toUpperCase()}</Tag>
+                  </span>
+                }
+              >
+                <div style={{ fontSize: 'var(--isa-fs-meta)', color: 'var(--isa-text)' }}>
+                  <p style={{ margin: '2px 0' }}><b>Última Leitura:</b> {new Date(eq.ultima_leitura).toLocaleString('pt-BR')}</p>
+                  <p style={{ margin: '2px 0' }}><b>Campos Presentes:</b> {eq.campos_presentes.length}</p>
+                  <p style={{ margin: '2px 0' }}><b>Campos Faltando:</b> {eq.campos_faltando.length}</p>
+                  {eq.erros.length > 0 && (
+                    <div style={{ color: 'var(--isa-bad)', marginTop: 8 }}>
+                      {eq.erros.map((e, i) => <div key={i}>{e}</div>)}
                     </div>
-                  </div>
-                </CardContent>
-              </Card>
+                  )}
+                  <pre style={{
+                    marginTop: 8, padding: 8,
+                    background: 'var(--isa-bg-muted)',
+                    fontSize: 11,
+                    fontFamily: 'var(--isa-mono)',
+                    borderRadius: 'var(--isa-radius)',
+                    maxHeight: 140, overflowY: 'auto', whiteSpace: 'pre-wrap',
+                  }}>{JSON.stringify(eq.dados_amostra, null, 2)}</pre>
+                </div>
+              </Panel>
             ))}
-            {equipamentos.length === 0 && <div className="text-center p-8 text-gray-500">Nenhum equipamento encontrado.</div>}
+            {equipamentos.length === 0 && (
+              <div style={{ gridColumn: '1 / -1', textAlign: 'center', padding: 32, color: 'var(--isa-text-muted)' }}>
+                Nenhum equipamento encontrado.
+              </div>
+            )}
           </div>
         </TabsContent>
 
         <TabsContent value="logs">
-          <Card>
-            <CardHeader>
-              <CardTitle>Logs do Sistema</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-2">
-                {logs.map((log, i) => (
-                  <Alert key={i} variant={log.status === 'erro' ? 'destructive' : 'default'}>
-                    <AlertCircle className="h-4 w-4" />
-                    <AlertDescription className="flex justify-between items-center w-full">
-                      <span>
-                        <strong>[{new Date(log.timestamp).toLocaleTimeString()}]</strong> [{log.equipamento}] {log.mensagem}
-                      </span>
-                    </AlertDescription>
-                  </Alert>
-                ))}
-                {logs.length === 0 && <div className="text-center p-4 text-gray-500">Nenhum erro registrado recentemente.</div>}
-              </div>
-            </CardContent>
-          </Card>
+          <Panel title="Logs do Sistema">
+            <AlertList items={logsAsAlerts} emptyMsg="Nenhum erro registrado recentemente." />
+          </Panel>
         </TabsContent>
       </Tabs>
     </div>
   );
 };
+
+// Sub-átomo local: nó do diagrama de fluxo (CLP → coletor → influx → frontend).
+const FluxoNode: React.FC<{ emoji: string; titulo: string; sub: string; status: 'ok' | 'bad' }> =
+  ({ emoji, titulo, sub, status }) => (
+  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', minWidth: 90 }}>
+    <div style={{
+      width: 56, height: 56, borderRadius: '50%',
+      display: 'grid', placeItems: 'center', marginBottom: 6,
+      background: status === 'ok' ? 'var(--isa-ok-bg)' : 'var(--isa-bad-bg)',
+      fontSize: 24,
+    }}>{emoji}</div>
+    <span style={{ fontSize: 'var(--isa-fs-default)', fontWeight: 600, color: 'var(--isa-text)' }}>{titulo}</span>
+    <span style={{ fontSize: 'var(--isa-fs-meta)', color: 'var(--isa-text-muted)' }}>{sub}</span>
+  </div>
+);
+
+const Conector: React.FC<{ label: string }> = ({ label }) => (
+  <div style={{ position: 'relative', flex: '0 0 50px', minWidth: 50, height: 2, background: 'var(--isa-border)' }}>
+    <div style={{ position: 'absolute', top: -16, left: '50%', transform: 'translateX(-50%)', fontSize: 10, color: 'var(--isa-text-muted)', whiteSpace: 'nowrap' }}>
+      {label}
+    </div>
+  </div>
+);
 
 export default DiagnosticosLogs;

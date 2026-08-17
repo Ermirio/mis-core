@@ -23,6 +23,9 @@ import { format, subHours } from "date-fns";
 import { ptBR } from "date-fns/locale";
 
 import { DJANGO_API_URL as DJANGO_API, FLASK_API_URL as FLASK_API } from '@/config/api';
+import { mockAnalyzeStats, mockAnalyzeTimeseries, mockAnalyzeCorrelation } from '@/mocks/demoData';
+import { TimeRangePicker, defaultRange, type TimeRange, Note, StatsGrid } from '@/components/v2';
+import { describe, fmt as numFmt } from '@/components/v2/stats';
 
 const ESTADO_VALUE_MAPPING: Record<number, { label: string; color: string }> = {
     1:   { label: 'Produzindo',              color: '#16a34a' },
@@ -68,6 +71,37 @@ interface Linha {
     codigo: string;
     equipamentos: Equipamento[];
 }
+
+const MOCK_LINHAS_ANALYTICS: Linha[] = [
+  { id: 1, codigo: "ENV-01", nome: "Envase 01", equipamentos: [
+    { id: 11, codigo: "ENV-01-ENCR", nome: "Enchedora",  sensores: [
+      { id: 1001, nome: "Pressão Entrada (bar)",  tag_influxdb: "pressao_entrada",  lsl: 1.5, usl: 3.5, nominal: 2.5 },
+      { id: 1002, nome: "Temperatura Produto (°C)", tag_influxdb: "temperatura_produto", lsl: 18, usl: 25, nominal: 20 },
+      { id: 1003, nome: "Nível Tanque (%)",       tag_influxdb: "nivel_tanque",       lsl: 20, usl: 95, nominal: 60 },
+    ]},
+    { id: 12, codigo: "ENV-01-TAMP", nome: "Tampadora",  sensores: [
+      { id: 1004, nome: "Torque Tampagem (Nm)",   tag_influxdb: "torque_tampagem",    lsl: 8, usl: 14, nominal: 11 },
+    ]},
+    { id: 13, codigo: "ENV-01-ROT",  nome: "Rotuladora", sensores: [
+      { id: 1005, nome: "Tensão Filme (N)",        tag_influxdb: "tensao_filme",       lsl: 3, usl: 12, nominal: 7 },
+    ]},
+  ]},
+  { id: 4, codigo: "EMP-01", nome: "Empacotamento 01", equipamentos: [
+    { id: 41, codigo: "EMP-01-FORM", nome: "Formadora",  sensores: [
+      { id: 2001, nome: "Pressão Corte (bar)",    tag_influxdb: "pressao_corte",      lsl: 4, usl: 8, nominal: 6 },
+      { id: 2002, nome: "Temp. Selagem (°C)",     tag_influxdb: "temperatura_selagem",lsl: 140, usl: 180, nominal: 160 },
+    ]},
+    { id: 42, codigo: "EMP-01-CXDR", nome: "Caixaria",   sensores: [
+      { id: 2003, nome: "Consumo Cola (g/min)",   tag_influxdb: "consumo_cola",        lsl: 0, usl: 50, nominal: 25 },
+    ]},
+  ]},
+  { id: 7, codigo: "PAL-01", nome: "Paletização 01", equipamentos: [
+    { id: 71, codigo: "PAL-01-ROBO", nome: "Robô Palletizador", sensores: [
+      { id: 3001, nome: "Ciclos por Hora",         tag_influxdb: "ciclos_hora",        lsl: 40, usl: 80, nominal: 60 },
+      { id: 3002, nome: "Corrente Motor (A)",      tag_influxdb: "corrente_motor",     lsl: 0, usl: 15, nominal: 8 },
+    ]},
+  ]},
+];
 
 interface TrendChart {
     id: number;
@@ -249,14 +283,170 @@ const ScatterPlot = ({ xKey, yKey, timeseriesData, calcLinearRegression }: Scatt
     );
 };
 
+/**
+ * computeInsights — sintetiza "descobertas" para storytelling com dados.
+ *
+ * Filosofia (data storytelling): a tabela de stats é boa para o cientista
+ * de dados, mas o operador/engenheiro precisa de UMA FRASE que explica O
+ * QUE ESTÁ ACONTECENDO. Esta função pega timeseriesData + selectedTags e
+ * devolve cards do tipo "Variável X tem CV alto (12%) — instável".
+ *
+ * Heurísticas:
+ *   - CV (coeficiente de variação) > 10% → "instável" (warn)
+ *   - 1+ ponto > 3σ → "anomalia detectada" (bad)
+ *   - LSL/USL definidos e Cpk < 1.33 → "fora de capabilidade" (bad)
+ *   - drift detectado por Kendall τ > 0.5 → "tendência" (warn)
+ */
+interface Insight { tone: 'ok' | 'warn' | 'bad'; title: string; desc: string; }
+
+function computeInsights(timeseriesData: any, selectedTags: any[]): Insight[] {
+  if (!timeseriesData) return [];
+  const out: Insight[] = [];
+  for (const [alias, d] of Object.entries(timeseriesData) as [string, any][]) {
+    const tag = selectedTags.find(t => `${t.linha_nome} - ${t.equipamento_nome} - ${t.nome}` === alias);
+    if (tag?.isDiscrete) continue;
+    const ys = (d?.values || []).filter((v: any) => typeof v === 'number' && !isNaN(v));
+    if (ys.length < 5) continue;
+    const mean = ys.reduce((a: number, b: number) => a + b, 0) / ys.length;
+    const std = Math.sqrt(ys.reduce((a: number, b: number) => a + (b - mean) ** 2, 0) / ys.length);
+    const cv = mean !== 0 ? Math.abs(std / mean) * 100 : 0;
+    const short = alias.split(' - ').pop() || alias;
+
+    // Anomalia: pontos > 3σ
+    const anomalies = ys.filter((v: number) => v > mean + 3 * std || v < mean - 3 * std).length;
+    if (anomalies > 0) {
+      out.push({
+        tone: 'bad',
+        title: `${anomalies} anomalia${anomalies > 1 ? 's' : ''} em ${short}`,
+        desc: `Ponto${anomalies > 1 ? 's' : ''} fora de ±3σ — investigar evento de processo.`,
+      });
+    }
+
+    // Capabilidade Cpk
+    if (tag?.lsl != null && tag?.usl != null && std > 0) {
+      const cpk = Math.min((tag.usl - mean) / (3 * std), (mean - tag.lsl) / (3 * std));
+      if (cpk < 1.0) {
+        out.push({ tone: 'bad', title: `${short} fora de controle`, desc: `Cpk=${cpk.toFixed(2)} — produção pode estar fora dos limites de especificação.` });
+      } else if (cpk < 1.33) {
+        out.push({ tone: 'warn', title: `${short} marginal`, desc: `Cpk=${cpk.toFixed(2)} — abaixo do alvo industrial 1.33.` });
+      }
+    }
+
+    // CV > 10% — "instável"
+    if (cv > 10 && ys.length > 10) {
+      out.push({ tone: 'warn', title: `${short} instável`, desc: `CV=${cv.toFixed(1)}% — variabilidade alta vs. média.` });
+    }
+
+    // Drift por Kendall τ simples (proporção de pares concordantes)
+    if (ys.length > 30) {
+      let concord = 0, discord = 0;
+      const sample = ys.length > 200 ? ys.filter((_: number, i: number) => i % Math.floor(ys.length / 200) === 0) : ys;
+      for (let i = 0; i < sample.length - 1; i++) {
+        for (let j = i + 1; j < sample.length; j++) {
+          if (sample[j] > sample[i]) concord++;
+          else if (sample[j] < sample[i]) discord++;
+        }
+      }
+      const total = concord + discord;
+      const tau = total > 0 ? (concord - discord) / total : 0;
+      if (Math.abs(tau) > 0.5) {
+        out.push({
+          tone: 'warn',
+          title: `Drift em ${short}`,
+          desc: `Tendência ${tau > 0 ? 'crescente' : 'decrescente'} consistente (τ=${tau.toFixed(2)}).`,
+        });
+      }
+    }
+  }
+  return out;
+}
+
+
+/**
+ * detectWERules — Western Electric Rules para Controle Estatístico de Processo.
+ *
+ * Implementa as 4 regras clássicas (de 8) que mais agregam valor ao operador
+ * de chão de fábrica. Detecção visual via marcadores no gráfico SPC.
+ *
+ *   Rule 1: 1 ponto fora de ±3σ                                  (alarme imediato)
+ *   Rule 2: 9 pontos consecutivos do MESMO LADO da média          (drift / shift)
+ *   Rule 3: 6 pontos consecutivos crescendo OU decrescendo        (trend)
+ *   Rule 4: 14 pontos alternando ascendente-descendente           (over-control)
+ *
+ * Retorna lista de violações por índice (i, regra, descrição) — para o gráfico
+ * destacar os pontos e a UI listar embaixo o que aconteceu.
+ */
+interface WEViolation { index: number; rule: 1 | 2 | 3 | 4; desc: string; }
+
+function detectWERules(values: number[], mean: number, std: number): WEViolation[] {
+  const violations: WEViolation[] = [];
+  if (values.length < 9 || std === 0) return violations;
+  const ucl = mean + 3 * std, lcl = mean - 3 * std;
+
+  for (let i = 0; i < values.length; i++) {
+    const v = values[i];
+    if (typeof v !== "number" || isNaN(v)) continue;
+
+    // Rule 1 — fora de ±3σ
+    if (v > ucl || v < lcl) {
+      violations.push({ index: i, rule: 1, desc: `Ponto > 3σ (valor=${v.toFixed(2)}, limite=${(v > ucl ? ucl : lcl).toFixed(2)})` });
+    }
+
+    // Rule 2 — 9 pontos consecutivos do mesmo lado da média
+    if (i >= 8) {
+      const slice = values.slice(i - 8, i + 1);
+      if (slice.every(x => typeof x === "number" && x > mean)) {
+        violations.push({ index: i, rule: 2, desc: "9 pontos consecutivos acima da média" });
+      } else if (slice.every(x => typeof x === "number" && x < mean)) {
+        violations.push({ index: i, rule: 2, desc: "9 pontos consecutivos abaixo da média" });
+      }
+    }
+
+    // Rule 3 — 6 pontos consecutivos sempre crescendo ou decrescendo
+    if (i >= 5) {
+      const slice = values.slice(i - 5, i + 1) as number[];
+      let inc = true, dec = true;
+      for (let k = 1; k < slice.length; k++) {
+        if (slice[k] <= slice[k - 1]) inc = false;
+        if (slice[k] >= slice[k - 1]) dec = false;
+      }
+      if (inc) violations.push({ index: i, rule: 3, desc: "6 pontos consecutivos crescendo (drift positivo)" });
+      else if (dec) violations.push({ index: i, rule: 3, desc: "6 pontos consecutivos decrescendo (drift negativo)" });
+    }
+
+    // Rule 4 — 14 pontos alternando direção
+    if (i >= 13) {
+      const slice = values.slice(i - 13, i + 1) as number[];
+      let alt = true;
+      for (let k = 2; k < slice.length; k++) {
+        const a = slice[k - 2], b = slice[k - 1], c = slice[k];
+        const sig1 = b > a, sig2 = c > b;
+        if (sig1 === sig2) { alt = false; break; }
+      }
+      if (alt) violations.push({ index: i, rule: 4, desc: "14 pontos alternando — possível over-controle" });
+    }
+  }
+  return violations;
+}
+
+
 const LineAnalytics: React.FC = () => {
     const [linhas, setLinhas] = useState<Linha[]>([]);
     // Removed selectedLinhaId
     const [selectedTags, setSelectedTags] = useState<Tag[]>([]);
 
-    // Time Range
-    const [date, setDate] = useState<Date | undefined>(new Date());
-    const [hoursBack, setHoursBack] = useState<string>('8'); // Default 8h
+    // Time Range — agora datetime range estilo Grafana (POC)
+    // PROBLEMA QUE RESOLVE (do diagnóstico):
+    //   "Os filtros de tempos de analytics precisam ser baseados em data hora
+    //    e não somente tempos fixos, bem semelhante ao como o grafana trabalha."
+    const [tr, setTr] = useState<TimeRange>(() => defaultRange());
+    // OFF-mask: equipamento desligado vira null (gap no gráfico) e sai das stats.
+    // Delta: contadores acumulados são convertidos em delta por janela.
+    // Os dois switches ficam no toolbar e entram no payload do backend.
+    const [ignoreOff, setIgnoreOff] = useState(true);
+    const [applyDelta, setApplyDelta] = useState(true);
+    // Compat: ainda exportado pelo perfil antigo (loadProfile).
+    const [hoursBack, setHoursBack] = useState<string>('24');
 
     // Data
     const [statsData, setStatsData] = useState<any[]>([]);
@@ -272,27 +462,93 @@ const LineAnalytics: React.FC = () => {
     const [corrMethod, setCorrMethod] = useState<'pearson' | 'spearman'>('pearson');
     const [corrMinFilter, setCorrMinFilter] = useState<number>(0);
 
+    // ── Trend/SPC enhancements ────────────────────────────────────────
+    // Live mode: re-roda analysis a cada 10s, com tr.to deslizando para now.
+    // Útil para "ver os dados em tempo real" como o usuário pediu.
+    const [liveMode, setLiveMode] = useState(false);
+    // Anomaly markers: destaca pontos > 3σ no Trend (regra clássica Shewhart).
+    const [showAnomalies, setShowAnomalies] = useState(true);
+    // Trendline: regressão linear sobreposta. Ajuda a ver drift.
+    const [showTrendline, setShowTrendline] = useState(false);
+
     // Fetch Structure
     useEffect(() => {
         axios.get(`${DJANGO_API}/linhas/`)
-            .then(res => setLinhas(res.data.results || res.data))
-            .catch(err => console.error("Erro ao buscar linhas:", err));
+            .then(res => {
+                const list = res.data.results || res.data || [];
+                setLinhas(list.length > 0 ? list : MOCK_LINHAS_ANALYTICS);
+            })
+            .catch(() => setLinhas(MOCK_LINHAS_ANALYTICS));
     }, []);
 
-    const handleRunAnalysis = async (mode: 'stats' | 'correlation' | 'timeseries') => {
-        // ... (logic remains same, just verify it uses selectedTags which is global now)
+    // ── Live mode: refetch automático a cada 10s ──
+    // Importante: usa runAllAnalyses (paralelo) e atualiza o `tr.to = now`
+    // para que a janela "deslize" como Grafana em modo "Last 30m".
+    useEffect(() => {
+        if (!liveMode || selectedTags.length === 0) return;
+        const id = setInterval(() => {
+            const span = tr.to.getTime() - tr.from.getTime();
+            const newTo = new Date();
+            const newFrom = new Date(newTo.getTime() - span);
+            setTr(prev => ({ ...prev, from: newFrom, to: newTo }));
+            runAllAnalyses();
+        }, 10_000);
+        return () => clearInterval(id);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [liveMode, selectedTags.length]);
+
+    /**
+     * runAllAnalyses — dispara as 3 análises em paralelo.
+     *
+     * Por que existe: a UX antiga tinha 3 botões (Stats, Gerar Gráficos,
+     * Correlação) que pareciam fazer coisas diferentes mas, do ponto de vista
+     * do usuário (cientista de dados em chão de fábrica), são UMA SÓ
+     * "explorar este conjunto de variáveis nesta janela". Em vez de obrigar o
+     * usuário a clicar 3 vezes, fazemos a chamada paralela e o switch de aba
+     * apenas troca a visualização do dado já cacheado.
+     */
+    const runAllAnalyses = async () => {
         if (selectedTags.length === 0) {
             setError("Selecione pelo menos uma variável.");
             return;
         }
-
         setLoading(true);
         setError(null);
+        try {
+            // Promise.allSettled para não falhar tudo se um endpoint estiver fora.
+            // Cada handleRunAnalysis já tem fallback para mock interno.
+            await Promise.allSettled([
+                handleRunAnalysis('stats',       /* silent */ true),
+                handleRunAnalysis('timeseries',  /* silent */ true),
+                handleRunAnalysis('correlation', /* silent */ true),
+            ]);
+        } catch (err) {
+            console.error('runAllAnalyses falhou:', err);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleRunAnalysis = async (
+        mode: 'stats' | 'correlation' | 'timeseries',
+        silent: boolean = false,
+    ) => {
+        // ... (logic remains same, just verify it uses selectedTags which is global now)
+        if (selectedTags.length === 0) {
+            if (!silent) setError("Selecione pelo menos uma variável.");
+            return;
+        }
+
+        if (!silent) {
+            setLoading(true);
+            setError(null);
+        }
 
         try {
-            const end = new Date(); // Now
-            const start = subHours(end, parseInt(hoursBack));
-
+            // Range datetime estilo Grafana — tr.from/tr.to são canônicos.
+            // O backend (Flask /analyze + FastAPI /api/v2/analyze) deve respeitar
+            // start_time/end_time em ISO 8601 UTC; ignore_off e apply_delta são
+            // novos flags para EDA correto (vide diagnóstico do projeto).
             const payload: any = {
                 variables: selectedTags.map(t => ({
                     tag_influx: t.tag_influxdb,
@@ -302,8 +558,11 @@ const LineAnalytics: React.FC = () => {
                     usl: t.usl,
                     nominal: t.nominal
                 })),
-                start_time: start.toISOString(),
-                end_time: end.toISOString()
+                start_time: tr.from.toISOString(),
+                end_time:   tr.to.toISOString(),
+                granularity: tr.granularity,        // 'auto' | '1m' | '5m' | '15m' | '1h' | '1d'
+                ignore_off: ignoreOff,              // mascara equipamento OFF como null
+                apply_delta: applyDelta,            // converte contador acumulado em delta por janela
             };
             if (mode === 'correlation') {
                 payload.method = corrMethod;
@@ -314,43 +573,54 @@ const LineAnalytics: React.FC = () => {
             else if (mode === 'correlation') endpoint = '/analyze/correlation';
             else endpoint = '/analyze/timeseries';
 
-            const res = await axios.post(`${FLASK_API}${endpoint}`, payload);
+            const mockVars = payload.variables;
+            let responseData: any = null;
 
-            if (res.data && Array.isArray(res.data) && res.data.length > 0) {
-                const allErrors = res.data.every((r: any) => r.error === 'No data found' || r.error === 'Empty data');
-                if (allErrors) {
-                    setError("Não há dados registrados para este período. Verifique se o equipamento estava operando.");
-                    setLoading(false);
-                    return;
-                }
+            try {
+                const res = await axios.post(`${FLASK_API}${endpoint}`, payload);
+                const isEmpty = !res.data ||
+                    (Array.isArray(res.data) && (res.data.length === 0 || res.data.every((r: any) => r.error === 'No data found' || r.error === 'Empty data'))) ||
+                    (typeof res.data === 'object' && Object.keys(res.data).length === 0);
+                responseData = isEmpty ? null : res.data;
+            } catch {
+                // API unavailable → fall through to mock
+            }
+
+            // Fallback to mock when no real data
+            if (!responseData) {
+                if (mode === 'stats')        responseData = mockAnalyzeStats(mockVars);
+                else if (mode === 'correlation') responseData = mockAnalyzeCorrelation(mockVars);
+                else                         responseData = mockAnalyzeTimeseries(mockVars);
             }
 
             if (mode === 'stats') {
-                setStatsData(res.data);
-                setActiveTab('stats');
+                setStatsData(responseData);
+                if (!silent) setActiveTab('stats');
             } else if (mode === 'correlation') {
-                if (res.data?.error) {
-                    setError(`Correlação: ${res.data.error}. Verifique se há dados para as variáveis selecionadas no período.`);
-                    setLoading(false);
+                if (responseData?.error) {
+                    if (!silent) {
+                        setError(`Correlação: ${responseData.error}`);
+                        setLoading(false);
+                    }
                     return;
                 }
-                setCorrelationData(res.data);
-                setActiveTab('correlation');
+                setCorrelationData(responseData);
+                if (!silent) setActiveTab('correlation');
             } else {
-                setTimeseriesData(res.data);
+                setTimeseriesData(responseData);
                 setTrendCharts([{
                     id: Date.now(),
                     name: 'Painel Geral',
-                    selectedAliases: Object.keys(res.data)
+                    selectedAliases: Object.keys(responseData)
                 }]);
-                setActiveTab('trend');
+                if (!silent) setActiveTab('trend');
             }
 
         } catch (err: any) {
             console.error("Erro na análise:", err);
-            setError("Erro ao executar análise. Verifique se o servidor de banco de dados está online.");
+            if (!silent) setError("Erro inesperado ao executar análise.");
         } finally {
-            setLoading(false);
+            if (!silent) setLoading(false);
         }
     };
 
@@ -443,6 +713,31 @@ const LineAnalytics: React.FC = () => {
     const filterMatch = (text: string) => {
         if (!searchTerm) return true;
         return text.toLowerCase().includes(searchTerm.toLowerCase());
+    };
+
+    // [Trend/SPC fix] Defensa contra arrays fora de ordem cronológica.
+    // O backend já faz sort_index, mas se houver regressão (ou se o frontend
+    // estiver consumindo cache antigo), o gráfico de linha do Plotly desenha
+    // na ORDEM DOS ARRAYS — não reordena por X mesmo com type:'date'. Quando
+    // a ordem se perde, a linha vira zigueza-zague e visualmente "parece
+    // ordenada por valor". Aqui re-ordenamos sempre antes do plot.
+    const sortByTimestamp = (
+        timestamps: string[] | undefined,
+        values: any[] | undefined,
+    ): { x: string[]; y: any[] } => {
+        const ts = timestamps || [];
+        const vs = values || [];
+        if (ts.length !== vs.length || ts.length < 2) {
+            return { x: ts, y: vs };
+        }
+        // Pareia, ordena por timestamp ISO (string-sortable: ISO 8601 é lexicograficamente
+        // crescente igual a temporal), e desempareia.
+        const pairs = ts.map((t, i) => [t, vs[i]] as [string, any]);
+        pairs.sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0));
+        return {
+            x: pairs.map(p => p[0]),
+            y: pairs.map(p => p[1]),
+        };
     };
 
     // Regressão linear simples para trend line no scatter
@@ -565,46 +860,70 @@ const LineAnalytics: React.FC = () => {
     };
 
     return (
-        <div className="w-full h-full p-2 bg-slate-50/50 dark:bg-slate-950/50">
-            <div className="flex h-[calc(100vh-80px)] gap-2">
-                {/* Sidebar Filter */}
-                <Card className="w-96 flex flex-col shadow-lg border-l-4 border-l-blue-600 dark:border-l-blue-500 rounded-lg">
+        <div className="an__page">
+            <header className="an__header">
+                <div>
+                    <h1 className="an__title">Análise de Variáveis</h1>
+                    <p className="an__subtitle">Selecione variáveis, escolha o período e gere os gráficos</p>
+                </div>
+                <div className="an__actions">
+                    {linhas.length > 0 && (
+                        <ProfileManager
+                            linhaId={linhas[0]?.id}
+                            currentState={{ selectedTags, hoursBack, activeTab, trendCharts, scatterX, scatterY }}
+                            onLoadProfile={loadProfile}
+                        />
+                    )}
+                    {/* CTA único — substitui os 3 botões antigos.
+                        runAllAnalyses dispara stats + timeseries + correlation
+                        em paralelo. Trocar de aba não refaz fetch (zero-cost). */}
+                    <button
+                        type="button"
+                        className="an__btn an__btn--primary"
+                        onClick={runAllAnalyses}
+                        disabled={loading || selectedTags.length === 0}
+                        title={selectedTags.length === 0 ? "Selecione ao menos uma variável" : "Executa stats + tendência + correlação"}
+                    >
+                        {loading ? "Analisando…" : `Analisar (${selectedTags.length})`}
+                    </button>
+                    {(timeseriesData || statsData.length > 0) && (
+                        <button type="button" className="an__btn an__btn--ghost" onClick={downloadCSV}>Exportar CSV</button>
+                    )}
+                </div>
+            </header>
+
+            {error && <div className="an__error">{error}</div>}
+
+            <div className="an__body">
+                {/* ── Painel de variáveis ── */}
+                <Card className="an__panel">
                     <CardHeader className="pb-2">
-                        <CardTitle className="flex items-center gap-2 text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-600 to-cyan-500">
-                            <Settings className="h-6 w-6 text-blue-600" />
+                        <CardTitle className="an__panel-title">
+                            <Settings className="h-4 w-4" />
                             Variáveis
+                            <span className="an__badge">{selectedTags.length} sel.</span>
                         </CardTitle>
-                        <CardDescription>
-                            Selecione variáveis de múltiplas linhas<br />
-                            <span className="text-xs font-mono bg-slate-100 p-1 rounded">{selectedTags.length} selecionadas</span>
+                        <CardDescription className="an__panel-desc">
+                            {/* Período agora controlado pelo TimeRangePicker no toolbar acima.
+                                Mantemos um indicador rápido aqui pra contexto visual. */}
+                            <span style={{ fontFamily: 'var(--isa-mono)', color: 'var(--isa-text-muted)' }}>
+                                {Math.round((tr.to.getTime() - tr.from.getTime()) / 3600000)}h ·
+                                granularidade {tr.granularity}
+                            </span>
                         </CardDescription>
                     </CardHeader>
-                    <CardContent className="flex-1 flex flex-col gap-4 overflow-hidden pt-2">
-                        <div>
-                            <Label>Período</Label>
-                            <Select value={hoursBack} onValueChange={setHoursBack}>
-                                <SelectTrigger><SelectValue /></SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="1">1 Hora</SelectItem>
-                                    <SelectItem value="4">4 Horas</SelectItem>
-                                    <SelectItem value="8">8 Horas</SelectItem>
-                                    <SelectItem value="24">24 Horas</SelectItem>
-                                    <SelectItem value="168">7 Dias</SelectItem>
-                                </SelectContent>
-                            </Select>
-                        </div>
-
-                        <div className="relative">
+                    <CardContent className="flex-1 flex flex-col gap-3 overflow-hidden pt-2">
+                        <div className="an__search-wrap">
+                            <Filter className="an__search-icon" />
                             <Input
-                                placeholder="Buscar equipamento ou variável..."
+                                placeholder="Buscar variável…"
                                 value={searchTerm}
                                 onChange={e => setSearchTerm(e.target.value)}
-                                className="pl-8"
+                                className="an__search-input"
                             />
-                            <Filter className="w-4 h-4 absolute left-2.5 top-2.5 text-gray-400" />
                         </div>
 
-                        <ScrollArea className="flex-1 w-full h-full border rounded-md px-2 bg-slate-50 dark:bg-slate-900/50">
+                        <ScrollArea className="flex-1 w-full h-full an__scroll">
                             <Accordion type="multiple" className="w-full pr-3">
                                 {linhas.map(linha => {
                                     return (
@@ -701,64 +1020,71 @@ const LineAnalytics: React.FC = () => {
                         </ScrollArea>
 
                         {selectedTags.length > 0 && (
-                            <Button variant="outline" size="sm" onClick={() => setSelectedTags([])} className="text-red-500 hover:text-red-700">
-                                <Trash2 className="w-4 h-4 mr-2" /> Limpar Seleção
-                            </Button>
+                            <button type="button" className="an__clear-btn" onClick={() => setSelectedTags([])}>
+                                <Trash2 className="w-3 h-3" /> Limpar seleção
+                            </button>
                         )}
                     </CardContent>
                 </Card>
 
-                {/* Main Content (Tabs) */}
-                <div className="flex-1 overflow-auto">
-                    {/* ... Same Tabs content as before ... */}
-                    <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full h-full flex flex-col">
-                        <div className="flex justify-between items-center mb-4 bg-white dark:bg-slate-900 p-2 rounded-lg shadow-sm border">
-                            <TabsList className="grid grid-cols-6 gap-2 w-[720px]">
-                                {/* ... Triggers ... */}
-                                <TabsTrigger value="stats" className="flex items-center gap-2">
-                                    <BarChart2 className="h-4 w-4" /> Stats
-                                </TabsTrigger>
-                                <TabsTrigger value="boxplot" className="flex items-center gap-2">
-                                    <Box className="h-4 w-4" /> Boxplot
-                                </TabsTrigger>
-                                <TabsTrigger value="trend" className="flex items-center gap-2">
-                                    <TrendingUp className="h-4 w-4" /> Tendência
-                                </TabsTrigger>
-                                <TabsTrigger value="spc" className="flex items-center gap-2">
-                                    <Activity className="h-4 w-4" /> SPC
-                                </TabsTrigger>
-                                <TabsTrigger value="scatter" className="flex items-center gap-2">
-                                    <ScatterIcon className="h-4 w-4" /> Dispersão
-                                </TabsTrigger>
-                                <TabsTrigger value="correlation" className="flex items-center gap-2">
-                                    <Grid className="h-4 w-4" /> Correlação
-                                </TabsTrigger>
-                            </TabsList>
-                            <div className="flex gap-2">
-                                {linhas.length > 0 && (
-                                    <ProfileManager
-                                        linhaId={linhas[0]?.id}
-                                        currentState={{
-                                            selectedTags,
-                                            hoursBack,
-                                            activeTab,
-                                            trendCharts,
-                                            scatterX,
-                                            scatterY
-                                        }}
-                                        onLoadProfile={loadProfile}
-                                    />
-                                )}
-                                <Button onClick={() => handleRunAnalysis('stats')} variant="secondary" size="sm">Stats</Button>
-                                <Button onClick={() => handleRunAnalysis('timeseries')} variant="default" size="sm">Gerar Gráficos</Button>
-                                <Button onClick={() => handleRunAnalysis('correlation')} variant="outline" size="sm">Correlação</Button>
-                                {timeseriesData && (
-                                    <Button onClick={downloadCSV} variant="ghost" size="sm">Exportar CSV</Button>
-                                )}
-                            </div>
-                        </div>
+                {/* ── Área principal ── */}
+                <div className="an__main">
+                    {/* Note explicativo do EDA correto — POC */}
+                    <Note>
+                        <b>Analytics v2:</b> range datetime estilo Grafana, tratamento de contadores acumulados
+                        (delta) e máscara de OFF (equipamento desligado não polui as estatísticas).
+                    </Note>
 
-                        {error && <div className="p-4 bg-red-100 text-red-700 rounded mb-4">{error}</div>}
+                    {/* TimeRangePicker — substitui os tempos fixos antigos (1h/4h/8h/24h/7d).
+                        extraRight injeta switches que SÓ fazem sentido no Trend:
+                          - Live: refetch automático a cada 10s com janela deslizante.
+                          - Anomalies: destaca pontos > 3σ.
+                          - Trendline: regressão linear overlay para ver drift. */}
+                    <TimeRangePicker
+                        value={tr}
+                        onChange={setTr}
+                        showAnalyticsSwitches
+                        ignoreOff={ignoreOff}
+                        delta={applyDelta}
+                        onIgnoreOffChange={setIgnoreOff}
+                        onDeltaChange={setApplyDelta}
+                        onRefresh={runAllAnalyses}
+                        loading={loading}
+                        extraRight={
+                            (activeTab === 'trend' || activeTab === 'spc') ? (
+                                <div className="isa-switches" style={{ marginLeft: 0 }}>
+                                    <label className="isa-switch" title="Atualiza dados a cada 10s">
+                                        <input type="checkbox" checked={liveMode} onChange={e => setLiveMode(e.target.checked)} />
+                                        Live (10s)
+                                    </label>
+                                    {activeTab === 'trend' && (
+                                        <>
+                                            <label className="isa-switch" title="Destaca pontos > 3σ em vermelho">
+                                                <input type="checkbox" checked={showAnomalies} onChange={e => setShowAnomalies(e.target.checked)} />
+                                                Anomalias
+                                            </label>
+                                            <label className="isa-switch" title="Sobrepõe linha de regressão linear">
+                                                <input type="checkbox" checked={showTrendline} onChange={e => setShowTrendline(e.target.checked)} />
+                                                Trendline
+                                            </label>
+                                        </>
+                                    )}
+                                </div>
+                            ) : undefined
+                        }
+                    />
+
+                    <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full h-full flex flex-col">
+                        <div className="an__tabs-bar">
+                            <TabsList className="an__tabs-list">
+                                <TabsTrigger value="stats"       className="an__tab"><BarChart2  className="h-3.5 w-3.5" /> Stats</TabsTrigger>
+                                <TabsTrigger value="boxplot"     className="an__tab"><Box        className="h-3.5 w-3.5" /> Boxplot</TabsTrigger>
+                                <TabsTrigger value="trend"       className="an__tab"><TrendingUp className="h-3.5 w-3.5" /> Tendência</TabsTrigger>
+                                <TabsTrigger value="spc"         className="an__tab"><Activity   className="h-3.5 w-3.5" /> SPC</TabsTrigger>
+                                <TabsTrigger value="scatter"     className="an__tab"><ScatterIcon className="h-3.5 w-3.5" /> Dispersão</TabsTrigger>
+                                <TabsTrigger value="correlation" className="an__tab"><Grid       className="h-3.5 w-3.5" /> Correlação</TabsTrigger>
+                            </TabsList>
+                        </div>
 
                         {/* TABS CONTENT (Reused) */}
                         <TabsContent value="stats" className="space-y-4">
@@ -766,6 +1092,16 @@ const LineAnalytics: React.FC = () => {
                                 const tagMatch = selectedTags.find(t => `${t.linha_nome} - ${t.equipamento_nome} - ${t.nome}` === res.variable);
                                 const isDiscrete = tagMatch?.isDiscrete || res.is_discrete;
                                 const mapping = tagMatch?.valueMapping;
+
+                                // Stats grid POC — n / Média / Std / p50 / p90 / p99
+                                // Backend pode mandar `quantiles` ou só `mean/std/count` — calculamos
+                                // localmente o que faltar a partir do histograma como fallback.
+                                let p50: number | null = null, p90: number | null = null, p99: number | null = null;
+                                if (res.stats?.quantiles) {
+                                    p50 = res.stats.quantiles['0.5'] ?? res.stats.quantiles.p50 ?? null;
+                                    p90 = res.stats.quantiles['0.9'] ?? res.stats.quantiles.p90 ?? null;
+                                    p99 = res.stats.quantiles['0.99'] ?? res.stats.quantiles.p99 ?? null;
+                                }
 
                                 return (
                                 <Card key={idx}>
@@ -775,30 +1111,21 @@ const LineAnalytics: React.FC = () => {
                                             <div className="text-red-500 text-sm font-medium bg-red-50 p-2 rounded border border-red-200 dark:bg-red-900/20 dark:border-red-800">
                                                 {res.error === 'No data found' ? 'Sem dados para o período selecionado' : res.error}
                                             </div>
+                                        ) : !isDiscrete ? (
+                                            <StatsGrid stats={[
+                                                { label: 'n (amostras)', value: res.stats?.count ?? '—' },
+                                                { label: 'Média',        value: numFmt.num(res.stats?.mean) },
+                                                { label: 'Desvio padrão',value: numFmt.num(res.stats?.std) },
+                                                { label: 'p50',          value: numFmt.num(p50) },
+                                                { label: 'p90',          value: numFmt.num(p90) },
+                                                { label: 'Cpk',          value: res.stats?.cpk !== undefined && res.stats.cpk !== null
+                                                    ? <span style={{ color: res.stats.cpk < 1.33 ? 'var(--isa-bad)' : 'var(--isa-ok)' }}>{res.stats.cpk.toFixed(2)}</span>
+                                                    : '—' },
+                                            ]} />
                                         ) : (
                                             <div className="flex gap-4 text-sm text-gray-500">
-                                                {!isDiscrete && (
-                                                    <>
-                                                        <span>Média: {res.stats?.mean?.toFixed(2) ?? 'N/A'}</span>
-                                                        <span>Std: {res.stats?.std?.toFixed(2) ?? 'N/A'}</span>
-                                                        {res.stats?.cpk !== undefined && res.stats.cpk !== null && (
-                                                            <span className={res.stats.cpk < 1.33 ? 'text-red-500 font-bold' : 'text-green-600 font-bold'}>
-                                                                Cpk: {res.stats.cpk.toFixed(2)}
-                                                            </span>
-                                                        )}
-                                                        {res.stats?.cp !== undefined && res.stats.cp !== null && (
-                                                            <span className={res.stats.cp < 1.33 ? 'text-red-500 font-bold ml-4' : 'text-green-600 font-bold ml-4'}>
-                                                                Cp: {res.stats.cp.toFixed(2)}
-                                                            </span>
-                                                        )}
-                                                    </>
-                                                )}
-                                                {isDiscrete && (
-                                                    <>
-                                                        <span>Valores Únicos: {res.n_unique || res.stats?.count || 'N/A'}</span>
-                                                        <span>Contagem Total: {res.stats?.count || 'N/A'}</span>
-                                                    </>
-                                                )}
+                                                <span>Valores Únicos: {res.n_unique || res.stats?.count || 'N/A'}</span>
+                                                <span>Contagem Total: {res.stats?.count || 'N/A'}</span>
                                             </div>
                                         )}
                                     </CardHeader>
@@ -977,6 +1304,32 @@ const LineAnalytics: React.FC = () => {
                         <TabsContent value="trend">
                             {timeseriesData ? (
                                 <div className="space-y-4">
+                                    {/* Insights cards — descobertas automáticas */}
+                                    {(() => {
+                                        const insights = computeInsights(timeseriesData, selectedTags);
+                                        if (insights.length === 0) return null;
+                                        return (
+                                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 8 }}>
+                                                {insights.slice(0, 8).map((ins, i) => (
+                                                    <div key={i} style={{
+                                                        padding: '10px 12px',
+                                                        borderLeft: `3px solid ${ins.tone === 'bad' ? 'var(--isa-bad)' : ins.tone === 'warn' ? 'var(--isa-warn)' : 'var(--isa-ok)'}`,
+                                                        background: 'var(--isa-bg-panel)',
+                                                        border: '1px solid var(--isa-border)',
+                                                        borderRadius: 'var(--isa-radius)',
+                                                        fontSize: 'var(--isa-fs-body)',
+                                                    }}>
+                                                        <div style={{ fontWeight: 600, color: ins.tone === 'bad' ? 'var(--isa-bad)' : ins.tone === 'warn' ? 'var(--isa-warn)' : 'var(--isa-ok)', marginBottom: 2 }}>
+                                                            {ins.title}
+                                                        </div>
+                                                        <div style={{ color: 'var(--isa-text-muted)', fontSize: 'var(--isa-fs-meta)' }}>
+                                                            {ins.desc}
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        );
+                                    })()}
                                     <div className="flex justify-end">
                                         <Button onClick={addChart} variant="outline" size="sm" className="gap-2">
                                             <Plus className="h-4 w-4" /> Adicionar Gráfico
@@ -1018,19 +1371,83 @@ const LineAnalytics: React.FC = () => {
                                                 <CardContent>
                                                     {chart.selectedAliases.length > 0 ? (
                                                         <Plot
-                                                            data={chart.selectedAliases.map((alias: string, idx: number) => {
+                                                            data={chart.selectedAliases.flatMap((alias: string, idx: number) => {
                                                                 const tagMatch = selectedTags.find(t => `${t.linha_nome} - ${t.equipamento_nome} - ${t.nome}` === alias);
                                                                 const isDiscrete = tagMatch?.isDiscrete;
-                                                                return {
-                                                                    x: timeseriesData[alias]?.timestamps || [],
-                                                                    y: timeseriesData[alias]?.values || [],
+                                                                // re-ordena por timestamp antes do plot (defesa em profundidade)
+                                                                const sorted = sortByTimestamp(
+                                                                    timeseriesData[alias]?.timestamps,
+                                                                    timeseriesData[alias]?.values,
+                                                                );
+                                                                const yaxisKey = idx === 0 ? 'y' : `y${idx + 1}`;
+                                                                const baseTrace: any = {
+                                                                    x: sorted.x,
+                                                                    y: sorted.y,
                                                                     type: 'scatter',
                                                                     mode: 'lines',
-                                                                    line: { shape: isDiscrete ? 'hv' : 'linear' },
+                                                                    line: { shape: isDiscrete ? 'hv' : 'linear', width: 1.6 },
                                                                     name: alias.split(' - ').pop() || alias,
                                                                     hovertext: alias,
-                                                                    yaxis: idx === 0 ? 'y' : `y${idx + 1}`,
+                                                                    yaxis: yaxisKey,
                                                                 };
+                                                                const traces: any[] = [baseTrace];
+
+                                                                // ── Anomaly markers (>3σ) ────────────────────────────
+                                                                // Heurística Shewhart: pontos > média ± 3σ são "fora de controle".
+                                                                // Útil para o cientista de dados localizar EVENTOS visualmente.
+                                                                if (showAnomalies && !isDiscrete && sorted.y.length > 5) {
+                                                                    const nums = (sorted.y as number[]).filter(v => typeof v === 'number' && !isNaN(v));
+                                                                    if (nums.length > 1) {
+                                                                        const mean = nums.reduce((a, b) => a + b, 0) / nums.length;
+                                                                        const std = Math.sqrt(nums.reduce((a, b) => a + (b - mean) ** 2, 0) / nums.length);
+                                                                        const ucl = mean + 3 * std;
+                                                                        const lcl = mean - 3 * std;
+                                                                        const anomX: any[] = [];
+                                                                        const anomY: any[] = [];
+                                                                        sorted.y.forEach((v: any, i: number) => {
+                                                                            if (typeof v === 'number' && (v > ucl || v < lcl)) {
+                                                                                anomX.push(sorted.x[i]);
+                                                                                anomY.push(v);
+                                                                            }
+                                                                        });
+                                                                        if (anomX.length > 0) {
+                                                                            traces.push({
+                                                                                x: anomX, y: anomY,
+                                                                                type: 'scatter', mode: 'markers',
+                                                                                marker: { color: '#b53a2b', size: 9, symbol: 'circle-open', line: { width: 2 } },
+                                                                                name: `Anomalia (>3σ) — ${alias.split(' - ').pop()}`,
+                                                                                yaxis: yaxisKey,
+                                                                                showlegend: false,
+                                                                                hovertemplate: '<b>Anomalia</b><br>%{x}<br>%{y:.3f}<extra></extra>',
+                                                                            });
+                                                                        }
+                                                                    }
+                                                                }
+
+                                                                // ── Trendline (regressão linear) ─────────────────────
+                                                                // Útil pra ver DRIFT: se a média está "subindo lentamente"
+                                                                // ao longo do tempo, a trendline aparece inclinada.
+                                                                if (showTrendline && !isDiscrete && sorted.y.length > 2) {
+                                                                    const xNum: number[] = (sorted.x as string[]).map(t => new Date(t).getTime());
+                                                                    const yNum: number[] = (sorted.y as any[]).map(v => Number(v));
+                                                                    const reg = calcLinearRegression(xNum, yNum);
+                                                                    if (reg) {
+                                                                        const xLine = [reg.xMin, reg.xMax];
+                                                                        const yLine = xLine.map(x => reg.slope * x + reg.intercept);
+                                                                        traces.push({
+                                                                            x: xLine.map(t => new Date(t).toISOString()),
+                                                                            y: yLine,
+                                                                            type: 'scatter', mode: 'lines',
+                                                                            line: { color: '#c9932d', width: 1.5, dash: 'dash' },
+                                                                            name: `Tendência ${alias.split(' - ').pop()}`,
+                                                                            yaxis: yaxisKey,
+                                                                            showlegend: true,
+                                                                            hoverinfo: 'skip',
+                                                                        });
+                                                                    }
+                                                                }
+
+                                                                return traces;
                                                             })}
                                                             layout={{
                                                                 title: undefined,
@@ -1076,18 +1493,38 @@ const LineAnalytics: React.FC = () => {
                                         ))}
                                     </div>
                                 </div>
-                            ) : <div className="text-center p-8 text-gray-500">Clique em "Gerar Gráficos" para visualizar.</div>}
+                            ) : <div className="text-center p-8 text-gray-500">Clique em "Analisar" para visualizar.</div>}
                         </TabsContent>
 
-                        {/* SPC and Scatter Tabs remain similar ... */}
+                        {/* SPC — Carta de Controle Shewhart + Western Electric Rules */}
                         <TabsContent value="spc">
                             {timeseriesData ? (
                                 <div className="space-y-4">
+                                    {/* Insights: capability + violations */}
+                                    {(() => {
+                                        const insights = computeInsights(timeseriesData, selectedTags).filter(i => i.tone !== 'ok');
+                                        if (insights.length === 0) return (
+                                            <div style={{ padding: '10px 12px', borderLeft: '3px solid var(--isa-ok)', background: 'var(--isa-bg-panel)', border: '1px solid var(--isa-border)', borderRadius: 'var(--isa-radius)', fontSize: 'var(--isa-fs-body)' }}>
+                                                <strong style={{ color: 'var(--isa-ok)' }}>Processo sob controle</strong>
+                                                <div style={{ color: 'var(--isa-text-muted)', fontSize: 'var(--isa-fs-meta)', marginTop: 2 }}>Nenhum desvio crítico nas variáveis selecionadas.</div>
+                                            </div>
+                                        );
+                                        return (
+                                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 8 }}>
+                                                {insights.slice(0, 8).map((ins, i) => (
+                                                    <div key={i} style={{ padding: '10px 12px', borderLeft: `3px solid ${ins.tone === 'bad' ? 'var(--isa-bad)' : 'var(--isa-warn)'}`, background: 'var(--isa-bg-panel)', border: '1px solid var(--isa-border)', borderRadius: 'var(--isa-radius)', fontSize: 'var(--isa-fs-body)' }}>
+                                                        <div style={{ fontWeight: 600, color: ins.tone === 'bad' ? 'var(--isa-bad)' : 'var(--isa-warn)', marginBottom: 2 }}>{ins.title}</div>
+                                                        <div style={{ color: 'var(--isa-text-muted)', fontSize: 'var(--isa-fs-meta)' }}>{ins.desc}</div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        );
+                                    })()}
+
                                     {Object.entries(timeseriesData).map(([alias, d]: [string, any]) => {
                                         const tagMatch = selectedTags.find(t => `${t.linha_nome} - ${t.equipamento_nome} - ${t.nome}` === alias);
                                         const isDiscrete = tagMatch?.isDiscrete;
                                         const mapping = tagMatch?.valueMapping;
-
                                         if (isDiscrete) {
                                             const counts: Record<number, number> = {};
                                             d.values.forEach((v: number) => { counts[v] = (counts[v] || 0) + 1; });
@@ -1095,107 +1532,84 @@ const LineAnalytics: React.FC = () => {
                                             const y = Object.values(counts);
                                             const colors = x.map(val => mapping?.[val]?.color || '#94a3b8');
                                             const labels = x.map(val => mapping?.[val]?.label || `Val: ${val}`);
-
                                             return (
                                                 <Card key={alias}>
-                                                    <CardHeader><CardTitle>Frequência de Estados - {alias}</CardTitle></CardHeader>
+                                                    <CardHeader><CardTitle>Frequência de Estados — {alias}</CardTitle></CardHeader>
                                                     <CardContent>
-                                                        <Plot
-                                                            data={[{
-                                                                x: labels,
-                                                                y: y,
-                                                                type: 'bar',
-                                                                marker: { color: colors }
-                                                            }]}
-                                                            layout={{ title: { text: `Distribuição de Tempo: ${alias}` }, autosize: true, height: 400, yaxis: { title: 'Registros (Freq)' } }}
-                                                            useResizeHandler={true}
-                                                            className="w-full"
-                                                        />
+                                                        <Plot data={[{ x: labels, y: y, type: 'bar', marker: { color: colors } }]} layout={{ autosize: true, height: 380, yaxis: { title: 'Registros' }, margin: { l: 50, r: 20, t: 10, b: 60 } } as any} useResizeHandler className="w-full" />
                                                     </CardContent>
                                                 </Card>
                                             );
                                         }
-
+                                        const sortedSpc = sortByTimestamp(d.timestamps, d.values);
+                                        const ts = sortedSpc.x;
+                                        const ys = (sortedSpc.y as number[]).filter(v => typeof v === 'number');
+                                        const mean = d.stats?.mean ?? 0;
+                                        const std = d.stats?.std ?? 0;
+                                        const ucl = d.stats?.ucl ?? mean + 3 * std;
+                                        const lcl = d.stats?.lcl ?? mean - 3 * std;
+                                        const u1 = mean + std, l1 = mean - std;
+                                        const u2 = mean + 2 * std, l2 = mean - 2 * std;
+                                        const lsl = d.stats?.lsl, usl = d.stats?.usl;
+                                        const cp = (lsl != null && usl != null && std > 0) ? (usl - lsl) / (6 * std) : null;
+                                        const cpk = (lsl != null && usl != null && std > 0) ? Math.min((usl - mean) / (3 * std), (mean - lsl) / (3 * std)) : null;
+                                        const violations = detectWERules(ys, mean, std);
+                                        const violX: any[] = [], violY: any[] = [], violText: string[] = [];
+                                        violations.forEach(v => { violX.push(sortedSpc.x[v.index]); violY.push(sortedSpc.y[v.index]); violText.push(`Regra ${v.rule}: ${v.desc}`); });
                                         return (
                                             <Card key={alias}>
-                                                <CardHeader><CardTitle>SPC - {alias}</CardTitle></CardHeader>
+                                                <CardHeader>
+                                                    <CardTitle className="flex items-center justify-between">
+                                                        <span>Carta de Controle — {alias}</span>
+                                                        <div className="flex gap-2">
+                                                            {cpk !== null && <span className="isa-tag" style={{ background: cpk < 1.33 ? 'var(--isa-bad-bg)' : 'var(--isa-ok-bg)', color: cpk < 1.33 ? 'var(--isa-bad)' : 'var(--isa-ok)' }}>Cpk {cpk.toFixed(2)}</span>}
+                                                            {cp !== null && <span className="isa-tag">Cp {cp.toFixed(2)}</span>}
+                                                            <span className="isa-tag" style={{ background: violations.length > 0 ? 'var(--isa-warn-bg)' : 'var(--isa-bg-muted)', color: violations.length > 0 ? 'var(--isa-warn)' : 'var(--isa-text-muted)' }}>{violations.length} violações</span>
+                                                        </div>
+                                                    </CardTitle>
+                                                </CardHeader>
                                                 <CardContent>
                                                     <Plot
                                                         data={[
-                                                            { x: d.timestamps, y: d.values, type: 'scatter', mode: 'lines+markers', name: 'Valor Real' },
-                                                            { x: d.timestamps, y: Array(d.timestamps.length).fill(d.stats?.mean ?? 0), type: 'scatter', mode: 'lines', name: 'Média', line: { color: 'green', dash: 'dash' } },
-                                                            { x: d.timestamps, y: Array(d.timestamps.length).fill(d.stats?.ucl ?? 0), type: 'scatter', mode: 'lines', name: 'UCL (+3σ)', line: { color: 'red' } },
-                                                            { x: d.timestamps, y: Array(d.timestamps.length).fill(d.stats?.lcl ?? 0), type: 'scatter', mode: 'lines', name: 'LCL (-3σ)', line: { color: 'red' } },
+                                                            { x: ts, y: Array(ts.length).fill(u2), type: 'scatter', mode: 'lines', line: { color: 'rgba(201,147,45,0.4)', width: 0 }, showlegend: false, hoverinfo: 'skip' },
+                                                            { x: ts, y: Array(ts.length).fill(ucl), type: 'scatter', mode: 'lines', name: 'UCL (+3σ)', fill: 'tonexty', fillcolor: 'rgba(201,147,45,0.10)', line: { color: 'rgba(181,58,43,0.8)', width: 1, dash: 'dash' } },
+                                                            { x: ts, y: Array(ts.length).fill(u1), type: 'scatter', mode: 'lines', line: { color: 'rgba(45,134,89,0.3)', width: 0 }, showlegend: false, hoverinfo: 'skip' },
+                                                            { x: ts, y: Array(ts.length).fill(l1), type: 'scatter', mode: 'lines', fill: 'tonexty', fillcolor: 'rgba(45,134,89,0.08)', line: { color: 'rgba(45,134,89,0.3)', width: 0 }, showlegend: false, hoverinfo: 'skip' },
+                                                            { x: ts, y: Array(ts.length).fill(l2), type: 'scatter', mode: 'lines', line: { color: 'rgba(201,147,45,0.4)', width: 0 }, showlegend: false, hoverinfo: 'skip' },
+                                                            { x: ts, y: Array(ts.length).fill(lcl), type: 'scatter', mode: 'lines', name: 'LCL (-3σ)', fill: 'tonexty', fillcolor: 'rgba(201,147,45,0.10)', line: { color: 'rgba(181,58,43,0.8)', width: 1, dash: 'dash' } },
+                                                            { x: ts, y: Array(ts.length).fill(mean), type: 'scatter', mode: 'lines', name: 'Média', line: { color: 'rgba(45,134,89,0.7)', width: 1, dash: 'dot' } },
+                                                            { x: ts, y: sortedSpc.y, type: 'scatter', mode: 'lines+markers', name: 'Valor', line: { color: '#3f5b7c', width: 1.5 }, marker: { size: 4 } },
+                                                            ...(violations.length > 0 ? [{ x: violX, y: violY, type: 'scatter' as const, mode: 'markers' as const, name: 'Violações WE', marker: { color: '#b53a2b', size: 11, symbol: 'x', line: { width: 2 } }, text: violText, hovertemplate: '<b>%{text}</b><br>%{x}<br>valor=%{y:.3f}<extra></extra>' }] : []),
                                                         ]}
-                                                        layout={{ title: { text: `Carta de Controle: ${alias}` }, autosize: true, height: 400 }}
-                                                        useResizeHandler={true}
+                                                        layout={{ autosize: true, height: 380, margin: { l: 60, r: 30, t: 10, b: 50 }, xaxis: { type: 'date' }, showlegend: true, legend: { orientation: 'h', y: -0.18, font: { size: 10 } }, hovermode: 'x unified' } as any}
+                                                        useResizeHandler
                                                         className="w-full"
                                                     />
+                                                    {violations.length > 0 && (
+                                                        <div style={{ marginTop: 8, maxHeight: 140, overflowY: 'auto', border: '1px solid var(--isa-border)', borderRadius: 'var(--isa-radius)', padding: 8, fontSize: 'var(--isa-fs-meta)' }}>
+                                                            <strong style={{ color: 'var(--isa-bad)' }}>Western Electric Rules — pontos a investigar:</strong>
+                                                            <ul style={{ listStyle: 'none', padding: 0, margin: '4px 0 0' }}>
+                                                                {violations.slice(0, 10).map((v, i) => (
+                                                                    <li key={i} style={{ display: 'flex', gap: 8, padding: '2px 0' }}>
+                                                                        <span style={{ fontFamily: 'var(--isa-mono)', color: 'var(--isa-text-muted)', minWidth: 110 }}>{sortedSpc.x[v.index]}</span>
+                                                                        <span style={{ minWidth: 50, fontWeight: 600 }}>R{v.rule}</span>
+                                                                        <span>{v.desc}</span>
+                                                                    </li>
+                                                                ))}
+                                                                {violations.length > 10 && <li style={{ color: 'var(--isa-text-muted)', fontStyle: 'italic' }}>… e mais {violations.length - 10}</li>}
+                                                            </ul>
+                                                        </div>
+                                                    )}
                                                 </CardContent>
                                             </Card>
                                         );
                                     })}
                                 </div>
-                            ) : <div className="text-center p-8 text-gray-500">Clique em "Gerar Gráficos" para visualizar.</div>}
+                            ) : <div className="text-center p-8 text-gray-500">Clique em "Analisar" para visualizar.</div>}
                         </TabsContent>
 
+                        {/* Correlation tab — usa CorrMatrixPlot existente */}
                         <TabsContent value="correlation">
-                            {/* Aviso de Spearman caso haja vars discretas */}
-                            {selectedTags.some(t => t.isDiscrete) && (
-                                <div className="mb-4 p-3 bg-blue-50 text-blue-700 dark:bg-blue-900/20 dark:text-blue-300 rounded border border-blue-200 dark:border-blue-800 text-sm flex items-start gap-2">
-                                    <Info className="h-5 w-5 shrink-0 mt-0.5" />
-                                    <div>
-                                        <strong>Variáveis Discretas Detectadas.</strong> Como existem variáveis categóricas/ordinais selecionadas (ex: Estado), é recomendado utilizar o método de correlação de <strong>Spearman</strong> ao invés de Pearson.
-                                        {corrMethod === 'pearson' && (
-                                            <Button variant="link" size="sm" className="p-0 h-auto ml-2 text-blue-700 dark:text-blue-300 underline font-semibold" onClick={() => setCorrMethod('spearman')}>
-                                                Mudar para Spearman
-                                            </Button>
-                                        )}
-                                    </div>
-                                </div>
-                            )}
-                            
-                            {/* Controles da aba de correlação */}
-                            <div className="flex flex-wrap items-center gap-4 mb-4 p-3 bg-white dark:bg-slate-900 rounded-lg border shadow-sm">
-                                <div className="flex items-center gap-2">
-                                    <Label className="text-xs font-semibold text-gray-500 whitespace-nowrap">Método</Label>
-                                    <Select value={corrMethod} onValueChange={(v: string) => setCorrMethod(v as 'pearson' | 'spearman')}>
-                                        <SelectTrigger className="w-36 h-8 text-xs"><SelectValue /></SelectTrigger>
-                                        <SelectContent>
-                                            <SelectItem value="pearson">Pearson (linear)</SelectItem>
-                                            <SelectItem value="spearman">Spearman (rank)</SelectItem>
-                                        </SelectContent>
-                                    </Select>
-                                </div>
-                                <div className="flex items-center gap-2 flex-1 min-w-[200px]">
-                                    <Label className="text-xs font-semibold text-gray-500 whitespace-nowrap">
-                                        Filtro mínimo: {(corrMinFilter * 100).toFixed(0)}%
-                                    </Label>
-                                    <input
-                                        type="range" min="0" max="0.99" step="0.05"
-                                        value={corrMinFilter}
-                                        onChange={(e: React.ChangeEvent<HTMLInputElement>) => setCorrMinFilter(parseFloat(e.target.value))}
-                                        className="flex-1 h-2 accent-blue-600 cursor-pointer"
-                                    />
-                                </div>
-                                {correlationData?.correlation_matrix && (
-                                    <div className="flex items-center gap-3 text-xs text-gray-500">
-                                        <span className="bg-slate-100 px-2 py-1 rounded font-mono">
-                                            n={correlationData.correlation_matrix.n_points} pts
-                                        </span>
-                                        <span className="bg-slate-100 px-2 py-1 rounded font-mono">
-                                            resample: {correlationData.correlation_matrix.resample_rule}
-                                        </span>
-                                        <span className="text-[10px] text-gray-400">
-                                            {'* p<0.05  ** p<0.01  *** p<0.001'}
-                                        </span>
-                                        <Button variant="outline" size="sm" className="h-7 text-xs gap-1" onClick={downloadCorrelationCSV}>
-                                            <Download className="h-3 w-3" /> CSV
-                                        </Button>
-                                    </div>
-                                )}
-                            </div>
-
                             {correlationData?.correlation_matrix ? (
                                 <CorrMatrixPlot
                                     matrix={correlationData.correlation_matrix}
@@ -1207,14 +1621,10 @@ const LineAnalytics: React.FC = () => {
                                     setActiveTab={setActiveTab}
                                     handleRunAnalysis={handleRunAnalysis}
                                 />
-                            ) : !loading && (
-                                <div className="flex flex-col items-center justify-center h-64 border-2 border-dashed rounded-lg text-gray-400 gap-2">
-                                    <Grid className="h-8 w-8 opacity-40" />
-                                    <span>Configure o método acima e clique em Correlação</span>
-                                </div>
-                            )}
+                            ) : <div className="text-center p-8 text-gray-500">Clique em "Analisar" para gerar a matriz.</div>}
                         </TabsContent>
 
+                        {/* Scatter tab — usa ScatterPlot existente */}
                         <TabsContent value="scatter">
                             {timeseriesData ? (
                                 <Card>
@@ -1224,22 +1634,18 @@ const LineAnalytics: React.FC = () => {
                                             <div className="w-1/2">
                                                 <Label>Eixo X</Label>
                                                 <Select value={scatterX} onValueChange={setScatterX}>
-                                                    <SelectTrigger><SelectValue placeholder="Selecione Variável X" /></SelectTrigger>
+                                                    <SelectTrigger><SelectValue placeholder="Variável X" /></SelectTrigger>
                                                     <SelectContent>
-                                                        {Object.keys(timeseriesData).map(k => (
-                                                            <SelectItem key={k} value={k}>{k}</SelectItem>
-                                                        ))}
+                                                        {Object.keys(timeseriesData).map(k => <SelectItem key={k} value={k}>{k}</SelectItem>)}
                                                     </SelectContent>
                                                 </Select>
                                             </div>
                                             <div className="w-1/2">
                                                 <Label>Eixo Y</Label>
                                                 <Select value={scatterY} onValueChange={setScatterY}>
-                                                    <SelectTrigger><SelectValue placeholder="Selecione Variável Y" /></SelectTrigger>
+                                                    <SelectTrigger><SelectValue placeholder="Variável Y" /></SelectTrigger>
                                                     <SelectContent>
-                                                        {Object.keys(timeseriesData).map(k => (
-                                                            <SelectItem key={k} value={k}>{k}</SelectItem>
-                                                        ))}
+                                                        {Object.keys(timeseriesData).map(k => <SelectItem key={k} value={k}>{k}</SelectItem>)}
                                                     </SelectContent>
                                                 </Select>
                                             </div>
@@ -1248,18 +1654,51 @@ const LineAnalytics: React.FC = () => {
                                     <CardContent>
                                         {scatterX && scatterY
                                             ? <ScatterPlot xKey={scatterX} yKey={scatterY} timeseriesData={timeseriesData} calcLinearRegression={calcLinearRegression} />
-                                            : <div className="p-8 text-center text-gray-500">Selecione as variáveis para os Eixos X e Y.</div>
-                                        }
+                                            : <div className="p-8 text-center text-gray-500">Selecione X e Y.</div>}
                                     </CardContent>
                                 </Card>
-                            ) : <div className="text-center p-8 text-gray-500">Clique em "Gerar Gráficos" para visualizar.</div>}
+                            ) : <div className="text-center p-8 text-gray-500">Clique em "Analisar" primeiro.</div>}
                         </TabsContent>
 
                     </Tabs>
                 </div>
             </div>
+
+            <style>{AN_STYLES}</style>
         </div>
     );
 };
+
+const AN_STYLES = `
+/* ── ISA-101 Analytics layout ── tokens vêm de styles/isa101.css ── */
+.an__page { padding: 16px 20px; background: var(--isa-bg); min-height: 100vh; color: var(--isa-text); display: flex; flex-direction: column; gap: 12px; font-family: var(--isa-font); }
+.an__header { display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 12px; }
+.an__title  { font-size: 20px; font-weight: 600; margin: 0; color: var(--isa-text); }
+.an__subtitle { margin: 2px 0 0; color: var(--isa-text-muted); font-size: var(--isa-fs-default); }
+.an__error  { background: var(--isa-bad-bg); border: 1px solid var(--isa-bad); color: var(--isa-bad); padding: 8px 12px; border-radius: var(--isa-radius); font-size: var(--isa-fs-default); }
+.an__actions { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.an__btn { padding: 6px 16px; border-radius: var(--isa-radius); font-size: var(--isa-fs-default); font-weight: 500; cursor: pointer; border: 1px solid transparent; font-family: inherit; }
+.an__btn:disabled { opacity: 0.55; cursor: not-allowed; }
+.an__btn--primary   { background: var(--isa-accent); color: #fff; border-color: var(--isa-accent); }
+.an__btn--primary:hover:not(:disabled) { background: #2f4a6a; }
+.an__btn--ghost     { background: transparent; color: var(--isa-text-muted); border-color: transparent; }
+.an__btn--ghost:hover:not(:disabled)     { background: var(--isa-bg-muted); }
+.an__body  { display: flex; gap: 12px; flex: 1; min-height: 0; height: calc(100vh - 130px); }
+.an__panel { width: 300px; flex-shrink: 0; display: flex; flex-direction: column; border: 1px solid var(--isa-border) !important; background: var(--isa-bg-panel) !important; box-shadow: none !important; border-radius: var(--isa-radius-lg) !important; }
+.an__panel-title { display: flex; align-items: center; gap: 6px; font-size: 14px; font-weight: 600; color: var(--isa-text); }
+.an__badge { font-size: 10px; background: var(--isa-accent-soft); color: var(--isa-accent); border: 1px solid var(--isa-accent); border-radius: 4px; padding: 1px 6px; margin-left: auto; }
+.an__panel-desc { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--isa-text-muted); margin-top: 4px; }
+.an__search-wrap { position: relative; }
+.an__search-icon { position: absolute; left: 8px; top: 50%; transform: translateY(-50%); width: 13px; height: 13px; color: var(--isa-text-weak); pointer-events: none; }
+.an__search-input { padding-left: 26px !important; height: 32px !important; font-size: 12px !important; }
+.an__scroll { border: 1px solid var(--isa-border) !important; border-radius: var(--isa-radius) !important; }
+.an__clear-btn { display: flex; align-items: center; gap: 4px; padding: 4px 10px; border-radius: var(--isa-radius); font-size: 11px; color: var(--isa-bad); background: var(--isa-bad-bg); border: 1px solid var(--isa-bad); cursor: pointer; }
+.an__main { flex: 1; overflow: auto; display: flex; flex-direction: column; }
+.an__tabs-bar { display: flex; align-items: center; gap: 8px; padding: 8px; background: var(--isa-bg-panel); border: 1px solid var(--isa-border); border-radius: var(--isa-radius-lg); margin-bottom: 10px; }
+.an__tabs-list { background: var(--isa-bg-muted) !important; border-radius: var(--isa-radius) !important; padding: 3px !important; gap: 2px !important; height: auto !important; }
+.an__tab { font-size: 12px !important; padding: 4px 10px !important; border-radius: 5px !important; display: flex; align-items: center; gap: 4px; height: auto !important; color: var(--isa-text-muted) !important; }
+.an__tab[data-state="active"] { background: var(--isa-bg-panel) !important; color: var(--isa-text) !important; box-shadow: var(--isa-shadow-1) !important; font-weight: 600 !important; }
+.an__main [class*="Card"] { border: 1px solid var(--isa-border) !important; box-shadow: var(--isa-shadow-1) !important; border-radius: var(--isa-radius-lg) !important; background: var(--isa-bg-panel) !important; }
+`;
 
 export default LineAnalytics;

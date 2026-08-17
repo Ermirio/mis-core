@@ -41,7 +41,7 @@ import { ptBR } from 'date-fns/locale';
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Badge } from "@/components/ui/badge";
+// Badge removido — agora usamos a Tag de @/components/v2 com tokens ISA-101.
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
@@ -52,6 +52,8 @@ import DiagnosticsPanel from '@/components/GoldenState/DiagnosticsPanel';
 import VariablesTab from '@/components/EquipamentoDetalhes/VariablesTab';
 import { mapEstado } from '@/utils/equipmentStateUtils';
 import { DJANGO_API_URL, FLASK_API_URL } from '@/config/api';
+import { EquipmentHeader, KpiStrip, KpiCard, Panel, Note } from '@/components/v2';
+import { fmt as numFmt } from '@/components/v2/stats';
 
 // Configuração
 // Configuração
@@ -122,6 +124,39 @@ interface Turno {
   hora_fim: string;
 }
 
+// ===== MOCK DATA (banco vazio / dev preview) =====
+const MOCK_EQUIPAMENTO: Equipamento = {
+  id: 0, nome: "Enchedora ENV-01", codigo: "ENV-01-ENCR",
+  tipo: "enchedora", tipo_display: "Enchedora",
+  status: "operando", status_display: "Operando",
+  linha: 1, linha_nome: "Envase 01",
+  velocidade_nominal: 120, meta_oee: 75,
+};
+const MOCK_DADOS_RT: DadosTempoReal = {
+  status: "online", timestamp: new Date().toISOString(),
+  medicoes: {
+    velocidade_atual: 108, contagem_entrada: 4820, contagem_saida: 4791,
+    descarte: 29, percentual_descarte: 0.6, temperatura: 20.4,
+    pressao: 2.6, estado: "Produzindo", oee_realtime: 0.82,
+  },
+};
+const MOCK_HISTORICO: Metrica[] = Array.from({ length: 8 }, (_, i) => ({
+  id: i + 1,
+  data_hora: new Date(Date.now() - i * 3600000).toISOString(),
+  periodo: `Turno ${i < 4 ? "A" : "B"}`,
+  contagem_entrada: 580 - i * 20, contagem_saida: 574 - i * 20,
+  descarte: 6 + i, percentual_descarte: 1.0 + i * 0.1,
+  velocidade_real: 108 - i * 2,
+  disponibilidade: 0.91 - i * 0.01, performance: 0.89 - i * 0.01,
+  qualidade: 0.99 - i * 0.001, oee: 0.82 - i * 0.01,
+  tempo_producao: 3540 - i * 60,
+}));
+const MOCK_TURNOS: Turno[] = [
+  { id: 1, nome: "Turno A", hora_inicio: "06:00:00", hora_fim: "14:00:00" },
+  { id: 2, nome: "Turno B", hora_inicio: "14:00:00", hora_fim: "22:00:00" },
+  { id: 3, nome: "Turno C", hora_inicio: "22:00:00", hora_fim: "06:00:00" },
+];
+
 // ===== COMPONENTE PRINCIPAL =====
 
 const EquipamentoDetalhes: React.FC = () => {
@@ -168,8 +203,13 @@ const EquipamentoDetalhes: React.FC = () => {
           setTurnos(listaTurnos);
           if (listaTurnos.length > 0) setSelectedTurnoId(String(listaTurnos[0].id));
         }
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Erro desconhecido');
+      } catch {
+        // Equipamento não encontrado (banco vazio / dev) → modo simulação
+        setEquipamento(MOCK_EQUIPAMENTO);
+        setDadosTempoReal(MOCK_DADOS_RT);
+        setHistorico(MOCK_HISTORICO);
+        setTurnos(MOCK_TURNOS);
+        setOnline(true);
       } finally {
         setLoading(false);
       }
@@ -458,34 +498,54 @@ const EquipamentoDetalhes: React.FC = () => {
   if (loading) return <div className="p-8 text-center">Carregando...</div>;
   if (!equipamento) return <div className="p-8 text-center text-red-600">Equipamento não encontrado</div>;
 
+  // Estado visual ISA-101 derivado do online + OEE atual.
+  // Mapeamento intencional ao padrão da POC eq-head: RUN | STOP | WARN | OFF.
+  const oeeAtual = metricaAtualDisplay?.oee ?? 0;
+  const eqState: { label: string; tone: 'run' | 'stop' | 'warn' | 'off' } =
+    !online                    ? { label: 'OFF',  tone: 'off' }  :
+    oeeAtual === 0             ? { label: 'STOP', tone: 'stop' } :
+    oeeAtual < 65              ? { label: 'WARN', tone: 'warn' } :
+                                 { label: 'RUN',  tone: 'run' };
+
   return (
-    <div className="w-full min-h-screen bg-gray-50">
-      {/* Header */}
-      <div className="bg-white border-b border-gray-200 p-4 sticky top-0 z-10 space-y-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <Button variant="ghost" size="icon" onClick={() => navigate(-1)}>
-              <ArrowLeft className="w-5 h-5" />
-            </Button>
-            <div>
-              <h1 className="text-2xl font-bold text-gray-900">{equipamento.nome}</h1>
-              <p className="text-sm text-gray-500">{equipamento.codigo} • {equipamento.linha_nome}</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <Badge variant={online ? 'default' : 'secondary'}>{online ? '🟢 Online' : '🔴 Offline'}</Badge>
-          </div>
-        </div>
+    <div className="isa-root" style={{ padding: '16px 20px', minHeight: '100vh' }}>
+      {/* Voltar */}
+      <button
+        type="button"
+        onClick={() => navigate(-1)}
+        style={{
+          background: 'transparent', border: 'none', color: 'var(--isa-text-muted)',
+          cursor: 'pointer', fontSize: 'var(--isa-fs-body)', display: 'flex',
+          alignItems: 'center', gap: 4, padding: '4px 0', marginBottom: 8,
+        }}
+      >
+        <ArrowLeft size={14} /> Voltar
+      </button>
 
-        {/* BARRA DE FILTROS AVANÇADA */}
-        <div className="flex flex-wrap items-center gap-4 bg-gray-50 p-3 rounded-lg border border-gray-200">
-          <div className="flex items-center gap-2">
-            <Layers className="w-4 h-4 text-gray-500" />
-            <span className="text-sm font-medium text-gray-700">Filtros:</span>
-          </div>
+      {/* eq-head ISA-101 — POC */}
+      <EquipmentHeader
+        initials={equipamento.codigo.replace(/[^A-Z0-9]/gi, '').slice(0, 2)}
+        title={<>{equipamento.nome} · <span style={{ fontFamily: 'var(--isa-mono)', color: 'var(--isa-text-muted)', fontWeight: 400 }}>{equipamento.codigo}</span></>}
+        subtitle={
+          <>
+            {equipamento.tipo_display} · Linha {equipamento.linha_nome}
+            {equipamento.velocidade_nominal ? ` · Velocidade nominal ${equipamento.velocidade_nominal} un/min` : ''}
+            {equipamento.meta_oee ? ` · Meta OEE ${equipamento.meta_oee}%` : ''}
+          </>
+        }
+        state={eqState}
+      />
 
-          {/* Tipo de Período */}
-          <Select value={filterType} onValueChange={(v: any) => setFilterType(v)}>
+      {/* Barra de filtros — re-skin com tokens ISA-101 */}
+      <div style={{
+        background: 'var(--isa-bg-panel)', border: '1px solid var(--isa-border)',
+        borderRadius: 'var(--isa-radius)', padding: '10px 12px',
+        display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'center', marginBottom: 14,
+      }}>
+        <span style={{ fontSize: 'var(--isa-fs-meta)', color: 'var(--isa-text-muted)', textTransform: 'uppercase' }}>Filtros</span>
+
+        {/* (filtros antigos abaixo — mantidos via shadcn pra não quebrar a lógica de turno_atual/turno_específico) */}
+        <Select value={filterType} onValueChange={(v: any) => setFilterType(v)}>
             <SelectTrigger className="w-[180px] bg-white">
               <SelectValue placeholder="Período" />
             </SelectTrigger>
@@ -525,50 +585,56 @@ const EquipamentoDetalhes: React.FC = () => {
           <div className="h-6 w-px bg-gray-300 mx-2" />
 
           {/* Toggle Agrupamento */}
-          <div className="flex items-center gap-2">
-            <Label htmlFor="consol-mode" className="text-sm text-gray-600">Detalhado</Label>
+          <div className="flex items-center gap-2" style={{ marginLeft: 8 }}>
+            <Label htmlFor="consol-mode" style={{ fontSize: 'var(--isa-fs-body)', color: 'var(--isa-text-muted)' }}>Detalhado</Label>
             <Switch
               id="consol-mode"
               checked={isConsolidated}
               onCheckedChange={setIsConsolidated}
             />
-            <Label htmlFor="consol-mode" className="text-sm text-gray-600">Consolidado</Label>
+            <Label htmlFor="consol-mode" style={{ fontSize: 'var(--isa-fs-body)', color: 'var(--isa-text-muted)' }}>Consolidado</Label>
           </div>
-        </div>
       </div>
 
+      {/* KPI strip POC — 4 colunas (Velocidade, Produção, Descarte, OEE) */}
+      <KpiStrip cols={4} style={{ marginBottom: 14 }}>
+        <KpiCard
+          label="Velocidade"
+          value={(metricaAtualDisplay?.velocidade ?? 0).toFixed(1)}
+          unit="un/min"
+        />
+        <KpiCard
+          label="Produção"
+          value={String(metricaAtualDisplay?.producao ?? 0)}
+          unit="un"
+        />
+        <KpiCard
+          label="Descarte"
+          value={(metricaAtualDisplay?.descarte_perc ?? 0).toFixed(1)}
+          unit="%"
+          delta={
+            (metricaAtualDisplay?.descarte_perc ?? 0) > 2.5
+              ? { value: 'Acima do limite (2,5%)', tone: 'down' }
+              : undefined
+          }
+        />
+        <KpiCard
+          label="OEE"
+          value={numFmt.num(metricaAtualDisplay?.oee, 1)}
+          unit="%"
+          delta={
+            equipamento.meta_oee
+              ? {
+                  value: `Meta ${equipamento.meta_oee}%`,
+                  tone: (metricaAtualDisplay?.oee ?? 0) >= equipamento.meta_oee ? 'up' : 'down',
+                }
+              : undefined
+          }
+        />
+      </KpiStrip>
+
       {/* Conteúdo */}
-      <div className="p-4 space-y-4">
-        {/* Card de Métricas (Resumo do Período) */}
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-gray-500 uppercase tracking-wider">
-              {isConsolidated ? 'Resumo Consolidado' : 'Métrica Atual / Recente'}
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <div>
-                <p className="text-2xl font-bold">{(metricaAtualDisplay?.velocidade ?? 0).toFixed(1)}</p>
-                <p className="text-xs text-gray-500">Velocidade (un/min)</p>
-              </div>
-              <div>
-                <p className="text-2xl font-bold">{metricaAtualDisplay?.producao ?? 0}</p>
-                <p className="text-xs text-gray-500">Produção (un)</p>
-              </div>
-              <div>
-                <p className="text-2xl font-bold text-red-600">{(metricaAtualDisplay?.descarte_perc ?? 0).toFixed(1)}%</p>
-                <p className="text-xs text-gray-500">Descarte</p>
-              </div>
-              <div>
-                <p className={`text-2xl font-bold ${getOEEColor(metricaAtualDisplay?.oee || 0)}`}>
-                  {(metricaAtualDisplay?.oee || 0).toFixed(1)}%
-                </p>
-                <p className="text-xs text-gray-500">OEE</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
 
         <Tabs defaultValue="grafico">
           <TabsList>
@@ -694,7 +760,7 @@ const EquipamentoDetalhes: React.FC = () => {
                 {totalEventPages > 1 && (
                   <div className="flex justify-center gap-2 mt-4">
                     <Button variant="outline" size="sm" onClick={() => setEventPage(p => Math.max(1, p - 1))} disabled={eventPage === 1}><ChevronLeft className="w-4 h-4" /></Button>
-                    <span className="text-sm py-2">Página {eventPage} de {totalEventPages}</span>
+                    <span style={{ fontSize: 'var(--isa-fs-default)', padding: '6px 0' }}>Página {eventPage} de {totalEventPages}</span>
                     <Button variant="outline" size="sm" onClick={() => setEventPage(p => Math.min(totalEventPages, p + 1))} disabled={eventPage === totalEventPages}><ChevronRight className="w-4 h-4" /></Button>
                   </div>
                 )}

@@ -143,27 +143,7 @@
   transform: scale(1.1);
 }
 
-/* ===== INDICADOR DE NOVA FUNCIONALIDADE ===== */
-.nav-link-custom.new-feature::after {
-  content: 'NEW';
-  position: absolute;
-  top: -8px;
-  right: -8px;
-  background: var(--accent-color);
-  color: white;
-  font-size: 0.6rem;
-  font-weight: 700;
-  padding: 2px 6px;
-  border-radius: 8px;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  animation: pulse-new 2s infinite;
-}
-
-@keyframes pulse-new {
-  0%, 100% { transform: scale(1); }
-  50% { transform: scale(1.1); }
-}
+/* new-feature removido na v9.6 */
 
 /* ===== RESPONSIVIDADE ===== */
 @media (max-width: 1024px) {
@@ -260,20 +240,14 @@
     text-align: center;
   }
   
-  .nav-link-custom.new-feature::after {
-    top: -6px;
-    right: -6px;
-    font-size: 0.5rem;
-    padding: 1px 4px;
-  }
+  /* new-feature removido v9.6 */
 }
 
 /* ===== MELHORIAS DE ACESSIBILIDADE ===== */
 @media (prefers-reduced-motion: reduce) {
   .header-icon,
   .nav-link-custom,
-  .nav-icon,
-  .nav-link-custom.new-feature::after {
+  .nav-icon {
     animation: none;
     transition: none;
   }

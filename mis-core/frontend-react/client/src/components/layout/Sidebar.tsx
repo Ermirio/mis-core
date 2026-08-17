@@ -131,22 +131,22 @@ const Sidebar: React.FC<SidebarProps> = ({ collapsed, onToggle }) => {
       <div className="sidebar-divider"></div>
       {!collapsed && <p className="sidebar-section-title">FERRAMENTAS AUXILIARES</p>}
 
-      <a href="http://localhost:3004" target="_blank" rel="noopener noreferrer" className="sidebar-link" title="Grafana (Dashboards)">
+      <a href="/grafana/" target="_blank" rel="noopener noreferrer" className="sidebar-link" title="Grafana (Dashboards)">
         <span>📈</span>
         {!collapsed && <span>Grafana</span>}
       </a>
 
-      <a href="http://localhost:8889" target="_blank" rel="noopener noreferrer" className="sidebar-link" title="Chronograf (InfluxDB)">
+      <a href="/chronograf/" target="_blank" rel="noopener noreferrer" className="sidebar-link" title="Chronograf (InfluxDB)">
         <span>⏱️</span>
         {!collapsed && <span>Chronograf</span>}
       </a>
 
-      <a href="http://localhost:18083" target="_blank" rel="noopener noreferrer" className="sidebar-link" title="EMQX (MQTT)">
+      <a href="/emqx/" target="_blank" rel="noopener noreferrer" className="sidebar-link" title="EMQX (MQTT)">
         <span>📡</span>
         {!collapsed && <span>EMQX</span>}
       </a>
 
-      <a href="http://localhost:1880" target="_blank" rel="noopener noreferrer" className="sidebar-link" title="Node-RED (Fluxos)">
+      <a href="/nodered/" target="_blank" rel="noopener noreferrer" className="sidebar-link" title="Node-RED (Fluxos)">
         <span>🔌</span>
         {!collapsed && <span>Node-RED</span>}
       </a>

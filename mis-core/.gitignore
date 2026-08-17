@@ -121,3 +121,9 @@ backup*/
 # *_test.py
 docker-images/all-images.tar
 v2/projeto_oee_v2_completo.zip
+
+# Offline deploy tarballs (muito grandes para git)
+mis-core-offline/*.tar
+mis-core-offline/*.tar.gz
+mis-core-forever/*.tar
+mis-core-forever/*.tar.gz

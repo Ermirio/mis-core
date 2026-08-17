@@ -37,6 +37,7 @@ import {
   FaBrain
 } from 'react-icons/fa';
 import './MachineChat.css';
+import { useAuth } from '../context/AuthContext';
 
 // Importe a biblioteca marked
 import { marked } from 'marked';
@@ -58,6 +59,11 @@ const MachineChat = ({ selectedLine }) => {
   // ==================================================================
   // ESTADOS DO COMPONENTE
   // ==================================================================
+
+  // Config do LLM/endpoints só é exposta a superusuário — operador não vê a
+  // engrenagem nem o modal com URLs técnicas.
+  const { user } = useAuth();
+  const isSuperuser = !!(user && user.is_superuser);
 
   const [messages, setMessages] = useState([
     {
@@ -907,14 +913,17 @@ Sua função é atuar como um analista industrial experiente, utilizando os dado
               <FaTrash />
             </Button>
           </OverlayTrigger>
-          <OverlayTrigger
-            placement="bottom"
-            overlay={<Tooltip>Configurações</Tooltip>}
-          >
-            <Button variant="outline-primary" size="sm" onClick={() => setShowSettingsModal(true)}>
-              <FaCog />
-            </Button>
-          </OverlayTrigger>
+          {/* Configurações (endpoint LLM e API de dados) — só superusuário */}
+          {isSuperuser && (
+            <OverlayTrigger
+              placement="bottom"
+              overlay={<Tooltip>Configurações (endpoint LLM / dados)</Tooltip>}
+            >
+              <Button variant="outline-primary" size="sm" onClick={() => setShowSettingsModal(true)}>
+                <FaCog />
+              </Button>
+            </OverlayTrigger>
+          )}
         </div>
       </Card.Header>
       {/* --- FIM DO CABEÇALHO DO CARD REVISADO --- */}
@@ -1003,8 +1012,8 @@ Sua função é atuar como um analista industrial experiente, utilizando os dado
         </div>
       </Card.Body>
 
-      {/* Modal de configurações */}
-      <Modal show={showSettingsModal} onHide={() => setShowSettingsModal(false)}>
+      {/* Modal de configurações — só superusuário (reforço além de esconder o botão) */}
+      <Modal show={showSettingsModal && isSuperuser} onHide={() => setShowSettingsModal(false)}>
         <Modal.Header closeButton>
           <Modal.Title>Configurações do Chat IA</Modal.Title>
         </Modal.Header>

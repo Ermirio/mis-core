@@ -55,7 +55,7 @@ services:
 
   # ===== DJANGO (CORE BACKEND) =====
   django:
-    image: mis-core-django:v3.0
+    image: mis-core-django:dev
     build:
       context: ./mis-core/backend-django
       dockerfile: Dockerfile
@@ -101,7 +101,7 @@ services:
 
   # ===== FRONTEND CORE (NGINX) =====
   frontend:
-    image: mis-core-frontend:5.0
+    image: mis-core-frontend:dev
     build:
       context: ./mis-core/frontend-react
       dockerfile: Dockerfile
@@ -287,6 +287,7 @@ services:
       DJANGO_SUPERUSER_PASSWORD: ${DJANGO_SUPERUSER_PASSWORD}
       USE_X_FORWARDED_HOST: "true"
       TZ: ${TZ}
+      LM_STUDIO_URL: ${LM_STUDIO_URL}
     volumes:
       - ./mis-change-over/Backend/entrypoint.sh:/entrypoint.sh:ro
     ports:
@@ -304,6 +305,10 @@ services:
     build:
       context: ./mis-change-over/Frontend
       dockerfile: dockerfile
+      args:
+        # URL do Recipe Monitor exposta ao build do React. Em produção,
+        # geralmente vai atrás do proxy reverso — ajuste conforme o nginx.
+        REACT_APP_RECIPE_MONITOR_URL: ${RECIPE_MONITOR_PUBLIC_URL:-http://localhost:8100}
     container_name: mis-changeover-frontend
     ports:
       - "${MIS_CHANGEOVER_FRONTEND_PORT:-3009}:80"
@@ -311,6 +316,59 @@ services:
       - mis-network
     depends_on:
       - mis-changeover-backend
+    restart: unless-stopped
+
+  # ===== REDIS (para Recipe Monitor — cache + pub/sub) =====
+  mis-redis:
+    image: redis:7-alpine
+    container_name: mis-redis
+    command: redis-server --save "" --appendonly no --maxmemory 256mb --maxmemory-policy allkeys-lru
+    ports:
+      - "${MIS_REDIS_PORT:-6379}:6379"
+    networks:
+      - mis-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+  # ===== RECIPE MONITOR SERVICE (mis-recipe-intelligent) =====
+  # FastAPI + asyncua. Lê tags OPC continuamente, mantém estado em Redis,
+  # serve WebSocket para o frontend ReceitaMonitorContent.
+  mis-recipe-monitor:
+    image: mis-recipe-intelligent:dev
+    build:
+      context: ./mis-change-over/Backend/recipe_monitor_service
+      dockerfile: Dockerfile
+    container_name: mis-recipe-monitor
+    environment:
+      # Aponta para o Django interno (mesma network)
+      DJANGO_BASE_URL: http://mis-changeover-backend:8000
+      REDIS_URL: redis://mis-redis:6379/0
+      OPC_CONFIG_TTL_SECONDS: "60"
+      OPC_SUBSCRIPTION_INTERVAL_MS: "500"
+      HISTORY_MAX_POINTS: "60"
+      LINES_PRELOAD: "${RECIPE_MONITOR_LINES_PRELOAD:-}"
+      LOG_LEVEL: "${RECIPE_MONITOR_LOG_LEVEL:-INFO}"
+      CORS_ORIGINS: "${RECIPE_MONITOR_CORS_ORIGINS:-http://localhost:3009,http://localhost:3005,http://localhost:3000}"
+      TZ: ${TZ}
+    ports:
+      - "${RECIPE_MONITOR_PORT:-8100}:8100"
+    networks:
+      - mis-network
+    depends_on:
+      mis-redis:
+        condition: service_healthy
+      mis-changeover-backend:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8100/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
     restart: unless-stopped
 
   # ==========================================
@@ -411,7 +469,7 @@ services:
 
   # Legado Core Flask (Manter ou Remover? Mantendo por compatibilidade)
   flask:
-    image: mis-core-flask:5.0
+    image: mis-core-flask:dev
     build:
       context: ./mis-core/backend-flask
       dockerfile: Dockerfile
@@ -435,8 +493,53 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
+  # FastAPI v2 — camada nova de analytics (Strangler Pattern)
+  # Coexiste com Flask/Django sob prefixo /api/v2/*
+  # Ver: mis-core/backend-fastapi/README.md
+  fastapi:
+    image: mis-core-fastapi:dev
+    build:
+      context: ./mis-core/backend-fastapi
+      dockerfile: Dockerfile
+    container_name: mis-core-fastapi
+    ports:
+      - "8002:8000"
+    environment:
+      APP_NAME: mis-core-fastapi
+      ENVIRONMENT: dev
+      DEBUG: "false"
+      API_V2_PREFIX: /api/v2
+      LOG_LEVEL: INFO
+      CORS_ORIGINS: '["*"]'
+      INFLUX_HOST: influxdb
+      INFLUX_PORT: 8086
+      INFLUX_DB: ${INFLUXDB_DATABASE:-industrial_db}
+      INFLUX_USERNAME: ${INFLUXDB_ADMIN_USER:-admin}
+      INFLUX_PASSWORD: ${INFLUXDB_ADMIN_PASSWORD:-admin123}
+      INFLUX_TIMEOUT_S: 10
+      DJANGO_API_URL: http://django:8000/api
+      FLASK_API_URL: http://flask:5000/api
+      JWT_SECRET: ${DJANGO_SECRET_KEY:-django-insecure-dev-key-change-in-production}
+      JWT_ALGORITHM: HS256
+      MAX_POINTS_PER_RESPONSE: 10000
+      MAX_CORRELATION_VARIABLES: 25
+      PROMETHEUS_ENABLED: "true"
+      TZ: ${TZ:-America/Sao_Paulo}
+    networks:
+      - mis-network
+    depends_on:
+      influxdb:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v2/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 20s
+    restart: unless-stopped
+
   coletor:
-    image: mis-core-coletor:v3.0
+    image: mis-core-coletor:dev
     build:
       context: ./mis-core/coletor
       dockerfile: Dockerfile

@@ -2,7 +2,8 @@
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import MainLayout from "./components/layout/MainLayout";
 
-import Home from "./pages/Home";
+import HomeLegacy from "./pages/Home";
+import HomeV2 from "./pages/HomeV2";
 import LinhaDetalhes from "./pages/LinhaDetalhes.tsx";
 import EquipamentoDetalhes from "./pages/EquipamentoDetalhes.tsx";
 import DiagnosticosLogs from "./pages/DiagnosticosLogs";
@@ -29,6 +30,27 @@ import ProductionCalendarAdmin from "./pages/admin/ProductionCalendarAdmin";
 
 import React, { useState } from "react";
 import SplashScreen from "./components/SplashScreen";
+
+// -----------------------------------------------------------------------------
+// Feature flag — Home ISA-101 V2.
+//   Ative via DevTools: localStorage.setItem("homeVariant", "v2"); location.reload()
+//   Desative:          localStorage.removeItem("homeVariant");     location.reload()
+// Mesmo padrão do SidebarV2: rollback instantâneo sem rebuild, útil em OT
+// onde não temos CI/CD e repaginar o container dá trabalho.
+// -----------------------------------------------------------------------------
+function useHomeVariant(): "v2" | "legacy" {
+  try {
+    const stored = localStorage.getItem("homeVariant");
+    return stored === "legacy" ? "legacy" : "v2";
+  } catch {
+    return "v2";
+  }
+}
+
+const Home: React.FC = () => {
+  const variant = useHomeVariant();
+  return variant === "v2" ? <HomeV2 /> : <HomeLegacy />;
+};
 
 function App() {
   const [showSplash, setShowSplash] = useState(true);

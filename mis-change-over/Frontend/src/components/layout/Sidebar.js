@@ -21,7 +21,7 @@ import './SidebarCategories.css'; // <<-- IMPORTANTE: Importe o novo arquivo CSS
 // Se a variável de ambiente não estiver definida, use um valor padrão para desenvolvimento
 const API_BASE_URL = process.env.REACT_APP_SIDEBAR_API_BASE_URL || '/api';
 
-const Sidebar = ({ selectedLine, onSelectLine, visible }) => {
+const Sidebar = ({ selectedLine, onSelectLine, visible, unreadCounts = {} }) => {
   const [linhas, setLinhas] = useState([]);
   const [cartucho, setCartucho] = useState([]);
   const [flexiveis, setFlexiveis] = useState([]);
@@ -207,11 +207,16 @@ const Sidebar = ({ selectedLine, onSelectLine, visible }) => {
               cartuchoFiltrado.map(linha => (
                 <button
                   key={linha}
-                  className={`sidebar-link cartucho-link ${selectedLine === linha ? 'active' : ''}`} /* Adicionada classe de link */
+                  className={`sidebar-link cartucho-link ${selectedLine === linha ? 'active' : ''}`}
                   onClick={() => handleSelectLine(linha)}
                 >
                   <FaIndustry className="sidebar-icon" />
                   <span className="line-label">{linha}</span>
+                  {(unreadCounts[linha] > 0) && (
+                    <span className="sidebar-unread-badge">
+                      {unreadCounts[linha] > 99 ? '99+' : unreadCounts[linha]}
+                    </span>
+                  )}
                 </button>
               ))
             ) : (
@@ -246,11 +251,16 @@ const Sidebar = ({ selectedLine, onSelectLine, visible }) => {
               flexiveisFiltrado.map(linha => (
                 <button
                   key={linha}
-                  className={`sidebar-link flexiveis-link ${selectedLine === linha ? 'active' : ''}`} /* Adicionada classe de link */
+                  className={`sidebar-link flexiveis-link ${selectedLine === linha ? 'active' : ''}`}
                   onClick={() => handleSelectLine(linha)}
                 >
                   <FaIndustry className="sidebar-icon" />
                   <span className="line-label">{linha}</span>
+                  {(unreadCounts[linha] > 0) && (
+                    <span className="sidebar-unread-badge">
+                      {unreadCounts[linha] > 99 ? '99+' : unreadCounts[linha]}
+                    </span>
+                  )}
                 </button>
               ))
             ) : (
@@ -285,11 +295,16 @@ const Sidebar = ({ selectedLine, onSelectLine, visible }) => {
               liquidosFiltrado.map(linha => (
                 <button
                   key={linha}
-                  className={`sidebar-link liquidos-link ${selectedLine === linha ? 'active' : ''}`} /* Adicionada classe de link */
+                  className={`sidebar-link liquidos-link ${selectedLine === linha ? 'active' : ''}`}
                   onClick={() => handleSelectLine(linha)}
                 >
                   <FaIndustry className="sidebar-icon" />
                   <span className="line-label">{linha}</span>
+                  {(unreadCounts[linha] > 0) && (
+                    <span className="sidebar-unread-badge">
+                      {unreadCounts[linha] > 99 ? '99+' : unreadCounts[linha]}
+                    </span>
+                  )}
                 </button>
               ))
             ) : (

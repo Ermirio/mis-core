@@ -3,6 +3,7 @@ from django.urls import path, include
 
 urlpatterns = [
     path('admin/', admin.site.urls),
-    path('api/', include('ips.urls')),  # Inclui as rotas do app ips
-    path('', include('ips.urls'))  # Inclui as rotas do app ips
+    path('api/', include('ips.urls')),
+    path('api/andretti/', include('programa_andretti.urls')),
+    path('', include('ips.urls')),
 ]

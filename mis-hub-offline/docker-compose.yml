@@ -68,7 +68,7 @@ services:
 
   # ===== DJANGO (CORE BACKEND) =====
   django:
-    image: mis-core-django:v1.3
+    image: mis-core-django:v14.0
     pull_policy: never
     container_name: mis-hub-django
     environment:
@@ -111,7 +111,7 @@ services:
 
   # ===== FLASK (ANALYTICS BACKEND) =====
   flask:
-    image: mis-core-flask:v1.3
+    image: mis-core-flask:v14.0
     pull_policy: never
     container_name: mis-hub-flask
     environment:
@@ -134,13 +134,16 @@ services:
 
   # ===== FRONTEND CORE (NGINX) =====
   frontend:
-    image: mis-core-frontend:v1.6
+    image: mis-core-frontend:v14.0
     pull_policy: never
     container_name: mis-hub-frontend-core
     environment:
       TZ: ${TZ}
+      # Estes valores são injetados em window.ENV pelo docker-entrypoint.sh em runtime.
+      # Sobrescrevem os defaults do build (/api, /flask-api) para os caminhos do hub.
       VITE_DJANGO_API_URL: /mis-core-api
       VITE_FLASK_API_URL: /mis-core-flask-api
+      VITE_FASTAPI_V2_URL: /api/v2
     ports:
       - "${FRONTEND_HOST_PORT:-81}:80"
     networks:
@@ -150,9 +153,48 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
+  # ===== FASTAPI v2 (Strangler Pattern — analytics ISO 22400) =====
+  fastapi:
+    image: mis-core-fastapi:v14.0
+    pull_policy: never
+    container_name: mis-hub-fastapi
+    environment:
+      APP_NAME: mis-core-fastapi
+      ENVIRONMENT: prod
+      DEBUG: "false"
+      API_V2_PREFIX: /api/v2
+      LOG_LEVEL: INFO
+      CORS_ORIGINS: '["http://localhost","http://localhost:3000"]'
+      INFLUX_HOST: influxdb
+      INFLUX_PORT: 8086
+      INFLUX_DB: ${INFLUXDB_DATABASE}
+      INFLUX_USERNAME: ${INFLUXDB_ADMIN_USER}
+      INFLUX_PASSWORD: ${INFLUXDB_ADMIN_PASSWORD}
+      INFLUX_TIMEOUT_S: 10
+      DJANGO_API_URL: http://django:8000/api
+      FLASK_API_URL: http://flask:5000/api
+      JWT_SECRET: ${DJANGO_SECRET_KEY}
+      JWT_ALGORITHM: HS256
+      MAX_POINTS_PER_RESPONSE: 10000
+      MAX_CORRELATION_VARIABLES: 25
+      PROMETHEUS_ENABLED: "true"
+      TZ: ${TZ}
+    networks:
+      - mis-network
+    depends_on:
+      influxdb:
+        condition: service_healthy
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:8000/api/v2/healthz" ]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 20s
+    restart: unless-stopped
+
   # ===== COLETOR OPC =====
   coletor:
-    image: mis-core-coletor:v1.0
+    image: mis-core-coletor:v14.0
     pull_policy: never
     container_name: mis-hub-coletor
     environment:
@@ -282,6 +324,7 @@ services:
       - frontend
       - django
       - flask
+      - fastapi
       - mis-ai-backend
       - mis-ai-frontend
       - mis-energy-backend

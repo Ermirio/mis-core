@@ -47,6 +47,12 @@ Copy-Item "mis-core\node-red\settings.js" "$DistDir\mis-core\node-red\settings.j
 Write-Host "3. Building Docker images (this may take a while)..."
 docker-compose build
 
+# 3b. Garantir que a imagem do Recipe Monitor existe (build dedicado caso o
+#     compose principal não cubra — exige menos atrito em ambientes onde o
+#     compose foi rodado parcialmente).
+Write-Host "   - Building mis-recipe-intelligent:v1.0 (Recipe Monitor)..."
+docker build -t mis-recipe-intelligent:v1.0 ".\mis-change-over\Backend\recipe_monitor_service"
+
 # 4. Save Images
 Write-Host "4. Saving Docker images to '$ImagesDir\mis_core_bundle.tar'..."
 Write-Host "   (This process can take several minutes due to image sizes)"
@@ -55,13 +61,14 @@ $images = @(
     # Third Party
     "mysql:8.0",
     "influxdb:1.8-alpine",
+    "redis:7-alpine",                        # NOVO — cache + pub/sub do Recipe Monitor
     "portainer/portainer-ce:latest",
     "n8nio/n8n:latest",
     "grafana/grafana:latest",
     "emqx/emqx:5.8.5",
     "chronograf:1.8",
     "kapacitor:1.5",
-    
+
     # MIS Core Built Images
     "mis-core-django:v2.0",
     "mis-core-frontend:v2.1",
@@ -75,13 +82,17 @@ $images = @(
     "mis-core-energy-collector:v1.0",
     "mis-core-changeover-backend:v1.0",
     "mis-core-changeover-frontend:v1.0",
-    "mis-core-node-red:v1.0"
+    "mis-core-node-red:v1.0",
+
+    # NOVO — Recipe Monitor (FastAPI + asyncua)
+    "mis-recipe-intelligent:v1.0"
 )
 
 # Pull third party images to ensure they exist locally (optional, but good safety)
-Write-Host "   - Ensuring mysql:8.0 is present..."
+Write-Host "   - Ensuring third-party images are present locally..."
 docker pull mysql:8.0
 docker pull influxdb:1.8-alpine
+docker pull redis:7-alpine                   # NOVO
 docker pull portainer/portainer-ce:latest
 docker pull n8nio/n8n:latest
 docker pull grafana/grafana:latest
@@ -96,23 +107,49 @@ Write-Host "5. Creating Import Script (Linux)..."
 $ImportScript = @"
 #!/bin/bash
 set -e
-echo ">>> Starting Import Process..."
+echo '>>> Starting Import Process...'
 
-echo "1. Loading Docker Images (this may take time)..."
+echo '1. Loading Docker Images (this may take several minutes)...'
 docker load -i images/mis_core_bundle.tar
 
-echo "2. Starting Services..."
-# Fix for potential line ending issues from Windows copy
+echo '2. Normalizing line endings (in case of Windows copy)...'
 if command -v dos2unix &> /dev/null; then
-    dos2unix .env
-    dos2unix docker-compose.yml
+    dos2unix .env docker-compose.yml 2>/dev/null || true
 fi
 
-# Explicitly load .env file to avoid missing variables
+echo '3. Starting all services (migrations run automatically inside Django entrypoint)...'
 docker-compose --env-file .env up -d
 
-echo ">>> Deployment Complete!"
+echo ''
+echo '4. Waiting for services to be healthy...'
+# Espera Django saudável (entrypoint roda migrate, collectstatic, cria superuser)
+for i in {1..60}; do
+    if docker exec mis-changeover-backend curl -fs http://localhost:8000/api/health/ >/dev/null 2>&1; then
+        echo '   Django OK (migrations aplicadas)'
+        break
+    fi
+    sleep 2
+done
+
+# Espera Recipe Monitor
+for i in {1..30}; do
+    if docker exec mis-recipe-monitor python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8100/health')\" >/dev/null 2>&1; then
+        echo '   Recipe Monitor OK'
+        break
+    fi
+    sleep 2
+done
+
+echo ''
+echo '>>> Deployment Complete!'
 docker-compose ps
+
+echo ''
+echo '== Endpoints disponiveis via proxy central =='
+echo '  Hub:                http://localhost:\${PROXY_HOST_PORT:-3000}/'
+echo '  Change Over (app):  http://localhost:\${PROXY_HOST_PORT:-3000}/mis-change-over/'
+echo '  Recipe Monitor API: http://localhost:\${PROXY_HOST_PORT:-3000}/recipe-monitor/health'
+echo '  Recipe Monitor WS:  ws://localhost:\${PROXY_HOST_PORT:-3000}/recipe-monitor/ws/linhas/<linha>/stream'
 "@
 Set-Content -Path "$DistDir\import_and_run.sh" -Value $ImportScript -NoNewline
 # Convert to LF line endings just in case, though usually docker handles it. 

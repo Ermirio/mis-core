@@ -15,6 +15,25 @@ import requests
 from asyncua import Client, ua
 from decouple import config
 
+# [P0.4+P0.5+P0.6] Building blocks de resiliência.
+# Se o módulo ainda não estiver disponível em ambiente legado, o import falha
+# silenciosamente e o coletor segue no comportamento anterior (fail-safe).
+try:
+    from resilience import (
+        retry_async,
+        CircuitBreaker,
+        CircuitOpenError,
+        ConnectionWatchdog,
+        OfflineBuffer,
+        AsyncHttpClient,
+    )
+    RESILIENCE_AVAILABLE = True
+except Exception as _e:  # pragma: no cover
+    RESILIENCE_AVAILABLE = False
+    logging.getLogger('Coletor').warning(
+        f"⚠️ Módulo resilience indisponível ({_e}). Coletor rodará em modo legado."
+    )
+
 # ===== CONFIGURAÇÃO DE LOGGING =====
 logging.basicConfig(
     level=logging.INFO,
@@ -66,9 +85,32 @@ class ColetorOPC:
         self.clientes_opc = {} # URL -> Client
         self.conexoes_info = {} # URL -> { 'tag_monitoramento': ..., 'tipo_monitoramento': ..., 'status_ok': Bool }
         self.ultima_atualizacao_config = None
-        self.estados_anteriores = {} 
+        self.estados_anteriores = {}
         self.metadata_anteriores = {}
-        
+
+        # --- [P0.4+P0.5+P0.6] Componentes de resiliência ---
+        if RESILIENCE_AVAILABLE:
+            self.http = AsyncHttpClient(timeout=TIMEOUT_REQUEST)
+            self.buffer = OfflineBuffer(
+                db_path=config('COLETOR_BUFFER_DB', default='coletor_buffer.db'),
+                max_attempts=20,
+            )
+            # Um circuit breaker por endpoint crítico — failure em um não afeta o outro
+            self.cb_flask = CircuitBreaker(name='flask-api', fail_threshold=5, reset_timeout=30.0)
+            self.cb_django = CircuitBreaker(name='django-api', fail_threshold=5, reset_timeout=30.0)
+            self.watchdog = ConnectionWatchdog(
+                health_check_fn=self.verificar_saude_conexao,
+                reconnect_fn=self._reconectar_url,
+                check_interval=config('WATCHDOG_INTERVAL', default=10.0, cast=float),
+                unhealthy_streak_to_reconnect=2,
+            )
+        else:
+            self.http = None
+            self.buffer = None
+            self.cb_flask = None
+            self.cb_django = None
+            self.watchdog = None
+
     async def inicializar(self):
         logger.info("=" * 60)
         logger.info("COLETOR OPC UA - ARQUITETURA CENTRALIZADA (V2.0)")
@@ -137,80 +179,57 @@ class ColetorOPC:
                 del self.clientes_opc[url]
 
         # 3. Criar novas conexões
+        # [P0.4] Retry com backoff exponencial para não flodar o OPC server
+        # se ele estiver inicializando ou em rede instável.
         for url in urls_ativas:
             if url not in self.clientes_opc:
-                try:
-                    logger.info(f"🔌 Conectando a {url}...")
-                    c = Client(url=url, timeout=5)
-                    await c.connect()
-                    self.clientes_opc[url] = c
-                    logger.info(f"✅ Conectado a {url}")
-                except Exception as e:
-                    logger.error(f"❌ Falha ao conectar {url}: {e}")
+                await self._conectar_url(url)
 
-    async def executar(self):
-        """Loop principal do Coletor Centralizado"""
-        await self.inicializar()
-        
-        while True:
+            # Registrar no watchdog para supervisão contínua
+            if self.watchdog is not None:
+                self.watchdog.register(url)
+
+    async def _conectar_url(self, url: str) -> bool:
+        """[P0.4] Conecta a um OPC UA com retry exponencial. Retorna True se sucesso."""
+        async def _do_connect():
+            c = Client(url=url, timeout=5)
+            await c.connect()
+            return c
+
+        try:
+            if RESILIENCE_AVAILABLE:
+                c = await retry_async(
+                    _do_connect,
+                    retryable_exceptions=(OSError, ConnectionError, asyncio.TimeoutError, TimeoutError, Exception),
+                    max_attempts=3,
+                    base_delay=1.0,
+                    max_delay=8.0,
+                    operation_name=f'opc.connect[{url}]',
+                )
+            else:
+                c = await _do_connect()
+            self.clientes_opc[url] = c
+            logger.info(f"✅ Conectado a {url}")
+            return True
+        except Exception as e:
+            logger.error(f"❌ Falha ao conectar {url}: {e}", exc_info=True)
+            return False
+
+    async def _reconectar_url(self, url: str) -> bool:
+        """[P0.5] Reconexão disparada pelo watchdog — desconecta antigo + conecta novo."""
+        old = self.clientes_opc.get(url)
+        if old:
             try:
-                loop_start = time.time()
-                
-                # 1. Atualizar Config e Conexões
-                await self.atualizar_configuracao()
-                
-                # 2. Agrupar Equipamentos por URL de Conexão
-                equipamentos_por_url = {}
-                todos_equipamentos = self.configuracao.get('equipamentos', [])
-                
-                for eq in todos_equipamentos:
-                    url = eq.get('conexao_detalhes', {}).get('url')
-                    if url:
-                        if url not in equipamentos_por_url: equipamentos_por_url[url] = []
-                        equipamentos_por_url[url].append(eq)
-                
-                tasks = []
-                
-                # 3. Iterar por Grupo de Conexão
-                for url, equipments_list in equipamentos_por_url.items():
-                    # Check Global Health for this Connection
-                    conexao_ok = await self.verificar_saude_conexao(url)
-                    cliente = self.clientes_opc.get(url)
-                    
-                    if not conexao_ok:
-                        logger.warning(f"⚠️ Grupo Conexão {url} está OFFLINE/ERRO. Forçando {len(equipments_list)} equipamentos para 999.")
-
-                    for eq in equipments_list:
-                         tasks.append(self.coletar_dados_equipamento(eq, cliente, conexao_ok))
-                
-                # 4. Executar coletas (Otimização: Gather)
-                if tasks:
-                    resultados = await asyncio.gather(*tasks, return_exceptions=True)
-                    
-                    pacote_envio = []
-                    for res in resultados:
-                        if isinstance(res, dict):
-                            pacote_envio.append(res)
-                        elif isinstance(res, Exception):
-                             logger.error(f"Erro em tarefa de coleta: {res}")
-                    
-                    # 5. Enviar ao Django
-                    if pacote_envio:
-                        # logger.info(f"📤 Enviando {len(pacote_envio)} registros...")
-                        try:
-                            requests.post(f"{DJANGO_API_URL}/leituras/inserir/", json=pacote_envio, timeout=5)
-                            requests.post(f"{FLASK_API_URL}/dados/inserir", json=pacote_envio, timeout=5)
-                        except Exception as e:
-                            logger.error(f"❌ Erro envio API: {e}")
-
-                # Sleep inteligente
-                elapsed = time.time() - loop_start
-                sleep_time = max(0.1, INTERVALO_COLETA - elapsed)
-                await asyncio.sleep(sleep_time)
-
+                await asyncio.wait_for(old.disconnect(), timeout=3.0)
             except Exception as e:
-                logger.error(f"💥 Erro fatal no loop: {e}")
-                await asyncio.sleep(5)
+                logger.debug(f"[reconnect] disconnect antigo falhou (OK): {e}")
+            self.clientes_opc.pop(url, None)
+        return await self._conectar_url(url)
+
+    # NOTE: A definição real de `async def executar(...)` está mais abaixo neste
+    # arquivo (v2 resiliente, versão com watchdog + buffer + circuit breaker).
+    # Em Python, o último método definido na classe sobrescreve os anteriores,
+    # então a duplicata antiga foi removida para evitar divergência/confusão.
 
     async def verificar_saude_conexao(self, url: str) -> bool:
         """Verifica se a conexão está saudável (Ping + Tag de Monitoramento)"""
@@ -250,19 +269,45 @@ class ColetorOPC:
         return MAPEAMENTO_ESTADOS.get(valor_opc, 'OUTRO')
     
     async def enviar_evento_estado(self, equipamento_codigo: str, estado: str) -> bool:
+        """Envia evento de transição de estado. Usa http assíncrono se disponível."""
+        url = f"{DJANGO_API_URL}/eventos_estado/"
+        payload = {
+            'equipamento_codigo': equipamento_codigo,
+            'estado': estado,
+            'timestamp': datetime.utcnow().isoformat() + 'Z',
+            'origem': 'OPC',
+        }
         try:
-            url = f"{DJANGO_API_URL}/eventos_estado/"
-            payload = {'equipamento_codigo': equipamento_codigo, 'estado': estado, 'timestamp': datetime.utcnow().isoformat() + 'Z', 'origem': 'OPC'}
-            requests.post(url, json=payload, timeout=TIMEOUT_REQUEST)
-            return True
-        except: return False
+            if self.http is not None:
+                return await self.http.post_json(url, payload)
+            # Fallback síncrono em thread — não bloqueia event loop
+            def _do():
+                try:
+                    r = requests.post(url, json=payload, timeout=TIMEOUT_REQUEST)
+                    return 200 <= r.status_code < 300
+                except Exception:
+                    return False
+            return await asyncio.to_thread(_do)
+        except Exception as e:
+            logger.warning(f"⚠️ enviar_evento_estado({equipamento_codigo}): {e}", exc_info=True)
+            return False
 
     async def enviar_metadata_django(self, dados: Dict) -> bool:
+        """Sync de metadata (OP/SKU/formato) — só fala com o Django."""
+        url = f"{DJANGO_API_URL}/equipamentos/sync_metadata/"
         try:
-            url = f"{DJANGO_API_URL}/equipamentos/sync_metadata/"
-            requests.post(url, json=dados, timeout=TIMEOUT_REQUEST)
-            return True
-        except: return False
+            if self.http is not None:
+                return await self.http.post_json(url, dados)
+            def _do():
+                try:
+                    r = requests.post(url, json=dados, timeout=TIMEOUT_REQUEST)
+                    return 200 <= r.status_code < 300
+                except Exception:
+                    return False
+            return await asyncio.to_thread(_do)
+        except Exception as e:
+            logger.warning(f"⚠️ enviar_metadata_django: {e}", exc_info=True)
+            return False
 
     async def ler_tag_opc(self, cliente: Client, node_id: str, tipo_dado: str, fator_conversao: float = 1.0) -> Optional[any]:
         try:
@@ -524,72 +569,136 @@ class ColetorOPC:
         except Exception as e:
             logger.error(f"Falha ao reportar status {batch_id}: {e}")
 
+    # ---------------------------------------------------------------
+    # [P0.6] Envio resiliente com circuit breaker + buffer offline
+    # ---------------------------------------------------------------
+    async def _send_flask_raw(self, payload) -> bool:
+        """Envio assíncrono para Flask. Retorna True/False."""
+        if self.http is None:
+            # Fallback legado: síncrono em thread para não bloquear event loop
+            def _do():
+                try:
+                    r = requests.post(f"{FLASK_API_URL}/dados/inserir", json=payload, timeout=TIMEOUT_REQUEST)
+                    return 200 <= r.status_code < 300
+                except Exception:
+                    return False
+            return await asyncio.to_thread(_do)
+        return await self.http.post_json(f"{FLASK_API_URL}/dados/inserir", payload)
+
+    async def _send_django_raw(self, payload) -> bool:
+        if self.http is None:
+            def _do():
+                try:
+                    r = requests.post(f"{DJANGO_API_URL}/leituras/inserir/", json=payload, timeout=TIMEOUT_REQUEST)
+                    return 200 <= r.status_code < 300
+                except Exception:
+                    return False
+            return await asyncio.to_thread(_do)
+        return await self.http.post_json(f"{DJANGO_API_URL}/leituras/inserir/", payload)
+
+    async def _send_via_cb(self, breaker, sender, payload, endpoint: str) -> bool:
+        """
+        Envia via circuit breaker; em caso de circuito aberto OU falha real,
+        enfileira no buffer offline para replay futuro.
+        """
+        if breaker is None or self.buffer is None:
+            # Modo legado: só tenta enviar direto, sem buffer.
+            return await sender(payload)
+
+        try:
+            ok = await breaker.call(sender, payload)
+            if not ok:
+                await self.buffer.enqueue(endpoint, payload)
+            return ok
+        except CircuitOpenError:
+            logger.warning(f"🚧 [{endpoint}] circuito aberto — enfileirando payload.")
+            await self.buffer.enqueue(endpoint, payload)
+            return False
+        except Exception as e:
+            logger.error(f"❌ [{endpoint}] envio falhou: {e}", exc_info=True)
+            await self.buffer.enqueue(endpoint, payload)
+            return False
+
     async def executar(self):
-        """Loop principal do Coletor Centralizado"""
+        """Loop principal do Coletor Centralizado — versão resiliente (P0.4/5/6)."""
         await self.inicializar()
-        
+
+        # [P0.5] Watchdog em task paralela — reconexão automática ANTES do
+        # próximo ciclo falhar.
+        if self.watchdog is not None:
+            asyncio.create_task(self.watchdog.run(), name='opc-watchdog')
+            logger.info("🛡️ Watchdog OPC ativado.")
+
         while True:
             try:
                 loop_start = time.time()
-                
+
                 # 1. Atualizar Config e Conexões
                 await self.atualizar_configuracao()
-                
+
+                # 1b. [P0.6] Replay de pacotes pendentes do buffer offline.
+                # Executa ANTES da nova coleta — evita dados ficarem em ordem errada
+                # no InfluxDB (que indexa por timestamp, mas o consumidor downstream
+                # pode assumir FIFO de chegada).
+                if self.buffer is not None:
+                    try:
+                        pending = await self.buffer.pending_count()
+                        if pending > 0:
+                            logger.info(f"🔁 Drenando buffer offline ({pending} pendentes)...")
+                            await self.buffer.drain('flask', self._send_flask_raw, batch_size=30)
+                            await self.buffer.drain('django', self._send_django_raw, batch_size=30)
+                    except Exception as e:
+                        logger.warning(f"⚠️ replay buffer falhou: {e}", exc_info=True)
+
                 # 2. Agrupar Equipamentos por URL de Conexão
                 equipamentos_por_url = {}
                 todos_equipamentos = self.configuracao.get('equipamentos', [])
-                
+
                 for eq in todos_equipamentos:
                     conn = eq.get('conexao_detalhes') or {}
                     url = conn.get('url')
                     if url:
                         if url not in equipamentos_por_url: equipamentos_por_url[url] = []
                         equipamentos_por_url[url].append(eq)
-                
-                logger.info(f"🔍 DEBUG: Agrupados {len(equipamentos_por_url)} URLs de conexão")
-                
+
+                logger.debug(f"Agrupados {len(equipamentos_por_url)} URLs de conexão")
+
                 tasks = []
-                
+
                 # 3. Iterar por Grupo de Conexão
                 for url, equipments_list in equipamentos_por_url.items():
-                    logger.info(f"🔍 DEBUG: Processando URL {url} com {len(equipments_list)} equipamentos")
-                    # Check Global Health for this Connection
                     conexao_ok = await self.verificar_saude_conexao(url)
                     cliente = self.clientes_opc.get(url)
-                    
-                    logger.info(f"🔍 DEBUG: Conexão OK={conexao_ok}, Cliente={'Existe' if cliente else 'None'}")
-                    
+
                     if not conexao_ok:
-                        logger.warning(f"⚠️ Grupo Conexão {url} está OFFLINE/ERRO. Forçando {len(equipments_list)} equipamentos para 999.")
+                        logger.warning(
+                            f"⚠️ Grupo Conexão {url} OFFLINE/ERRO. "
+                            f"Forçando {len(equipments_list)} equipamentos para estado 999."
+                        )
 
                     for eq in equipments_list:
-                         tasks.append(self.coletar_dados_equipamento(eq, cliente, conexao_ok))
-                
-                # 4. Executar coletas (Otimização: Gather)
+                        tasks.append(self.coletar_dados_equipamento(eq, cliente, conexao_ok))
+
+                # 4. Executar coletas (Gather)
                 if tasks:
-                    logger.info(f"🔍 DEBUG: Executando {len(tasks)} tarefas de coleta")
                     resultados = await asyncio.gather(*tasks, return_exceptions=True)
-                    
+
                     pacote_envio = []
                     for res in resultados:
                         if isinstance(res, dict):
                             pacote_envio.append(res)
                         elif isinstance(res, Exception):
-                             logger.error(f"Erro em tarefa de coleta: {res}")
-                    
-                    logger.info(f"🔍 DEBUG: Criado pacote com {len(pacote_envio)} registros")
-                    
-                    # 5. Enviar ao Django
+                            logger.error(f"Erro em tarefa de coleta: {res}", exc_info=True)
+
+                    # 5. Envio resiliente ao Flask + Django (paralelo, com buffer de fallback)
                     if pacote_envio:
-                        try:
-                            logger.info(f"📤 Enviando {len(pacote_envio)} registros para Flask...")
-                            requests.post(f"{DJANGO_API_URL}/leituras/inserir/", json=pacote_envio, timeout=5)
-                            requests.post(f"{FLASK_API_URL}/dados/inserir", json=pacote_envio, timeout=5)
-                            logger.info(f"✅ Envio concluído")
-                        except Exception as e:
-                            logger.error(f"❌ Erro envio API: {e}")
+                        await asyncio.gather(
+                            self._send_via_cb(self.cb_django, self._send_django_raw, pacote_envio, 'django'),
+                            self._send_via_cb(self.cb_flask, self._send_flask_raw, pacote_envio, 'flask'),
+                            return_exceptions=True,
+                        )
                 else:
-                    logger.warning(f"⚠️ Nenhuma tarefa de coleta criada!")
+                    logger.warning("⚠️ Nenhuma tarefa de coleta criada!")
 
                 # 6. Verificar e Executar Comandos (Write-Back)
                 await self.verificar_comandos()
@@ -600,7 +709,10 @@ class ColetorOPC:
                 await asyncio.sleep(sleep_time)
 
             except Exception as e:
-                logger.error(f"💥 Erro fatal no loop: {e}")
+                # [P0.6] Log COM traceback completo — sem isso, em produção a gente
+                # só vê "Erro fatal no loop: 'NoneType'" e perde 2 horas descobrindo
+                # qual linha explodiu.
+                logger.error(f"💥 Erro fatal no loop: {e}", exc_info=True)
                 await asyncio.sleep(5)
 
 if __name__ == "__main__":

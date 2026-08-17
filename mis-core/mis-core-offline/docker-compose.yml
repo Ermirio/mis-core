@@ -3,7 +3,7 @@ version: '3.8'
 services:
   # ===== FRONTEND =====
   frontend:
-    image: mis-core-frontend:v1.0
+    image: mis-core-frontend:v14.0
     container_name: mis-core-frontend
     restart: unless-stopped
     ports:
@@ -22,10 +22,12 @@ services:
         condition: service_healthy
       flask:
         condition: service_healthy
+      fastapi:
+        condition: service_healthy
 
   # ===== DJANGO =====
   django:
-    image: mis-core-django:v1.0
+    image: mis-core-django:v14.0
     container_name: mis-core-django
     restart: unless-stopped
     ports:
@@ -72,7 +74,7 @@ services:
 
   # ===== FLASK =====
   flask:
-    image: mis-core-flask:v1.1
+    image: mis-core-flask:v14.0
     container_name: mis-core-flask
     restart: unless-stopped
     ports:
@@ -101,9 +103,71 @@ services:
       retries: 5
       start_period: 20s
 
+  # ===== FASTAPI v2 (Strangler Pattern — camada nova de analytics) =====
+  # Racional:
+  #   - Não substitui Flask/Django: COEXISTE sob prefixo distinto (/api/v2/*).
+  #   - Frontend migra endpoint-a-endpoint (trocando base URL /api -> /api/v2).
+  #   - Roda junto do influx pois é quem faz queries pesadas de EDA agora.
+  # Ver: backend-fastapi/README.md e docs/adr/ADR-001-fastapi-strangler.md
+  fastapi:
+    image: mis-core-fastapi:v14.0
+    container_name: mis-core-fastapi
+    restart: unless-stopped
+    ports:
+      - "8002:8000"   # host:container — :8002 para não colidir com django (:8001)
+    environment:
+      # --- App ---
+      APP_NAME: mis-core-fastapi
+      ENVIRONMENT: prod
+      DEBUG: "false"
+      API_V2_PREFIX: /api/v2
+      LOG_LEVEL: INFO
+
+      # --- CORS (mesmo cunho do Django/Flask — lista explícita em prod) ---
+      # Pydantic converte string separada por vírgula em list[str]
+      CORS_ORIGINS: '["http://localhost","http://localhost:81","http://frontend"]'
+
+      # --- InfluxDB (mesmo host que Django/Flask consomem) ---
+      INFLUX_HOST: influxdb
+      INFLUX_PORT: 8086
+      INFLUX_DB: industrial_db
+      INFLUX_USERNAME: admin
+      INFLUX_PASSWORD: admin123
+      INFLUX_TIMEOUT_S: 10
+
+      # --- Apontadores para o legado (durante convivência Strangler) ---
+      DJANGO_API_URL: http://django:8000/api
+      FLASK_API_URL: http://flask:5000/api
+
+      # --- JWT (DEVE ser igual ao DJANGO_SECRET_KEY para validação cruzada) ---
+      JWT_SECRET: django-insecure-dev-key-change-in-production
+      JWT_ALGORITHM: HS256
+
+      # --- Postgres (futuro — asyncpg para metadata; hoje não é consumido) ---
+      PG_DSN: postgresql://user:pass@localhost:5432/mis_core
+
+      # --- Limites e observabilidade ---
+      MAX_POINTS_PER_RESPONSE: 10000
+      MAX_CORRELATION_VARIABLES: 25
+      PROMETHEUS_ENABLED: "true"
+
+      TZ: America/Sao_Paulo
+    networks:
+      - mis-network
+    depends_on:
+      influxdb:
+        condition: service_healthy
+    healthcheck:
+      # /api/v2/healthz é o endpoint de liveness do router health.py
+      test: [ "CMD", "curl", "-f", "http://localhost:8000/api/v2/healthz" ]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 20s
+
   # ===== COLETOR OPC UA =====
   coletor:
-    image: mis-core-coletor:v1.0
+    image: mis-core-coletor:v14.0
     container_name: mis-core-coletor
     restart: unless-stopped
     environment:

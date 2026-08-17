@@ -18,6 +18,12 @@ ENV REACT_APP_TROCA_AUTOMATICA_BASE_URL=/mis-change-over-api
 ENV REACT_APP_DATA_API_ENDPOINT=/mis-change-over-data-api
 ENV REACT_APP_HISTORICO_TROCAS_ENDPOINT=/linha/{line}/
 
+# Recipe Monitor service (mis-recipe-intelligent). Passa via --build-arg
+# no docker-compose. Em produção típica, vai para algo como
+# "/recipe-monitor" atrás do proxy reverso.
+ARG REACT_APP_RECIPE_MONITOR_URL=http://localhost:8100
+ENV REACT_APP_RECIPE_MONITOR_URL=${REACT_APP_RECIPE_MONITOR_URL}
+
 # Gera o build de produção do React
 RUN npm run build
 

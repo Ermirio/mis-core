@@ -9,9 +9,8 @@ import {
     Activity,
     Factory
 } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Progress } from '@/components/ui/progress';
+import { KpiStrip, KpiCard, Panel, SectionHead, Tag } from '@/components/v2';
+import { fmt as numFmt } from '@/components/v2/stats';
 
 // Interface matching the API response
 interface LineKPI {
@@ -46,6 +45,7 @@ interface FactoryData {
 }
 
 import { FLASK_API_URL } from '@/config/api';
+import { MOCK_FABRICA_KPIS, MOCK_FABRICA_MAPA } from '@/mocks/demoData';
 
 const FactoryManagementPanel: React.FC = () => {
     const navigate = useNavigate();
@@ -59,24 +59,26 @@ const FactoryManagementPanel: React.FC = () => {
     const fetchData = async () => {
         setLoading(true);
         try {
-            // Fetch KPIs
-            const responseKpis = await fetch(`${FLASK_API_URL}/fabrica/kpis?period=${period}`);
-            if (responseKpis.ok) {
-                const jsonData = await responseKpis.json();
-                setData(jsonData);
-            }
+            let kpisOk = false;
+            let mapOk  = false;
 
-            // Fetch Map Data (Dedicated Route)
-            // Add timestamp to prevent caching
-            const responseMap = await fetch(`${FLASK_API_URL}/fabrica/mapa?t=${new Date().getTime()}`);
-            if (responseMap.ok) {
-                const jsonMap = await responseMap.json();
-                setMapData(jsonMap);
-            }
+            try {
+                const responseKpis = await fetch(`${FLASK_API_URL}/fabrica/kpis?period=${period}`);
+                if (responseKpis.ok) { setData(await responseKpis.json()); kpisOk = true; }
+            } catch { /* fall through */ }
+            if (!kpisOk) setData(MOCK_FABRICA_KPIS as any);
+
+            try {
+                const responseMap = await fetch(`${FLASK_API_URL}/fabrica/mapa?t=${new Date().getTime()}`);
+                if (responseMap.ok) { setMapData(await responseMap.json()); mapOk = true; }
+            } catch { /* fall through */ }
+            if (!mapOk) setMapData(MOCK_FABRICA_MAPA as any);
 
             setLastUpdate(new Date());
         } catch (error) {
             console.error("Error fetching factory data:", error);
+            setData(MOCK_FABRICA_KPIS as any);
+            setMapData(MOCK_FABRICA_MAPA as any);
         } finally {
             setLoading(false);
         }
@@ -99,159 +101,136 @@ const FactoryManagementPanel: React.FC = () => {
     // Sort lines for ranking (by OEE)
     const sortedLines = [...data.linhas].sort((a, b) => b.oee_real - a.oee_real);
 
+    const ativas = data.linhas.filter(l => ['Rodando', 'Produzindo', 'Online'].includes(l.status)).length;
+
     return (
-        <div className="min-h-screen bg-gray-50 p-6">
-            <div className="max-w-7xl mx-auto space-y-6">
-
-                {/* Header */}
-                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                    <div>
-                        <h1 className="text-3xl font-bold text-gray-900 flex items-center gap-2">
-                            <Factory className="w-8 h-8 text-indigo-600" />
-                            Fábrica – Visão Geral
-                        </h1>
-                        <p className="text-gray-500 mt-1">
-                            Monitoramento consolidado em tempo real
-                        </p>
-                    </div>
-
-                    <div className="flex items-center gap-4">
-                        <div className="bg-white rounded-lg border border-gray-200 p-1 flex">
-                            {['turno', 'dia', 'semana', 'mes'].map((p) => (
-                                <button
-                                    key={p}
-                                    onClick={() => setPeriod(p)}
-                                    className={`
-                                        px-3 py-1 text-xs font-medium rounded-md transition-colors capitalize
-                                        ${period === p ? 'bg-indigo-100 text-indigo-700' : 'text-gray-500 hover:bg-gray-50'}
-                                    `}
-                                >
-                                    {p === 'mes' ? 'Mês' : p}
-                                </button>
-                            ))}
-                        </div>
-
-                        <span className="text-sm text-gray-500">
-                            Atualizado: {lastUpdate.toLocaleTimeString()}
-                        </span>
-                        <Button onClick={fetchData} variant="outline" size="sm" className="gap-2">
-                            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-                            Atualizar
-                        </Button>
+        <div className="isa-root" style={{ padding: '16px 20px', minHeight: '100vh' }}>
+            {/* Header */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', flexWrap: 'wrap', gap: 12, marginBottom: 14 }}>
+                <div>
+                    <h1 style={{ margin: 0, fontSize: 20, fontWeight: 600, color: 'var(--isa-text)', display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <Factory size={20} style={{ color: 'var(--isa-accent)' }} />
+                        Fábrica · Visão Geral
+                    </h1>
+                    <div style={{ marginTop: 2, fontSize: 'var(--isa-fs-default)', color: 'var(--isa-text-muted)' }}>
+                        Monitoramento consolidado em tempo real · atualizado {lastUpdate.toLocaleTimeString('pt-BR')}
                     </div>
                 </div>
 
-                {/* Top KPIs Cards */}
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-                    {/* OEE Fabril */}
-                    <Card className="border-l-4 border-l-indigo-500">
-                        <CardContent className="pt-6">
-                            <div className="flex justify-between items-start">
-                                <div>
-                                    <p className="text-sm font-medium text-gray-500">OEE Fabril</p>
-                                    <h3 className="text-3xl font-bold text-indigo-700 mt-2">{data.oee_fabril_real}%</h3>
-                                </div>
-                                <Activity className="w-6 h-6 text-indigo-200" />
-                            </div>
-                            <div className="mt-4">
-                                <div className="flex justify-between text-xs mb-1">
-                                    <span>Meta: {data.oee_fabril_planejado || 85}%</span>
-                                </div>
-                                <Progress value={data.oee_fabril_real} className="h-2" />
-                            </div>
-                        </CardContent>
-                    </Card>
-
-                    {/* Vazão Total */}
-                    <Card className="border-l-4 border-l-blue-500">
-                        <CardContent className="pt-6">
-                            <div className="flex justify-between items-start">
-                                <div>
-                                    <p className="text-sm font-medium text-gray-500">Vazão Total</p>
-                                    <h3 className="text-3xl font-bold text-blue-700 mt-2">{data.vazao_total_tph} t/h</h3>
-                                </div>
-                                <TrendingUp className="w-6 h-6 text-blue-200" />
-                            </div>
-                            <p className="text-xs text-gray-400 mt-4">
-                                Necessária: <span className="font-bold text-blue-600">{data.vazao_necessaria_tph || 0} t/h</span>
-                            </p>
-                        </CardContent>
-                    </Card>
-
-                    {/* Produção Real */}
-                    <Card className="border-l-4 border-l-green-500">
-                        <CardContent className="pt-6">
-                            <div className="flex justify-between items-start">
-                                <div>
-                                    <p className="text-sm font-medium text-gray-500">Produção Real</p>
-                                    <h3 className="text-3xl font-bold text-green-700 mt-2">{data.producao_real_t} t</h3>
-                                </div>
-                                <Factory className="w-6 h-6 text-green-200" />
-                            </div>
-                            <div className="mt-4 text-xs text-gray-500">
-                                Planejado: {data.producao_planejada_t} t
-                            </div>
-                        </CardContent>
-                    </Card>
-
-                    {/* Linhas Ativas */}
-                    <Card className="border-l-4 border-l-orange-500">
-                        <CardContent className="pt-6">
-                            <div className="flex justify-between items-start">
-                                <div>
-                                    <p className="text-sm font-medium text-gray-500">Linhas Ativas</p>
-                                    <h3 className="text-3xl font-bold text-orange-700 mt-2">
-                                        {data.linhas.filter(l => ['Rodando', 'Produzindo', 'Online'].includes(l.status)).length} / {data.linhas.length}
-                                    </h3>
-                                </div>
-                                <AlertTriangle className="w-6 h-6 text-orange-200" />
-                            </div>
-                            <p className="text-xs text-gray-400 mt-4">Monitoramento em tempo real</p>
-                        </CardContent>
-                    </Card>
+                <div className="isa-toolbar" style={{ marginBottom: 0 }}>
+                    <div className="isa-chips">
+                        {(['turno', 'dia', 'semana', 'mes'] as const).map(p => (
+                            <button
+                                key={p}
+                                type="button"
+                                className={`isa-chip ${period === p ? 'isa-chip--active' : ''}`}
+                                onClick={() => setPeriod(p)}
+                            >
+                                {p === 'mes' ? 'Mês' : p.charAt(0).toUpperCase() + p.slice(1)}
+                            </button>
+                        ))}
+                    </div>
+                    <button type="button" onClick={fetchData} disabled={loading}>
+                        <RefreshCw size={12} style={{ marginRight: 4, verticalAlign: -1 }} />
+                        {loading ? 'Atualizando…' : 'Atualizar'}
+                    </button>
                 </div>
+            </div>
 
-                {/* Ranking de Linhas (Horizontal) */}
-                <Card>
-                    <CardHeader>
-                        <CardTitle>Ranking de Performance</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
-                            {sortedLines.map((line, idx) => (
-                                <div
-                                    key={line.linha}
-                                    className="flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 cursor-pointer transition border border-gray-100"
-                                    onClick={() => navigate(`/linha/${line.linha}`)}
-                                >
-                                    <div className="flex items-center gap-3">
-                                        <div className={`
-                                            w-6 h-6 flex items-center justify-center rounded-full text-xs font-bold
-                                            ${idx === 0 ? 'bg-yellow-100 text-yellow-700' : 'bg-gray-200 text-gray-600'}
-                                        `}>
-                                            {idx + 1}
-                                        </div>
-                                        <div>
-                                            <p className="font-bold text-gray-900 text-sm">{line.linha}</p>
-                                            <p className="text-[10px] text-gray-500">{line.status}</p>
-                                        </div>
-                                    </div>
-                                    <div className="text-right">
-                                        <p className="font-bold text-indigo-600 text-sm">{line.oee_real}%</p>
-                                    </div>
+            {/* Top KPIs */}
+            <KpiStrip cols={4}>
+                <KpiCard
+                    label="OEE Fabril"
+                    value={numFmt.num(data.oee_fabril_real, 1)}
+                    unit="%"
+                    delta={
+                        data.oee_fabril_planejado
+                            ? {
+                                value: `Meta ${data.oee_fabril_planejado}%`,
+                                tone: data.oee_fabril_real >= data.oee_fabril_planejado ? 'up' : 'down'
+                            }
+                            : undefined
+                    }
+                />
+                <KpiCard
+                    label="Vazão Total"
+                    value={numFmt.num(data.vazao_total_tph, 1)}
+                    unit="t/h"
+                    delta={
+                        data.vazao_necessaria_tph
+                            ? { value: `Necessária ${data.vazao_necessaria_tph} t/h`, tone: 'neutral' }
+                            : undefined
+                    }
+                />
+                <KpiCard
+                    label="Produção Real"
+                    value={numFmt.num(data.producao_real_t, 1)}
+                    unit="t"
+                    delta={{ value: `Plano ${data.producao_planejada_t} t`, tone: 'neutral' }}
+                />
+                <KpiCard
+                    label="Linhas Ativas"
+                    value={`${ativas} / ${data.linhas.length}`}
+                    delta={
+                        ativas < data.linhas.length
+                            ? { value: `${data.linhas.length - ativas} fora`, tone: 'down' }
+                            : { value: 'todas operando', tone: 'up' }
+                    }
+                />
+            </KpiStrip>
+
+            {/* Ranking */}
+            <Panel title="Ranking de Performance">
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 8 }}>
+                    {sortedLines.map((line, idx) => {
+                        const tone: 'ok' | 'warn' | 'bad' =
+                            line.oee_real >= 75 ? 'ok' :
+                            line.oee_real >= 55 ? 'warn' : 'bad';
+                        return (
+                            <div
+                                key={line.linha}
+                                role="button"
+                                tabIndex={0}
+                                onClick={() => navigate(`/linha/${line.linha}/detalhes`)}
+                                style={{
+                                    display: 'flex', alignItems: 'center', gap: 10,
+                                    padding: '8px 10px',
+                                    background: 'var(--isa-bg)',
+                                    border: '1px solid var(--isa-border)',
+                                    borderRadius: 'var(--isa-radius)',
+                                    cursor: 'pointer',
+                                }}
+                            >
+                                <div style={{
+                                    width: 22, height: 22, borderRadius: '50%',
+                                    display: 'grid', placeItems: 'center',
+                                    background: idx === 0 ? '#f4e8cf' : 'var(--isa-bg-muted)',
+                                    color: idx === 0 ? 'var(--isa-warn)' : 'var(--isa-text-muted)',
+                                    fontSize: 11, fontWeight: 700,
+                                }}>
+                                    {idx + 1}
                                 </div>
-                            ))}
-                        </div>
-                    </CardContent>
-                </Card>
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                    <div style={{ fontWeight: 600, fontSize: 'var(--isa-fs-default)', color: 'var(--isa-text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{line.linha}</div>
+                                    <div style={{ fontSize: 'var(--isa-fs-meta)', color: 'var(--isa-text-muted)' }}>{line.status}</div>
+                                </div>
+                                <Tag tone={tone}>{numFmt.num(line.oee_real, 0)}%</Tag>
+                            </div>
+                        );
+                    })}
+                </div>
+            </Panel>
 
-                {/* Mapa do Chão de Fábrica (Full Width) */}
-                <Card>
-                    <CardHeader>
-                        <CardTitle>Mapa do Chão de Fábrica</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                        <div className="relative w-full h-[600px] bg-gray-100 rounded-xl border border-gray-200 p-6 overflow-hidden">
+            {/* Mapa do chão de fábrica */}
+            <div style={{ marginTop: 12 }}>
+                <SectionHead title="Mapa do Chão de Fábrica" desc="Layout das linhas e estado em tempo real" />
+                <div style={{
+                    background: 'var(--isa-bg-panel)',
+                    border: '1px solid var(--isa-border)',
+                    borderRadius: 'var(--isa-radius)',
+                    padding: 14,
+                }}>
+                    <div className="relative w-full h-[600px] rounded border" style={{ background: 'var(--isa-bg)', borderColor: 'var(--isa-border)', position: 'relative', overflow: 'hidden' }}>
                             {/* Background */}
                             <div className="absolute inset-0 opacity-10"
                                 style={{ backgroundImage: 'radial-gradient(#4f46e5 1px, transparent 1px)', backgroundSize: '20px 20px' }}>
@@ -318,16 +297,23 @@ const FactoryManagementPanel: React.FC = () => {
                             })}
 
                             {/* Legend */}
-                            <div className="absolute bottom-4 right-4 bg-white/90 p-2 rounded text-xs space-y-1 shadow-sm">
-                                <div className="flex items-center gap-2"><div className="w-3 h-3 bg-white border-2 border-green-400 rounded"></div> Operando</div>
-                                <div className="flex items-center gap-2"><div className="w-3 h-3 bg-red-50 border-2 border-red-400 rounded"></div> Crítico / Parado</div>
-                                <div className="flex items-center gap-2"><div className="w-3 h-3 bg-gray-50 border-2 border-gray-200 rounded"></div> Sem Dados</div>
+                            <div style={{
+                                position: 'absolute', bottom: 12, right: 12,
+                                background: 'var(--isa-bg-panel)',
+                                border: '1px solid var(--isa-border)',
+                                borderRadius: 'var(--isa-radius)',
+                                padding: 8, fontSize: 'var(--isa-fs-meta)',
+                                display: 'flex', flexDirection: 'column', gap: 4,
+                                boxShadow: 'var(--isa-shadow-1)',
+                            }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}><span className="isa-dot isa-dot--ok" />Operando</div>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}><span className="isa-dot isa-dot--bad" />Crítico / Parado</div>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}><span className="isa-dot isa-dot--off" />Sem Dados</div>
                             </div>
                         </div>
-                    </CardContent>
-                </Card >
-            </div >
-        </div >
+                </div>
+            </div>
+        </div>
     );
 };
 

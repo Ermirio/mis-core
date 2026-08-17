@@ -9,13 +9,155 @@ import logging
 analytics_bp = Blueprint('analytics', __name__)
 logger = logging.getLogger(__name__)
 
-def query_influx_to_df(client, tags, start_time, end_time, interval=None):
+# ==============================================================================
+# [P0.3] OFF-MASK — Estados de equipamento que NÃO devem entrar em EDA/analytics
+# ------------------------------------------------------------------------------
+# Motivação: quando o equipamento está PARADO, em MANUTENÇÃO, TESTE, etc., as
+# variáveis (velocidade, temperatura, pressão, contadores) ficam "congeladas" ou
+# lendo valores espúrios do CLP. Se essas leituras entram no cálculo de média,
+# desvio padrão, Cp/Cpk ou correlação, elas viram RUÍDO SISTEMÁTICO — o cientista
+# de dados vê "a linha está estável" quando na verdade a linha está desligada.
+#
+# Regra (ISO 22400-2 + senso comum de WCM):
+#   Para análise estatística/EDA, considerar apenas leituras capturadas enquanto
+#   o equipamento está em estado PRODUTIVO (ou próximo disso).
+#
+# Códigos ESTADOS_MAQUINA (backend-flask/constants.py):
+#   0   Online (idle, sem produzir)    1  Produzindo
+#   2   Aguard. Anterior                3  Bloq. Próximo
+#   4   Parado/Falha                    5  Setup
+#   6   Teste/Projeto                   7  Aguard. Manut.
+#   8   Manutenção                      9  Falta Material
+#   11  Partindo                        12 Aguard. Condições
+#   13  Parando                         999 OFFLINE (forçado pelo coletor)
+#
+# [BUG-4 fix] adicionados 0 e 999 ao default. Sem isso, períodos em que o PLC
+# estava offline (estado=999) ou a máquina estava em idle (estado=0) entravam
+# nas estatísticas com velocidade=0 → médias e desvios viesados pra baixo, e
+# correlações espúrias perto de 1.0 entre variáveis "congeladas".
+# Default razoável: excluir estados claramente "não-produtivos":
+#   {0 idle, 4 Parado/Falha, 6 Teste, 7 Aguard. Manut., 8 Manutenção, 999 OFFLINE}
+# ==============================================================================
+DEFAULT_EXCLUDE_STATES = [0, 4, 6, 7, 8, 999]
+
+
+# ==============================================================================
+# CUMULATIVE_FIELDS — campos sabidamente cumulativos no schema "production".
+#
+# Usado pelo /analyze/timeseries para decidir quando converter série em DELTA
+# por janela. ANTES, usávamos heurística `series.is_monotonic_increasing`,
+# que falhava em casos comuns:
+#   - reset de turno no meio da janela (série não-monotônica)
+#   - oscilação minúscula de leitura ruidosa quebra a monotonicidade
+#   - resultado: o usuário via curva sempre crescente porque o auto-delta
+#     não disparava e o gráfico mostrava o contador acumulado puro.
+#
+# Agora é determinístico: se o `tag_influx` da variável estiver neste set
+# E `apply_delta=True` (default), aplica delta reset-tolerante. Senão,
+# devolve raw. Sem ambiguidade.
+# ==============================================================================
+CUMULATIVE_FIELDS = {
+    'contagem_saida',
+    'contagem_entrada',
+    'descarte',
+    'refugo_op_acumulado',
+    'producao_op_acumulada',
+    'producao_turno_acumulada',
+}
+
+
+def _fetch_state_series(client, eq_code: str, start_time: str, end_time: str) -> pd.Series:
+    """
+    Busca a série temporal de `estado_maquina` para um equipamento.
+    Retorna pd.Series indexada por timestamp (tz America/Sao_Paulo).
+    """
+    try:
+        q = (
+            f"SELECT \"estado_maquina\" FROM \"production\" "
+            f"WHERE \"equipment\" = '{eq_code}' "
+            f"AND time >= '{start_time}' AND time <= '{end_time}'"
+        )
+        rs = client.query(q)
+        points = list(rs.get_points())
+        if not points:
+            return pd.Series(dtype='float64')
+        df_s = pd.DataFrame(points)
+        df_s['time'] = pd.to_datetime(df_s['time'], utc=True).dt.tz_convert('America/Sao_Paulo')
+        df_s.set_index('time', inplace=True)
+        return pd.to_numeric(df_s['estado_maquina'], errors='coerce')
+    except Exception as e:
+        logger.warning(f"[off-mask] Não foi possível buscar estado_maquina para {eq_code}: {e}")
+        return pd.Series(dtype='float64')
+
+
+def _apply_off_mask(obj, state_series: pd.Series, exclude_states):
+    """
+    Marca como NaN as linhas em que o estado do equipamento está em `exclude_states`.
+    Funciona para pd.Series e pd.DataFrame.
+
+    O estado é propagado com forward-fill para cobrir timestamps entre transições.
+    """
+    if exclude_states is None or len(exclude_states) == 0:
+        return obj
+    if state_series is None or state_series.empty:
+        return obj
+    if obj is None or (hasattr(obj, 'empty') and obj.empty):
+        return obj
+
+    target_idx = obj.index
+    # Alinha estado com os timestamps alvo via ffill — cobre buracos entre transições
+    combined_idx = state_series.index.union(target_idx).sort_values()
+    state_aligned = (
+        state_series.reindex(combined_idx)
+                    .sort_index()
+                    .ffill()
+                    .reindex(target_idx)
+    )
+    off_mask = state_aligned.isin(exclude_states).fillna(False)
+
+    if not off_mask.any():
+        return obj
+
+    obj_masked = obj.copy()
+    if isinstance(obj_masked, pd.DataFrame):
+        obj_masked.loc[off_mask, :] = np.nan
+    else:
+        obj_masked[off_mask] = np.nan
+    return obj_masked
+
+
+def _parse_exclude_states(payload_value):
+    """
+    Normaliza o campo `exclude_states` do payload.
+    Aceita:
+      - None / ausente     -> usa DEFAULT_EXCLUDE_STATES
+      - []                 -> sem filtro (explicitamente desligado)
+      - [4, 8]             -> lista de códigos
+      - ['PARADO', ...]    -> ignora strings (o frontend pode vir a mandar)
+    """
+    if payload_value is None:
+        return DEFAULT_EXCLUDE_STATES
+    if not isinstance(payload_value, list):
+        return DEFAULT_EXCLUDE_STATES
+    try:
+        return [int(x) for x in payload_value if str(x).strip().lstrip('-').isdigit()]
+    except Exception:
+        return DEFAULT_EXCLUDE_STATES
+
+
+def query_influx_to_df(client, tags, start_time, end_time, interval=None,
+                       exclude_states=None, apply_delta=True):
     """
     Queries InfluxDB for multiple tags and returns a single aligned DataFrame.
 
     interval: se fornecido (ex: '5s', '1m'), usa GROUP BY time(interval) LAST()
               diretamente no InfluxDB — preserva oscilações reais dos sensores.
               Se None, retorna dados raw sem agregação (para stats/correlação).
+
+    apply_delta (GAP-1): controla se contadores acumulativos (CONSOLIDATED_METRICS
+              com agg='last_diff') são convertidos em delta por janela. Default
+              True (comportamento correto). Quando False, retorna a série bruta
+              acumulada — útil para diagnóstico raro do contador puro.
     """
     try:
         import requests as http_requests
@@ -71,28 +213,66 @@ def query_influx_to_df(client, tags, start_time, end_time, interval=None):
                     query = f"SELECT \"{influx_field}\" FROM \"production\" WHERE \"equipment\" = '{eq}' AND time >= '{start_time}' AND time <= '{end_time}'"
                     rs = client.query(query)
                     points = list(rs.get_points())
-                    
+
                     if points:
                         df_eq = pd.DataFrame(points)
                         df_eq['time'] = pd.to_datetime(df_eq['time'], utc=True).dt.tz_convert('America/Sao_Paulo')
                         df_eq.set_index('time', inplace=True)
                         df_eq[influx_field] = pd.to_numeric(df_eq[influx_field], errors='coerce')
+
+                        # [P0.3] OFF-mask por equipamento ANTES de agregar a linha.
+                        # Para contadores acumulativos (last_diff) o NaN é tolerado pelo
+                        # _window_delta (que usa diff().clip). Para mean/sum, NaN é
+                        # ignorado pelo resample (pandas skipna=True).
+                        if exclude_states:
+                            state_s = _fetch_state_series(client, eq, start_time, end_time)
+                            df_eq[[influx_field]] = _apply_off_mask(
+                                df_eq[[influx_field]], state_s, exclude_states
+                            )
+
                         df_eq['equipment'] = eq  # Tag para identificar equipamento
                         all_eq_dfs.append(df_eq)
                 
                 if all_eq_dfs:
                     # Combine all equipment data
                     combined = pd.concat(all_eq_dfs, axis=0)
-                    
+
                     # Resample and aggregate based on type
                     if metric_config['agg'] == 'sum':
                         agg_series = combined[influx_field].resample('1min').sum()
                     elif metric_config['agg'] == 'mean':
                         agg_series = combined[influx_field].resample('1min').mean()
                     elif metric_config['agg'] == 'last_diff':
-                        # Para contadores acumulativos: pega o ÚLTIMO valor de cada equipamento por minuto
-                        # e soma todos equipamentos
-                        agg_series = combined.groupby('equipment')[influx_field].resample('1min').last().groupby(level=1).sum()
+                        # [P0.1 FIX] Contadores acumulativos precisam de DELTA por janela,
+                        # não o último valor. A implementação anterior (groupby→last→sum)
+                        # produzia séries MONOTONICAMENTE CRESCENTES porque somava valores
+                        # cumulativos. Fix: (max - min) por equipamento+janela → delta real
+                        # da janela; depois soma entre equipamentos.
+                        # Compatível com reset do contador: usa diff().clip(lower=0).sum()
+                        # que ignora quedas (reset do PLC/início de turno).
+                        # [GAP-1] apply_delta=False bypassa a transformação e devolve a
+                        # série bruta (último valor por janela) — caso de uso raro de debug.
+                        if apply_delta:
+                            def _window_delta(s: pd.Series) -> float:
+                                if len(s) < 2:
+                                    return 0.0
+                                d = s.sort_index().diff().clip(lower=0).sum()
+                                return float(d)
+                            agg_series = (
+                                combined.groupby('equipment')[influx_field]
+                                .resample('1min')
+                                .apply(_window_delta)
+                                .groupby(level=1)
+                                .sum()
+                            )
+                        else:
+                            agg_series = (
+                                combined.groupby('equipment')[influx_field]
+                                .resample('1min')
+                                .last()
+                                .groupby(level=1)
+                                .sum()
+                            )
                     else:
                         agg_series = combined[influx_field].resample('1min').mean()
                     
@@ -180,20 +360,26 @@ def query_influx_to_df(client, tags, start_time, end_time, interval=None):
                 
                 rs = client.query(query)
                 points = list(rs.get_points())
-                
+
                 if points:
                     df = pd.DataFrame(points)
                     df['time'] = pd.to_datetime(df['time'], utc=True).dt.tz_convert('America/Sao_Paulo')
                     df.set_index('time', inplace=True)
                     df.rename(columns={field: alias}, inplace=True)
                     df[alias] = pd.to_numeric(df[alias], errors='coerce')
+
+                    # [P0.3] OFF-mask — só aplica quando o campo NÃO é o próprio estado
+                    # (do contrário mascararíamos a variável que define a máscara).
+                    if exclude_states and field != 'estado_maquina':
+                        state_s = _fetch_state_series(client, eq_code, start_time, end_time)
+                        df = _apply_off_mask(df, state_s, exclude_states)
+
                     dfs.append(df)
         
         if not dfs:
             return pd.DataFrame()
-            
-        full_df = pd.concat(dfs, axis=1)
-        
+
+        full_df = pd.concat(dfs, axis=1).sort_index()
         return full_df
 
     except Exception as e:
@@ -219,7 +405,18 @@ def analyze_stats():
     variables = data.get('variables', [])
     start_time = data.get('start_time')
     end_time = data.get('end_time')
-    
+    # [P0.3] OFF-mask: por default ignora leituras quando equipamento está
+    # Parado/Falha, Teste, Aguardando Manutenção ou Manutenção. Cliente pode
+    # sobrescrever via "exclude_states": [4, 8]  ou desligar com "exclude_states": [].
+    # [GAP-1] flags compatíveis com o frontend POC:
+    #   - ignore_off  (bool): atalho de exclude_states. Se False, força [].
+    #   - apply_delta (bool): controla DELTA em contadores acumulativos.
+    if data.get('ignore_off') is False:
+        exclude_states = []
+    else:
+        exclude_states = _parse_exclude_states(data.get('exclude_states'))
+    apply_delta = bool(data.get('apply_delta', True))
+
     influx_client = current_app.extensions.get('influx_client')
     if not influx_client:
         return jsonify({'error': 'DB not connected'}), 500
@@ -228,9 +425,13 @@ def analyze_stats():
 
     # Optimize: Query all at once? Or loop?
     # Stats are usually per-variable.
-    
+
     for var in variables:
-        df = query_influx_to_df(influx_client, [var], start_time, end_time)
+        df = query_influx_to_df(
+            influx_client, [var], start_time, end_time,
+            exclude_states=exclude_states,
+            apply_delta=apply_delta,
+        )
         
         col_name = var.get('alias', var.get('tag_influx'))
         
@@ -242,10 +443,19 @@ def analyze_stats():
             continue
             
         series = df[col_name].dropna()
-        
+
         if series.empty:
-             results.append({'variable': col_name, 'error': 'Empty data'})
-             continue
+            results.append({'variable': col_name, 'error': 'Empty data'})
+            continue
+
+        # Delta DETERMINÍSTICO via catálogo (mesma lógica do analyze_timeseries).
+        # Substitui heurística is_monotonic_increasing que falhava em resets.
+        tag_influx_stats = var.get('tag_influx', '')
+        if apply_delta and tag_influx_stats in CUMULATIVE_FIELDS and len(series) > 1:
+            series = series.diff().clip(lower=0).dropna()
+            if series.empty:
+                results.append({'variable': col_name, 'error': 'Empty data after delta'})
+                continue
 
         # Stats
         mean = float(series.mean())
@@ -323,6 +533,14 @@ def analyze_correlation():
     variables = data.get('variables', [])
     start_time = data.get('start_time')
     end_time = data.get('end_time')
+    # [P0.3] OFF-mask — correlação é especialmente sensível a ruído de estados
+    # parados (gera correlações espúrias perto de 1.0 entre variáveis congeladas).
+    # [GAP-1] mesmas flags do /analyze/stats.
+    if data.get('ignore_off') is False:
+        exclude_states = []
+    else:
+        exclude_states = _parse_exclude_states(data.get('exclude_states'))
+    apply_delta = bool(data.get('apply_delta', True))
 
     # Validate correlation method — never trust user input directly
     method = data.get('method', 'pearson')
@@ -333,7 +551,11 @@ def analyze_correlation():
     if not influx_client:
         return jsonify({'error': 'DB not connected'}), 500
 
-    df = query_influx_to_df(influx_client, variables, start_time, end_time)
+    df = query_influx_to_df(
+        influx_client, variables, start_time, end_time,
+        exclude_states=exclude_states,
+        apply_delta=apply_delta,
+    )
 
     if df.empty:
         return jsonify({'error': 'No data'}), 404
@@ -431,12 +653,24 @@ def analyze_timeseries():
     variables = data.get('variables', [])
     start_time = data.get('start_time')
     end_time = data.get('end_time')
+    # [P0.3] OFF-mask nos gráficos de tendência — NaNs aparecem como "gaps"
+    # nas linhas, o que é o comportamento correto: deixa VISÍVEL para o
+    # engenheiro que o equipamento estava parado naquele intervalo.
+    # [GAP-1] flags do frontend POC.
+    if data.get('ignore_off') is False:
+        exclude_states = []
+    else:
+        exclude_states = _parse_exclude_states(data.get('exclude_states'))
+    apply_delta = bool(data.get('apply_delta', True))
+    # [GAP-2] granularity explícita do cliente (Grafana-style):
+    # 'auto' (default) calcula via heurística; senão respeita o que veio.
+    user_gran = (data.get('granularity') or 'auto').lower()
 
     influx_client = current_app.extensions.get('influx_client')
     if not influx_client:
         return jsonify({'error': 'DB not connected'}), 500
 
-    # Calcula intervalo ideal para o GROUP BY no InfluxDB.
+    # Calcula intervalo ideal para o GROUP BY no InfluxDB quando granularity=auto.
     # Meta: máximo ~10000 pontos, resolução mínima de 5s.
     # O agrupamento acontece no banco — não no Python — para preservar oscilações reais.
     try:
@@ -447,29 +681,61 @@ def analyze_timeseries():
     except Exception:
         total_seconds = 28800  # fallback 8h
 
-    TARGET_MAX_POINTS = 10000
-    MIN_INTERVAL_S    = 5
-    ideal_s = max(MIN_INTERVAL_S, int(total_seconds / TARGET_MAX_POINTS))
+    if user_gran in ('5s', '10s', '30s', '1m', '5m', '10m', '15m', '30m', '1h', '1d'):
+        influx_interval = user_gran
+    else:
+        # Auto-cálculo (mantido)
+        TARGET_MAX_POINTS = 10000
+        MIN_INTERVAL_S    = 5
+        ideal_s = max(MIN_INTERVAL_S, int(total_seconds / TARGET_MAX_POINTS))
+        if   ideal_s <= 5:   influx_interval = '5s'
+        elif ideal_s <= 10:  influx_interval = '10s'
+        elif ideal_s <= 30:  influx_interval = '30s'
+        elif ideal_s <= 60:  influx_interval = '1m'
+        elif ideal_s <= 300: influx_interval = '5m'
+        else:                influx_interval = '10m'
 
-    if   ideal_s <= 5:   influx_interval = '5s'
-    elif ideal_s <= 10:  influx_interval = '10s'
-    elif ideal_s <= 30:  influx_interval = '30s'
-    elif ideal_s <= 60:  influx_interval = '1m'
-    elif ideal_s <= 300: influx_interval = '5m'
-    else:                influx_interval = '10m'
-
-    df = query_influx_to_df(influx_client, variables, start_time, end_time, interval=influx_interval)
+    df = query_influx_to_df(
+        influx_client, variables, start_time, end_time,
+        interval=influx_interval,
+        exclude_states=exclude_states,
+        apply_delta=apply_delta,
+    )
 
     if df.empty:
         return jsonify({'error': 'No data'}), 404
 
+    # Mapa alias -> tag_influx para decidir delta DETERMINISTICAMENTE
+    # (sem heurística is_monotonic_increasing que falha em resets de turno).
+    alias_to_tag = {
+        v.get('alias', v.get('tag_influx')): v.get('tag_influx')
+        for v in variables
+    }
+
     results = {}
-    
+
     for col in df.columns:
-        series = df[col].dropna()
+        # [FIX trend/SPC] sort_index() defensivo. Garante DatetimeIndex crescente
+        # antes do plot — Plotly não reordena por X mesmo com type:'date'.
+        series = df[col].dropna().sort_index()
         if series.empty:
             continue
-            
+
+        # Delta DETERMINÍSTICO baseado em catálogo. Substitui a heurística antiga
+        # (`series.is_monotonic_increasing`) que falhava em dois casos:
+        #   1) reset de turno no meio da janela → série não-monotônica → auto-delta
+        #      não disparava → user via série acumulada cumulativa "sempre subindo".
+        #   2) oscilação ruidosa de 1-2 unidades em contador "calmo" também quebra.
+        # Solução: se o tag_influx está em CUMULATIVE_FIELDS, aplica delta reset-tolerante.
+        tag_influx = alias_to_tag.get(col, '')
+        is_cumulative = tag_influx in CUMULATIVE_FIELDS
+        if apply_delta and is_cumulative and len(series) > 1:
+            # diff().clip(lower=0) ignora quedas (reset do PLC ou virada de turno).
+            # Equivale ao counter_delta do FastAPI (formulas.py).
+            series = series.diff().clip(lower=0).dropna()
+            if series.empty:
+                continue
+
         mean = float(series.mean())
         std = float(series.std())
         

@@ -1,10 +1,11 @@
 Write-Host "Iniciando exportacao das imagens Docker..."
 
 $images = @(
-    "mis-core-django:v1.0",
-    "mis-core-flask:v1.1",
-    "mis-core-frontend:v1.0",
-    "mis-core-coletor:v1.0",
+    "mis-core-django:v14.0",
+    "mis-core-flask:v14.0",
+    "mis-core-fastapi:v14.0",   # camada nova de analytics (Strangler Pattern)
+    "mis-core-frontend:v14.0",
+    "mis-core-coletor:v14.0",
     "mysql:8.0",
     "influxdb:1.8-alpine",
     "chronograf:1.8",

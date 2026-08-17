@@ -3,6 +3,8 @@ import requests
 import time
 from datetime import datetime, timedelta
 
+from oee_formula import OEEInputs, compute_oee
+
 logger = logging.getLogger(__name__)
 
 # ===== GERENCIADOR DE CONFIGURAÇÕES (Velocidades Nominais) =====
@@ -290,18 +292,42 @@ class ProductionEngine:
             state['shift_start_time'] = turno_info['inicio_timestamp']
 
         # 4. Cálculo de Delta de Tempo
+        # [BUG-7 FIX] outage longo (coletor caiu, servidor reiniciado, etc.)
+        # NÃO pode "sumir" da Availability. Antes: time_delta>300s era zerado
+        # e nada se acumulava em acc_time_stop_shift. Resultado: Availability
+        # inflava artificialmente porque o tempo planejado seguia avançando
+        # (now - shift_start) mas o tempo parado não cobria o gap. Decisão:
+        #   - delta válido (1..MAX_TIME_DELTA): usa normal.
+        #   - delta longo mas razoável (até OUTAGE_AS_DOWNTIME=2h): contabiliza
+        #     COMO PARADO (worst-case operacional — mais honesto que esconder).
+        #   - delta>OUTAGE_AS_DOWNTIME ou negativo: descarta (clock skew real).
+        OUTAGE_AS_DOWNTIME_S = 7200  # 2h: limite acima do qual viramos hands-up
         time_delta = 0.0
+        gap_outage = 0.0
         if state['last_timestamp'] is not None:
-            time_delta = now_timestamp - state['last_timestamp']
-            # Proteção: Ignora delta muito grande (servidor reiniciou)
-            if time_delta > self.MAX_TIME_DELTA or time_delta < 0:
-                logger.warning(f"{equipamento}: Delta tempo anormal ({time_delta:.1f}s), ignorando")
-                time_delta = 0.0
-        
+            raw_delta = now_timestamp - state['last_timestamp']
+            if 0 < raw_delta <= self.MAX_TIME_DELTA:
+                time_delta = raw_delta
+            elif self.MAX_TIME_DELTA < raw_delta <= OUTAGE_AS_DOWNTIME_S:
+                # Outage moderado — contabilizamos como parada não-planejada.
+                logger.warning(
+                    f"{equipamento}: outage de {raw_delta:.0f}s contabilizado como parada"
+                )
+                gap_outage = raw_delta
+            else:
+                # Clock skew, restart muito longo, ou time_delta negativo.
+                logger.warning(
+                    f"{equipamento}: delta tempo anormal ({raw_delta:.1f}s), descartado"
+                )
+
         # 5. Acumula Tempo Parado
+        # 5a. Estado != RUNNING durante a janela normal -> conta como parado.
         if state['last_estado'] is not None and time_delta > 0:
             if state['last_estado'] != 1:  # 1 = Produzindo
                 state['acc_time_stop_shift'] += time_delta
+        # 5b. Outage moderado -> conta como parado integralmente (BUG-7).
+        if gap_outage > 0:
+            state['acc_time_stop_shift'] += gap_outage
         
         # Atualiza referências temporais
         state['last_timestamp'] = now_timestamp
@@ -376,49 +402,60 @@ class ProductionEngine:
             else:
                 pass # Ignora acumulação fora de turno
         
-        # 8. CÁLCULO DE OEE
-        # === DISPONIBILIDADE TEMPORAL ===
-        disponibilidade = 0.0
+        # 8. CÁLCULO DE OEE — agora delegado a compute_oee (ISO 22400-2 SSOT).
+        # [BUG-3 + INC-2 FIX] antes Performance era avg(velocidade)/nominal —
+        # ignorava tempo produtivo e era ruído quando velocidade=0 transitória
+        # entrava no buffer. Agora usamos a fórmula correta:
+        #     Performance = (Total Count × Ideal Cycle Time) / Actual Production Time
+        # E todo o cálculo (A, P, Q, OEE) passa pelo MESMO compute_oee que o
+        # FastAPI usa, garantindo consistência entre /api/v1 e /api/v2.
+
+        # ---- Tempo planejado / parado / produtivo ----
         tempo_planejado = 0.0
         tempo_parado = state['acc_time_stop_shift']
-        
         if turno_info and state['shift_start_time']:
-            tempo_planejado = now_timestamp - state['shift_start_time']
-            
-            if tempo_planejado > 0:
-                # Fórmula Temporal: (Planejado - Parado) / Planejado
-                disponibilidade = (tempo_planejado - tempo_parado) / tempo_planejado
-                disponibilidade = max(0.0, min(1.0, disponibilidade))
-            else:
-                # Turno começou há menos de 1s - usa estado instantâneo
-                disponibilidade = 1.0 if estado_maquina == 1 else 0.0
+            tempo_planejado = max(0.0, now_timestamp - state['shift_start_time'])
+        tempo_produtivo = max(0.0, tempo_planejado - tempo_parado)
+
+        # ---- INPUT total (good + reject) — base do Total Count ISO ----
+        total_prod_op  = state['acc_op']             # OUTPUT (good count)
+        total_waste_op = state['acc_waste_op']       # REJECT
+        total_input_op = total_prod_op + total_waste_op   # INPUT = total count
+
+        # ---- Ideal cycle time ----
+        # Vel nominal está em unidades/minuto. Ideal cycle = 60s / vel_nominal.
+        # Guard: se vel_nominal vier 0/None, fallback para 1s/un (não estourar div/0).
+        ideal_cycle_s = (60.0 / vel_nominal) if vel_nominal and vel_nominal > 0 else 1.0
+
+        # ---- Caso edge: turno acabou de começar (planejado<1s) ou sem turno ----
+        if tempo_planejado <= 0 or tempo_produtivo <= 0:
+            # Sem janela suficiente para a fórmula temporal — usar fallback
+            # baseado no estado instantâneo (mantém compat com versão antiga).
+            disponibilidade = 1.0 if estado_maquina == 1 else 0.0
+            performance = 0.0
+            performance_raw = 0.0
+            quality_valid = total_input_op > 0
+            qualidade = (total_prod_op / total_input_op) if quality_valid else 1.0
+            oee_valid = quality_valid
+            oee_frac = (disponibilidade * performance * qualidade) if oee_valid else 0.0
         else:
-            # Fallback: Sem turno configurado, usa estado instantâneo
-            # Estados 1, 2, 3 = Produzindo, Aguardando, Bloqueado = Disponível
-            disponibilidade = 1.0 if estado_maquina in [1, 2, 3] else 0.0
-        
-        # === PERFORMANCE ===
-        # Média Móvel Simples (3 amostras)
-        if 'velocity_buffer' not in state: state['velocity_buffer'] = []
-        state['velocity_buffer'].append(velocidade_atual)
-        if len(state['velocity_buffer']) > 3:
-            state['velocity_buffer'].pop(0)
-        
-        avg_velocity = sum(state['velocity_buffer']) / len(state['velocity_buffer']) if state['velocity_buffer'] else 0
-        
-        performance = 0.0
-        if vel_nominal > 0:
-            performance = min(1.05, avg_velocity / vel_nominal)
-        
-        # === QUALIDADE ===
-        total_prod_op = state['acc_op']
-        total_waste_op = state['acc_waste_op']
-        qualidade = 1.0
-        
-        if total_prod_op > 0:
-            qualidade = max(0.0, (total_prod_op - total_waste_op) / total_prod_op)
-        
-        oee = disponibilidade * performance * qualidade * 100
+            r = compute_oee(OEEInputs(
+                actual_production_time_s=tempo_produtivo,
+                planned_production_time_s=tempo_planejado,
+                total_count=total_input_op,
+                good_count=total_prod_op,
+                ideal_cycle_time_s=ideal_cycle_s,
+            ))
+            disponibilidade = r.availability
+            performance     = r.performance        # cap 1.0 (ISO) — já fica em fração
+            performance_raw = r.performance_raw    # cap 1.05 — para display
+            qualidade       = r.quality
+            quality_valid   = r.quality_valid
+            oee_valid       = r.oee_valid
+            oee_frac        = r.oee
+
+        # OEE no formato "percentual 0..100" — manter contrato antigo dos consumers.
+        oee = oee_frac * 100.0
         
         # 9. Totais
         ton_op = (total_prod_op * formato_gramas) / 1_000_000.0 if formato_gramas else 0
@@ -435,34 +472,36 @@ class ProductionEngine:
             'producao_turno': int(total_turno),
             'toneladas_turno': float(ton_turno),
             'turno_atual_nome': turno_atual,
-            
-            # Métricas OEE
+
+            # Metricas OEE - todas em escala 0..100 para o frontend legado.
             'oee_realtime': float(oee),
-            'performance_realtime': float(performance * 100),
+            'performance_realtime': float(performance_raw * 100),
             'quality_realtime': float(qualidade * 100),
             'availability_realtime': float(disponibilidade * 100),
-            'planejado_op': int(planejado), # ADDING THIS TOO as it was missing for logic
-            
-            # NOVOS: Métricas temporais
+            'quality_valid': bool(quality_valid),
+            'oee_valid': bool(oee_valid),
+            'planejado_op': int(planejado),
+
+            # Metricas temporais
             'tempo_planejado_segundos': int(tempo_planejado),
             'tempo_parado_segundos': int(tempo_parado),
             'tempo_produtivo_segundos': int(tempo_planejado - tempo_parado) if tempo_planejado > 0 else 0,
-            
-            # Dados para cálculo de vazão
+
+            # Dados para calculo de vazao
             'velocidade_atual': int(velocidade_atual),
             'formato_gramas': int(formato_gramas),
         }
-        
+
         state['latest_metrics'] = metrics
-        
-        # Persistência de Contexto Rico (SKU, Descrição, CUC)
+
+        # Persistencia de Contexto Rico (SKU, Descricao, CUC)
         if extra_context:
             state['last_payload'] = extra_context
-        
-        # NOVO: Adiciona turno_inicio_timestamp para persistência
+
+        # turno_inicio_timestamp para persistencia
         if state['shift_start_time']:
             metrics['turno_inicio_timestamp'] = float(state['shift_start_time'])
-            
+
         return metrics
 
 # Singleton

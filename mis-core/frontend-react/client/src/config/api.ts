@@ -1,17 +1,34 @@
 /**
  * Centralized API Configuration
- * 
- * Reads from environment variables (VITE_*) to allow dynamic configuration.
- * Defaults to relative paths to work seamlessly with the Nginx Reverse Proxy.
+ *
+ * Priority (highest → lowest):
+ *   1. window.ENV  — injected at runtime by docker-entrypoint.sh (hub can override per-deployment)
+ *   2. import.meta.env — baked in at Vite build time
+ *   3. hardcoded default — works for standalone mode (nginx inside the frontend container)
+ *
+ * This three-layer approach lets the SAME Docker image run in the hub proxy
+ * (which uses /mis-core-api, /mis-core-flask-api) AND in standalone mode
+ * (which uses /api, /flask-api), without separate builds.
  */
 
-// Django API URL
-// Default: '/api' (Relative path, handled by Nginx proxy)
-export const DJANGO_API_URL = import.meta.env.VITE_DJANGO_API_URL || '/api';
+declare global {
+  interface Window { ENV?: Record<string, string | undefined>; }
+}
 
-// Flask API URL
-// Default: '/flask-api' (Relative path, handled by Nginx proxy)
-// Note: Some legacy code might expect direct port access, but for portability, we prefer the proxy.
-export const FLASK_API_URL = import.meta.env.VITE_FLASK_API_URL || '/flask-api';
+const runtimeEnv = (key: string): string | undefined =>
+  typeof window !== 'undefined' ? window.ENV?.[key] : undefined;
 
-console.log('API Configuration Loaded:', { DJANGO_API_URL, FLASK_API_URL });
+export const DJANGO_API_URL =
+  runtimeEnv('VITE_DJANGO_API_URL') ||
+  import.meta.env.VITE_DJANGO_API_URL ||
+  '/api';
+
+export const FLASK_API_URL =
+  runtimeEnv('VITE_FLASK_API_URL') ||
+  import.meta.env.VITE_FLASK_API_URL ||
+  '/flask-api';
+
+export const FASTAPI_V2_URL =
+  runtimeEnv('VITE_FASTAPI_V2_URL') ||
+  import.meta.env.VITE_FASTAPI_V2_URL ||
+  '/api/v2';

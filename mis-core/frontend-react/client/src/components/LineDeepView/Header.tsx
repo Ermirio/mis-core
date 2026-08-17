@@ -1,124 +1,120 @@
 import React from 'react';
 import { Activity, Box, Package, Tag, Zap, Scale } from 'lucide-react';
 
+const ISA = {
+  bg:      '#ffffff',
+  bgMuted: '#f4f5f7',
+  border:  '#d7dbe0',
+  text:    '#2c3138',
+  muted:   '#657384',
+  weak:    '#9ba3ad',
+  accent:  '#3f5b7c',
+  ok:      '#2d8659',  okBg:   '#e3efe7',
+  warn:    '#c9932d',  warnBg: '#f4e8cf',
+  bad:     '#b53a2b',  badBg:  '#f4dad6',
+  off:     '#9ba3ad',  offBg:  '#e9ecef',
+} as const;
+
+function statusStyle(status: string): React.CSSProperties {
+  const s = status.toLowerCase();
+  if (s.includes('produzindo'))                          return { background: ISA.okBg,   color: ISA.ok,   border: `1px solid ${ISA.ok}` };
+  if (s.includes('parada') || s.includes('parado'))     return { background: ISA.badBg,  color: ISA.bad,  border: `1px solid ${ISA.bad}` };
+  if (s.includes('falha') || s.includes('quebra'))      return { background: ISA.badBg,  color: ISA.bad,  border: `1px solid ${ISA.bad}` };
+  if (s.includes('manut') || s.includes('setup'))       return { background: ISA.warnBg, color: ISA.warn, border: `1px solid ${ISA.warn}` };
+  if (s.includes('aguardando'))                         return { background: ISA.warnBg, color: ISA.warn, border: `1px solid ${ISA.warn}` };
+  if (s.includes('offline') || s.includes('comunica'))  return { background: ISA.offBg,  color: ISA.off,  border: `1px solid ${ISA.border}` };
+  return { background: ISA.bgMuted, color: ISA.muted, border: `1px solid ${ISA.border}` };
+}
+
+function oleStyle(v: number): React.CSSProperties {
+  if (v >= 85) return { color: ISA.ok,   fontWeight: 700, fontSize: 36 };
+  if (v >= 70) return { color: ISA.warn, fontWeight: 700, fontSize: 36 };
+  return             { color: ISA.bad,  fontWeight: 700, fontSize: 36 };
+}
+
 interface HeaderProps {
-    linha: string;
-    op: string;
-    sku: string;
-    produto: string;
-    cuc: string;
-    equipamentosOnline: number;
-    totalEquipamentos: number;
-    vazao: number;
-    ole: number;
-    status?: string;
-    formato?: number; // NEW
+  linha: string;
+  op: string;
+  sku: string;
+  produto: string;
+  cuc: string;
+  equipamentosOnline: number;
+  totalEquipamentos: number;
+  vazao: number;
+  ole: number;
+  status?: string;
+  formato?: number;
 }
 
 const Header: React.FC<HeaderProps> = ({
-    linha,
-    op,
-    sku,
-    produto,
-    cuc,
-    equipamentosOnline,
-    totalEquipamentos,
-    vazao,
-    ole,
-    status = 'Em Produção',
-    formato = 0
+  linha, op, sku, produto, cuc,
+  equipamentosOnline, totalEquipamentos,
+  vazao, ole, status = 'Em Produção', formato = 0,
 }) => {
-    // Status Color Mapping
-    const getStatusColor = (status: string) => {
-        const statusLower = status.toLowerCase();
-        if (statusLower.includes('produzindo')) return 'bg-green-100 text-green-800 border border-green-200';
-        if (statusLower.includes('parada') || statusLower.includes('parado')) return 'bg-red-100 text-red-800 border border-red-200';
-        if (statusLower.includes('falha') || statusLower.includes('quebra')) return 'bg-red-200 text-red-900 border border-red-300';
-        if (statusLower.includes('manutenção') || statusLower.includes('manutencao') || statusLower.includes('setup')) return 'bg-yellow-100 text-yellow-800 border border-yellow-200';
-        if (statusLower.includes('aguardando')) return 'bg-blue-100 text-blue-800 border border-blue-200';
-        if (statusLower.includes('offline') || statusLower.includes('sem comunicação')) return 'bg-gray-200 text-gray-700 border border-gray-300';
-        return 'bg-gray-100 text-gray-600 border border-gray-200';
-    };
+  const meta: React.CSSProperties = { fontSize: 10, color: ISA.muted, textTransform: 'uppercase', letterSpacing: '0.05em' };
+  const val:  React.CSSProperties = { fontWeight: 600, fontSize: 13, color: ISA.text };
 
-    const isOffline = status === 'Sem Comunicação' || status === 'Offline';
+  return (
+    <div style={{ background: ISA.bg, border: `1px solid ${ISA.border}`, borderRadius: 6, padding: '16px 20px', marginBottom: 16 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16, flexWrap: 'wrap' }}>
 
-    return (
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mb-6">
-            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
+        {/* Left */}
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14, flexWrap: 'wrap' }}>
+            <h1 style={{ margin: 0, fontSize: 20, fontWeight: 700, color: ISA.text }}>{linha}</h1>
+            <span style={{
+              padding: '3px 10px', borderRadius: 12, fontSize: 11, fontWeight: 600,
+              textTransform: 'uppercase', ...statusStyle(status),
+            }}>
+              {status}
+            </span>
+          </div>
 
-                {/* Left Info */}
-                <div className="flex-1">
-                    <div className="flex items-center gap-3 mb-2">
-                        <h1 className="text-2xl font-bold text-gray-900">{linha}</h1>
-                        <span className={`px-3 py-1 text-xs font-semibold rounded-full ${getStatusColor(status)}`}>
-                            {status}
-                        </span>
-                    </div>
-
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
-                        <div className="flex items-center gap-2">
-                            <Tag className="w-4 h-4 text-gray-400" />
-                            <div>
-                                <p className="text-xs text-gray-500">OP</p>
-                                <p className="font-semibold text-gray-900">{op}</p>
-                            </div>
-                        </div>
-
-                        <div className="flex items-center gap-2">
-                            <Package className="w-4 h-4 text-gray-400" />
-                            <div>
-                                <p className="text-xs text-gray-500">SKU</p>
-                                <p className="font-semibold text-gray-900">{sku}</p>
-                            </div>
-                        </div>
-
-                        <div className="flex items-center gap-2">
-                            <Box className="w-4 h-4 text-gray-400" />
-                            <div>
-                                <p className="text-xs text-gray-500">Produto</p>
-                                <p className="font-semibold text-gray-900 truncate max-w-[150px]" title={produto}>{produto}</p>
-                            </div>
-                        </div>
-
-                        <div className="flex items-center gap-2">
-                            <Activity className="w-4 h-4 text-gray-400" />
-                            <div>
-                                <p className="text-xs text-gray-500">Vazão</p>
-                                <p className="font-semibold text-gray-900">{vazao.toFixed(1)} t/h</p>
-                            </div>
-                        </div>
-
-                        <div className="flex items-center gap-2">
-                            <Scale className="w-4 h-4 text-gray-400" />
-                            <div>
-                                <p className="text-xs text-gray-500">Formato</p>
-                                <p className="font-semibold text-gray-900">{formato ? `${formato}g` : 'N/A'}</p>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div className="mt-4 flex items-center gap-4 text-sm text-gray-600">
-                        <span className="flex items-center gap-1">
-                            <Zap className="w-4 h-4 text-green-500" />
-                            Equipamentos Online: <span className="font-semibold text-gray-900">{equipamentosOnline} de {totalEquipamentos}</span>
-                        </span>
-                        <span className="text-gray-300">|</span>
-                        <span>CUC: <span className="font-mono text-gray-900">{cuc}</span></span>
-                    </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(100px, 1fr))', gap: '8px 20px' }}>
+            {[
+              { icon: <Tag   size={13} />, label: 'OP',      value: op },
+              { icon: <Package size={13} />, label: 'SKU',   value: sku },
+              { icon: <Box   size={13} />, label: 'Produto', value: produto },
+              { icon: <Activity size={13} />, label: 'Vazão', value: `${vazao.toFixed(1)} t/h` },
+              { icon: <Scale size={13} />, label: 'Formato', value: formato ? `${formato}g` : 'N/A' },
+            ].map(({ icon, label, value }) => (
+              <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+                <span style={{ color: ISA.weak, flexShrink: 0 }}>{icon}</span>
+                <div>
+                  <div style={meta}>{label}</div>
+                  <div style={{ ...val, maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={value}>
+                    {value}
+                  </div>
                 </div>
+              </div>
+            ))}
+          </div>
 
-                {/* Right OLE */}
-                <div className="flex flex-col items-center justify-center p-4 bg-gray-50 rounded-xl border border-gray-100 min-w-[180px]">
-                    <span className="text-sm font-semibold text-gray-500 mb-1">OLE (OMAC)</span>
-                    <span className={`text-4xl font-bold ${ole >= 85 ? 'text-green-600' : ole >= 70 ? 'text-yellow-600' : 'text-red-600'}`}>
-                        {ole.toFixed(1)}%
-                    </span>
-                    <span className="text-xs text-gray-400 mt-1">Eficiência da Linha</span>
-                </div>
-
-            </div>
+          <div style={{ marginTop: 12, display: 'flex', alignItems: 'center', gap: 12, fontSize: 12, color: ISA.muted, flexWrap: 'wrap' }}>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+              <Zap size={12} color={ISA.ok} />
+              Equipamentos Online:&nbsp;
+              <span style={{ fontWeight: 600, color: ISA.text }}>{equipamentosOnline} de {totalEquipamentos}</span>
+            </span>
+            <span style={{ color: ISA.border }}>|</span>
+            <span>CUC: <span style={{ fontFamily: 'ui-monospace, monospace', color: ISA.text }}>{cuc}</span></span>
+          </div>
         </div>
-    );
+
+        {/* OEE badge */}
+        <div style={{
+          display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+          padding: '12px 20px', background: ISA.bgMuted, border: `1px solid ${ISA.border}`,
+          borderRadius: 8, minWidth: 140, flexShrink: 0,
+        }}>
+          <div style={{ fontSize: 11, color: ISA.muted, fontWeight: 500, marginBottom: 2 }}>OLE (OMAC)</div>
+          <div style={{ ...oleStyle(ole), fontVariantNumeric: 'tabular-nums' }}>{ole.toFixed(1)}%</div>
+          <div style={{ fontSize: 10, color: ISA.weak, marginTop: 2 }}>Eficiência da Linha</div>
+        </div>
+
+      </div>
+    </div>
+  );
 };
 
 export default Header;

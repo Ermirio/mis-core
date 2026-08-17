@@ -93,13 +93,44 @@ class FormatoSerializer(serializers.ModelSerializer):
         read_only_fields = ['criado_por', 'atualizado_por', 'criado_em', 'atualizado_em']
     
     def get_variaveis(self, obj):
-        """Retorna as variáveis do formato com seus valores"""
-        formato_variaveis = obj.variaveis.all()
-        return FormatoVariavelSerializer(formato_variaveis, many=True).data
-    
+        """
+        Retorna as variáveis do formato com seus valores.
+
+        IMPORTANTE: NÃO usar FormatoVariavelSerializer aqui — ele tem o campo
+        `formato = FormatoSerializer(read_only=True)` que recursivamente volta
+        a este serializer, causando RecursionError. Montamos o dict manual.
+        """
+        return [
+            {
+                'id': fv.id,
+                'variavel': {
+                    'id': fv.variavel.id,
+                    'nome': fv.variavel.nome,
+                    'tipo': fv.variavel.tipo,
+                    'unidade': getattr(fv.variavel, 'unidade', '') or '',
+                    'tolerancia': getattr(fv.variavel, 'tolerancia', None),
+                },
+                'variavel_id': fv.variavel.id,
+                'variavel_nome': fv.variavel.nome,
+                'variavel_tipo': fv.variavel.tipo,
+                'valor': fv.valor,
+            }
+            for fv in obj.variaveis.all().select_related('variavel')
+        ]
+
     def get_produtos_count(self, obj):
-        """Retorna a quantidade de produtos que usam este formato"""
-        return obj.produtos.count()
+        """
+        Conta produtos associados ao formato.
+
+        IMPORTANTE: `Produto.formato` (ForeignKey) foi removido do modelo. Não
+        existe mais o reverse `Formato.produtos`. Contamos via
+        `AssociacaoProdutoLinha` que liga produto-linha-formato.
+        """
+        try:
+            from .models import AssociacaoProdutoLinha
+            return AssociacaoProdutoLinha.objects.filter(formato=obj).values('produto').distinct().count()
+        except Exception:
+            return 0
 
 class FormatoVariavelSerializer(serializers.ModelSerializer):
     formato = FormatoSerializer(read_only=True)
@@ -380,12 +411,27 @@ class EquipamentoOPCSerializer(serializers.ModelSerializer):
         ]
 
 class VariavelOPCConfigSerializer(serializers.ModelSerializer):
+    # Identificação da variável mestra (necessária para casar com FormatoVariavel
+    # no serviço Recipe Monitor).
+    variavel_mestra_id = serializers.IntegerField(source='variavel_mestra.id', read_only=True)
     nome_variavel_mestra = serializers.CharField(source='variavel_mestra.nome', read_only=True)
     tipo_variavel_mestra = serializers.CharField(source='variavel_mestra.tipo', read_only=True)
 
+    # Metadados para classificação no Recipe Monitor (normal / atenção / alarme).
+    # Podem ser nulos / vazios — o serviço externo trata como ausência.
+    unidade_variavel_mestra = serializers.CharField(source='variavel_mestra.unidade', read_only=True)
+    tolerancia_variavel_mestra = serializers.FloatField(source='variavel_mestra.tolerancia', read_only=True, allow_null=True)
+
     class Meta:
         model = ConfiguracaoEquipamentoVariavel
-        fields = ['nome_variavel_mestra', 'tipo_variavel_mestra', 'tag_plc']
+        fields = [
+            'variavel_mestra_id',
+            'nome_variavel_mestra',
+            'tipo_variavel_mestra',
+            'unidade_variavel_mestra',
+            'tolerancia_variavel_mestra',
+            'tag_plc',
+        ]
 
 class EquipamentoOPCSerializer(serializers.ModelSerializer):
     conexao_opcua_url = serializers.CharField(source='conexao_opcua.url', read_only=True)
@@ -417,6 +463,46 @@ class LinhaOPCConfigSerializer(serializers.ModelSerializer):
 
 
 class MyTokenObtainPairSerializer(TokenObtainPairSerializer):
+    def validate(self, attrs):
+        # Autentica normalmente (self.user fica disponível após o super).
+        data = super().validate(attrs)
+
+        user = self.user
+        # Superuser nunca expira. Usuário comum: checa validade/inatividade
+        # ANTES de atualizar o last_login, para a inatividade ser avaliada
+        # contra o login ANTERIOR.
+        if not user.is_superuser:
+            exp = getattr(user, 'expiracao', None)
+            if exp is not None:
+                motivo = exp.motivo_expiracao()
+                if motivo:
+                    # Bloqueia e desativa — só superuser pode renovar.
+                    if user.is_active:
+                        user.is_active = False
+                        user.save(update_fields=['is_active'])
+                    from rest_framework_simplejwt.exceptions import AuthenticationFailed
+                    # Mensagem só é exibida QUANDO a conta JÁ expirou (não há
+                    # aviso prévio). Não expõe a política (5 meses/60 dias) —
+                    # apenas "conta expirada" + orientação de procurar o admin.
+                    # O superuser vê o motivo real (validade/inatividade) na
+                    # tela de Gestão de Usuários; registramos no log também.
+                    import logging
+                    logging.getLogger(__name__).info(
+                        "[Expiracao] login bloqueado: %s (motivo=%s)",
+                        user.username, motivo,
+                    )
+                    raise AuthenticationFailed(
+                        'Conta expirada. Procure o administrador do sistema.',
+                        code='conta_expirada',
+                    )
+
+        # Login bem-sucedido → atualiza last_login para resetar o contador de
+        # inatividade (SimpleJWT não faz isso por padrão).
+        from django.contrib.auth.models import update_last_login
+        update_last_login(None, user)
+
+        return data
+
     @classmethod
     def get_token(cls, user):
         # Pega o token padrão (só com user_id)
@@ -431,6 +517,15 @@ class MyTokenObtainPairSerializer(TokenObtainPairSerializer):
             token['group'] = group.name
         else:
             token['group'] = None
+
+        # Lista de todos os grupos (usada por módulos que verificam múltiplos grupos)
+        token['groups'] = list(user.groups.values_list('name', flat=True))
+
+        # Flags de privilégio — usadas pelo frontend para esconder telas/labels
+        # técnicas de usuários comuns (Recipe Monitor, config LLM, gestão de
+        # usuários só aparecem/expõem detalhes para superuser).
+        token['is_superuser'] = user.is_superuser
+        token['is_staff'] = user.is_staff
         # ----------------------------------------
 
         return token

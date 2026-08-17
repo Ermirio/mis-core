@@ -113,12 +113,50 @@
 }
 
 /* === NAVIGATION === */
+/*
+ * [P0.8 FIX] Sidebar agora é rolável.
+ * Antes: `.sidebar-nav` tinha `flex: 1` SEM overflow, então conforme equipamentos
+ * eram adicionados a sidebar crescia além do viewport e empurrava o rodapé
+ * (footer) para fora da tela. Usuário era forçado a usar scroll da página inteira.
+ *
+ * Fix (técnica flex + overflow):
+ *   1. `min-height: 0` — libera o flex child para poder encolher e ativar overflow.
+ *   2. `overflow-y: auto` — rolagem só quando necessário.
+ *   3. `overscroll-behavior: contain` — impede o scroll vazar para a página.
+ *   4. Scrollbar custom, discreta (ISA-101: não chamar atenção desnecessária).
+ */
 .sidebar-nav {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  flex: 1;
-  /* Pushes footer down */
+  flex: 1 1 auto;
+  min-height: 0;            /* crítico: libera overflow dentro de flex column */
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  padding-right: 4px;       /* respiro visual para a barra de rolagem */
+  /* Empurra o footer para baixo e permite rolar equipamentos */
+}
+
+/* Scrollbar discreta (Chromium / WebKit) */
+.sidebar-nav::-webkit-scrollbar {
+  width: 6px;
+}
+.sidebar-nav::-webkit-scrollbar-track {
+  background: transparent;
+}
+.sidebar-nav::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.25);  /* text-secondary @ 25% */
+  border-radius: 3px;
+}
+.sidebar-nav::-webkit-scrollbar-thumb:hover {
+  background: rgba(148, 163, 184, 0.45);
+}
+
+/* Scrollbar Firefox */
+.sidebar-nav {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(148, 163, 184, 0.25) transparent;
 }
 
 .sidebar-section-title {

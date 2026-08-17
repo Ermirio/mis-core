@@ -1,46 +1,53 @@
 import influx_data_provider
 
-def calcular_tph_real(velocidade, formato_gramas, qualidade):
+def calcular_tph_real(velocidade, formato_gramas, qualidade=None):
     """
-    Calculates Real TPH (Tonnes Per Hour).
-    Formula: (Speed (units/min) * 60 * Weight (g) / 1,000,000) * (Quality / 100)
+    Calcula TPH (Tonnes Per Hour) — taxa de throughput FÍSICA da máquina.
+
+    [P0.7 FIX] Fórmula corrigida: (velocidade * 60 * formato_gramas) / 1_000_000
+    A versão anterior multiplicava por (qualidade/100), mas qualidade já é
+    contabilizada em OEE (A × P × Q). Multiplicar aqui DUPLICA o impacto de
+    uma queda de qualidade no relatório (aparece no OEE E no TPH). TPH deve
+    refletir a velocidade real × peso — a perda por refugo é capturada
+    separadamente em OEE.Q.
+
+    O parâmetro `qualidade` foi mantido na assinatura para compatibilidade
+    com callers antigos, mas é IGNORADO. Remover na próxima major.
     """
     try:
         velocidade = float(velocidade or 0)
         formato_gramas = float(formato_gramas or 0)
-        qualidade = float(qualidade or 0)
-        
-        # Theoretical production in tons per hour
-        tph_teorico = (velocidade * 60 * formato_gramas) / 1_000_000
-        
-        # Real production considering quality
-        tph_real = tph_teorico * (qualidade / 100.0)
-        
-        return round(tph_real, 3)
+        # qualidade deliberadamente ignorada — ver docstring
+        tph = (velocidade * 60 * formato_gramas) / 1_000_000
+        return round(tph, 3)
     except Exception:
         return 0.0
 
 def calcular_kpis_linha(line):
     """
-    Calculates all KPIs for a given line, including equipment ranking and bottleneck.
+    Calcula KPIs da LINHA (não dos equipamentos individuais).
+
+    [BUG-5 FIX] OEE de linha pelo GARGALO (Teoria das Restrições — Goldratt).
+    A linha é serial: a saída total é limitada pelo elo mais lento. OEE da
+    linha NÃO é a média aritmética dos OEEs dos equipamentos — isso suaviza
+    e esconde o ofensor real. Implementação:
+
+      1. ranking por TPH crescente (excluindo equipamentos com tph=0, que
+         provavelmente estão offline).
+      2. gargalo = primeiro do ranking (menor TPH > 0).
+      3. KPIs da linha = KPIs do GARGALO. É o valor que dita o output real
+         e o que aciona o operador a olhar primeiro.
+
+    Mantém o ranking completo no retorno para que a UI possa exibir todos
+    os equipamentos e destacar quais estão acima/abaixo do gargalo.
     """
-    # Get raw data from provider
     raw_data = influx_data_provider.get_last_points_by_equipment(line)
-    
     equipamentos = []
-    total_availability = 0
-    total_performance = 0
-    total_quality = 0
-    count = 0
-    
-    # Process raw data
-    # influx_client.query returns a ResultSet. items() yields ((name, tags), generator)
+
     for ((name, tags), points) in raw_data.items():
         equipment_name = tags.get('equipment', 'Unknown')
-        
-        # Get the last point
         point = list(points)[0] if points else {}
-        
+
         velocidade = point.get('velocidade', 0)
         formato = point.get('formato', 0)
         qualidade = point.get('qualidade', 0)
@@ -48,10 +55,10 @@ def calcular_kpis_linha(line):
         disponibilidade = point.get('disponibilidade', 0)
         performance = point.get('performance', 0)
         estado = point.get('estado', 0)
-        
+
         tph = calcular_tph_real(velocidade, formato, qualidade)
-        
-        eq_data = {
+
+        equipamentos.append({
             "nome": equipment_name,
             "tph_real": tph,
             "oee": float(oee or 0),
@@ -60,51 +67,42 @@ def calcular_kpis_linha(line):
             "qualidade": float(qualidade or 0),
             "estado": int(estado or 0),
             "velocidade": float(velocidade or 0),
-            "formato": float(formato or 0)
-        }
-        equipamentos.append(eq_data)
-        
-        if tph > 0: # Only consider active/relevant equipment for averages if needed, or all?
-            # Usually averages include all, but if TPH is 0 it might be stopped.
-            # For OEE metrics, we usually average all.
-            pass
-            
-        total_availability += float(disponibilidade or 0)
-        total_performance += float(performance or 0)
-        total_quality += float(qualidade or 0)
-        count += 1
+            "formato": float(formato or 0),
+        })
 
-    # Calculate Line Averages
-    avg_avail = round(total_availability / count, 2) if count > 0 else 0
-    avg_perf = round(total_performance / count, 2) if count > 0 else 0
-    avg_qual = round(total_quality / count, 2) if count > 0 else 0
-    
-    # Determine Bottleneck (Lowest TPH among running equipment, or just lowest TPH)
-    # If all 0, then N/A.
-    # We filter for equipment that "should" be running or just take the min.
-    # Let's take the one with lowest TPH but > 0 if possible, or just lowest.
-    # If we define bottleneck as the constraint, it's the one with lowest capacity/throughput.
-    
-    # Sorting by TPH for ranking
+    # Ranking decrescente por TPH (consistente com a UI que mostra "ranking")
     ranking = sorted(equipamentos, key=lambda x: x['tph_real'], reverse=True)
-    
-    # Bottleneck is the last one in ranking (lowest TPH)
-    gargalo = ranking[-1] if ranking else None
-    
-    # Calculate TPH Medio of the line (this might be the bottleneck's TPH or the output of the last machine)
-    # Usually line TPH is determined by the bottleneck.
-    tph_line = gargalo['tph_real'] if gargalo else 0
-    
+
+    # Gargalo = menor TPH > 0. Se TODOS estão em 0 (linha parada), usa o último
+    # do ranking (mantém compat com chamadas que esperavam gargalo != None).
+    candidatos = [e for e in equipamentos if e['tph_real'] > 0]
+    if candidatos:
+        gargalo = min(candidatos, key=lambda x: x['tph_real'])
+    else:
+        gargalo = ranking[-1] if ranking else None
+
+    # KPIs DA LINHA = KPIs do gargalo (Teoria das Restrições).
+    # Se a linha está toda parada (gargalo None), zera tudo.
+    if gargalo:
+        line_oee   = gargalo['oee']
+        line_avail = gargalo['disponibilidade']
+        line_perf  = gargalo['performance']
+        line_qual  = gargalo['qualidade']
+        tph_line   = gargalo['tph_real']
+    else:
+        line_oee = line_avail = line_perf = line_qual = tph_line = 0
+
     return {
         "linha": line,
         "gargalo": gargalo,
         "ranking": ranking,
         "equipamentos": equipamentos,
         "kpis": {
-            "disponibilidade": avg_avail,
-            "performance": avg_perf,
-            "qualidade": avg_qual,
-            "tph_medio": tph_line
+            "oee": round(line_oee, 2),
+            "disponibilidade": round(line_avail, 2),
+            "performance": round(line_perf, 2),
+            "qualidade": round(line_qual, 2),
+            "tph_medio": round(tph_line, 3),
         }
     }
 

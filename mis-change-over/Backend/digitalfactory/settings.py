@@ -36,6 +36,7 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'ips',
+    'programa_andretti',
     'rest_framework',
     'corsheaders',
     'rest_framework_simplejwt',
@@ -159,3 +160,11 @@ CSRF_COOKIE_SECURE = not DEBUG
 SESSION_COOKIE_SECURE = not DEBUG
 CSRF_COOKIE_SAMESITE = 'Lax'
 SESSION_COOKIE_SAMESITE = 'Lax'
+
+# === Limites de requisição ===
+DATA_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024   # 10 MB (padrão: 2.5 MB)
+DATA_UPLOAD_MAX_NUMBER_FIELDS = 10_000             # (padrão: 1000)
+FILE_UPLOAD_MAX_MEMORY_SIZE  = 10 * 1024 * 1024   # 10 MB
+
+# Banco: conexão persistente para evitar overhead de reconexão a cada request
+CONN_MAX_AGE = 60  # segundos

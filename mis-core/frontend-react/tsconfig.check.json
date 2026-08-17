@@ -1,0 +1,13 @@
+{
+  "compilerOptions": {
+    "noEmit": true, "module": "ESNext", "target": "ESNext",
+    "lib": ["esnext", "dom", "dom.iterable"], "jsx": "preserve",
+    "esModuleInterop": true, "skipLibCheck": true,
+    "moduleResolution": "bundler", "allowImportingTsExtensions": true,
+    "strict": false, "isolatedModules": true,
+    "ignoreDeprecations": "6.0",
+    "baseUrl": ".",
+    "paths": { "@/*": ["./client/src/*"], "@shared/*": ["./shared/*"] }
+  },
+  "include": ["client/src/pages/LineAnalytics.tsx"]
+}

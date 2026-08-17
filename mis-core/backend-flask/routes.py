@@ -453,9 +453,16 @@ def inserir_dados():
                         continue
                     
                     # Process this equipment (same logic as single object below)
+                    # [BUG-4 fix] PLC offline NÃO deve virar estado=0 (idle).
+                    # O coletor já marca estado_maquina=999 (OFFLINE explícito) em
+                    # coletor.py:339. Sobrescrever para 0 fazia o ponto escapar do
+                    # OFF-mask de analytics (que filtrava 4/6/7/8) e poluir EDA com
+                    # zeros. Agora preservamos 999 — DEFAULT_EXCLUDE_STATES inclui
+                    # 0 (idle) e 999 (offline).
                     is_offline = m.get('plc_offline', False) or m.get('connection_status') == 'OFFLINE'
                     if is_offline:
-                        m['estado_maquina'] = 0
+                        if int(m.get('estado_maquina', 0) or 0) != 999:
+                            m['estado_maquina'] = 999
                         m['velocidade_atual'] = 0
                         m['oee'] = 0
                     
@@ -554,11 +561,16 @@ def inserir_dados():
 
         # --- OFFLINE/ERROR HANDLING ---
         # Checks if Coletor flagged this packet as Offline or PLC Error
+        # [BUG-4 fix] usar 999 (OFFLINE explícito), NÃO 0 (idle).
+        # 0 e 999 estão ambos no DEFAULT_EXCLUDE_STATES de analytics; mas
+        # 0 é semanticamente "idle/online sem produzir" e 999 é "PLC offline".
+        # Coletor (coletor.py:339) já marca 999 — preservamos.
         is_offline = m.get('plc_offline', False) or m.get('connection_status') == 'OFFLINE'
-        
+
         if is_offline:
-            # Force OFFLINE state to prevent "Ghost Production"
-            m['estado_maquina'] = 0 # 0 = Offline/Outro
+            # Força OFFLINE explícito para evitar "Ghost Production"
+            if int(m.get('estado_maquina', 0) or 0) != 999:
+                m['estado_maquina'] = 999
             m['velocidade_atual'] = 0
             m['oee'] = 0
             # Zero out calculated metrics? 
@@ -1086,56 +1098,79 @@ def get_linha_overview_status(linha_nome):
         if not influx_client: 
             return jsonify({'status': 'Offline', 'reason': 'DB Error'}), 500
 
-        # Busca ultimo evento de status de cada serie (estado)
-        # machine_status usa tags, então buscamos tudo e filtramos em memória pelo timestamp mais recente
-        query = f"SELECT * FROM machine_status WHERE \"line\" = '{normalize_line_name(linha_nome)}' ORDER BY time DESC LIMIT 1"
-        rs = influx_client.query(query)
-        items = list(rs.items())
-        
         last_states = {}
-        
-        for (name, tags), points in items:
-            if not tags: continue
-            eq = tags.get('equipment')
-            state_val = tags.get('estado_maquina')
-            if not eq or not state_val: continue
-            
-            for p in points:
-                ts = p['time']
-                if eq not in last_states:
-                    last_states[eq] = {'time': ts, 'state': int(state_val)}
-                else:
-                    if ts > last_states[eq]['time']:
-                        last_states[eq] = {'time': ts, 'state': int(state_val)}
-        
-        # Fallback: Se machine_status vazio (ex: sistema novo), tenta production
-        if not last_states:
-             query_prod = f"SELECT last(estado_maquina) as estado FROM production WHERE \"line\" = '{normalize_line_name(linha_nome)}' GROUP BY \"equipment\""
-             rs_prod = influx_client.query(query_prod)
-             for (name, tags), points in rs_prod.items():
-                 for p in points:
-                     last_states[tags['equipment']] = {'state': int(p.get('estado', 0) or 0)}
-                     
-        if not last_states:
-             return jsonify({'status': 'Offline', 'reason': 'No Data'}), 200
+        linha_norm = normalize_line_name(linha_nome)
+        STALE_THRESHOLD_S = 300  # 5 min — dado mais antigo que isso é descartado
 
-        estados = [d['state'] for d in last_states.values()]
-        
-        final_status = 'Parada'
-        
-        # Prioridade de Status Global
-        if any(e == 4 for e in estados):
-            final_status = 'Falha/Quebra'
-        elif any(e in [1, 11] for e in estados):
+        def _parse_states(rs):
+            """Extrai {eq: state} de um ResultSet.
+            Dados stale (>STALE_THRESHOLD_S) têm estado forçado para 0 (offline/idle)
+            — o equipamento é mantido no resultado para não sumir da tela, mas não
+            reporta Falha/Quebra baseado em histórico antigo."""
+            result = {}
+            for (name, tags), points in rs.items():
+                eq = (tags or {}).get('equipment')
+                if not eq:
+                    continue
+                for p in points:
+                    estado = p.get('estado')
+                    if estado is None:
+                        continue
+                    state_val = int(estado)
+                    # Staleness check: dado antigo → força estado=0, não descarta
+                    ts_str = p.get('time')
+                    if ts_str:
+                        try:
+                            from dateutil import parser as dtparser
+                            last_dt = dtparser.parse(ts_str)
+                            age_s = (datetime.now(last_dt.tzinfo) - last_dt).total_seconds()
+                            if age_s > STALE_THRESHOLD_S:
+                                state_val = 0  # offline: não reporta falha stale
+                        except Exception:
+                            pass
+                    result[eq] = state_val
+            return result
+
+        # Tentativa 1: production filtrado por linha (com staleness check)
+        query_prod = (
+            f'SELECT last(estado_maquina) AS estado FROM production '
+            f'WHERE "line" = \'{linha_norm}\' GROUP BY "equipment"'
+        )
+        last_states = _parse_states(influx_client.query(query_prod))
+
+        # Tentativa 2: production SEM filtro de linha — coletor pode ter parado de
+        # escrever o tag "line" (registrado em investigação: E001 com line='' é atual)
+        if not last_states:
+            query_all = 'SELECT last(estado_maquina) AS estado FROM production GROUP BY "equipment"'
+            last_states = _parse_states(influx_client.query(query_all))
+
+        # Tentativa 3: machine_status com GROUP BY (fallback para sistemas antigos)
+        if not last_states:
+            query_ms = (
+                f'SELECT last(estado_maquina) AS estado FROM machine_status '
+                f'WHERE "line" = \'{linha_norm}\' GROUP BY "equipment"'
+            )
+            last_states = _parse_states(influx_client.query(query_ms))
+
+        if not last_states:
+            return jsonify({'status': 'Offline', 'reason': 'No Data'}), 200
+
+        estados = list(last_states.values())
+
+        # Prioridade de status: Produzindo > Falha > Setup > Aguardando > Parada
+        # (Falha só dispara se houver dado FRESCO confirmando estado=4)
+        if any(e in [1, 11] for e in estados):
             final_status = 'Produzindo'
+        elif any(e == 4 for e in estados):
+            final_status = 'Falha/Quebra'
         elif any(e in [5, 6, 8] for e in estados):
             final_status = 'Manutenção/Setup'
         elif any(e == 2 for e in estados):
             final_status = 'Aguardando'
-        elif any(e == 0 for e in estados):
+        else:
             final_status = 'Parada'
-        
-        return jsonify({'status': final_status})
+
+        return jsonify({'status': final_status, 'equipamentos': last_states})
 
     except Exception as e:
         logger.error(f"Erro Overview Status: {e}")
@@ -1851,25 +1886,26 @@ def get_linha_realtime_ole(linha):
             rs = influx_client.query(query)
             points = list(rs.get_points())
             formato = float(points[0].get('last') or 0) if points else 0
-        except:
-            formato = 0
-        
-        # Convert to tons
-        producao_real_tons = (producao_real_total * formato) / 1000000 if formato > 0 else 0
-        
+            # Conversão pecas -> toneladas usando formato (g/un) do último ponto.
+            if formato > 0:
+                producao_real_t = (producao_real_total * formato) / 1_000_000.0
+            else:
+                producao_real_t = 0.0
+        except Exception as e:
+            logger.error(f'Erro convertendo formato: {e}')
+            producao_real_t = 0.0
+
         return jsonify({
-            "linha": linha_norm,
-            "ole": float(ole_medio),
-            "producao_real": float(producao_real_tons),
-            "producao_planejada_ate_agora": float(producao_planejada_ate_agora),
-            "producao_planejada_total": float(producao_planejada_total),
-            "tempo_decorrido": int(tempo_decorrido),
-            "tempo_total_turno": int(tempo_total_turno),
-            "projecao": float(projecao),
-            "timestamp": datetime.now().isoformat()
+            'linha': linha_norm,
+            'ole_medio': round(ole_medio, 1),
+            'producao_real_total_t': round(producao_real_t, 3),
+            'producao_real_total_pecas': int(producao_real_total),
+            'meta_total': int(meta_total),
+            'projecao_t': round(projecao if 'projecao' in locals() else 0, 3),
+            'producao_planejada_ate_agora': round(
+                producao_planejada_ate_agora if 'producao_planejada_ate_agora' in locals() else 0, 3
+            ),
         })
-        
     except Exception as e:
-        logger.error(f"Erro Linha Realtime {linha}: {e}")
-        # Retorna estrutura vazia para não quebrar UI
-        return jsonify({})
+        logger.error(f'Erro em get_linha_realtime_ole({linha}): {e}', exc_info=True)
+        return jsonify({'error': str(e)}), 500

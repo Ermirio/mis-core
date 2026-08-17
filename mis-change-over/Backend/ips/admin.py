@@ -11,7 +11,8 @@ from .models import (
     Produto, Formato, FormatoVariavel, ConfiguracaoEquipamentoVariavel,
     DiscrepanciaSKU, TrocaSKU, LogEquipamentoTroca, StatusLinha,
     AssociacaoProdutoLinha,
-    Controle, IntertravamentoLinha, HistoricoIntertravamento
+    Controle, IntertravamentoLinha, HistoricoIntertravamento,
+    LiberacaoSAP, ValidacaoQualidade, HistoricoStatusLinha,
 )
 
 
@@ -161,6 +162,34 @@ class LinhaAdmin(admin.ModelAdmin):
             'fields': ('impressoras_3m', 'impressoras_inkjet'),
             'description': 'Impressoras 3M e Inkjet associadas à linha'
         }),
+        ('Andretti — Tags OPC', {
+            'fields': ('tag_velocidade_opc', 'tag_formato_opc'),
+            'description': (
+                'tag_velocidade_opc: Ex: ns=2;s=Program:MainProgram.VelocidadeAtual | '
+                'tag_formato_opc: retorna o formato atual em gramas (ex: 4000 para 4kg)'
+            ),
+            'classes': ('collapse',),
+        }),
+        ('Status do Produto — Tags OPC (v9.0)', {
+            'fields': (
+                'conexao_opc_status',
+                'tag_status_linha_opc',
+                'tag_sku_atual_opc',
+                'tag_giveaway_opc',
+                'tag_descarte_turno_opc',
+                'tag_peso_medio_opc',
+                'tag_caixas_turno_opc',
+                'tag_aguardando_validacao_opc',
+            ),
+            'description': (
+                'conexao_opc_status: servidor OPC UA usado para leitura/escrita das tags abaixo | '
+                'tag_status_linha_opc: inteiro OPC — 10=Rodando, 20=Aguardando, 30=Bloqueado, 40=Falha | '
+                'tag_sku_atual_opc: string OPC com o SKU em operação | '
+                'tag_caixas_turno_opc: usado com Formato.gramas para calcular toneladas/turno | '
+                'tag_aguardando_validacao_opc: escrita bool → CLP (fail-safe de qualidade)'
+            ),
+            'classes': ('collapse',),
+        }),
     )
 
     def get_equipamentos_plc(self, obj):
@@ -204,7 +233,7 @@ class FormatoAdmin(admin.ModelAdmin):
     inlines = [FormatoVariavelInline]
     fieldsets = (
         ('Informações do Formato', {
-            'fields': ('nome', 'descricao')
+            'fields': ('nome', 'descricao', 'gramas', 'vazao_kg_hora')
         }),
         ('Auditoria', {
             'fields': ('criado_por', 'atualizado_por', 'criado_em', 'atualizado_em'),
@@ -607,6 +636,320 @@ class IntertravamentoLinhaAdmin(admin.ModelAdmin):
         return obj.bypass_detectado
     get_bypass_detectado.boolean = True
     get_bypass_detectado.short_description = "Bypass Detectado?"
+
+
+# ==================== VALIDAÇÕES v9.0 ====================
+
+@admin.register(LiberacaoSAP)
+class LiberacaoSAPAdmin(admin.ModelAdmin):
+    list_display  = ('produto', 'linha', 'liberado_por', 'liberado_em', 'observacao_resumida')
+    list_filter   = ('linha',)
+    search_fields = ('produto__sku', 'produto__descricao', 'linha__nome', 'liberado_por__username')
+    readonly_fields = ('liberado_em', 'liberado_por')
+    autocomplete_fields = ('produto',)
+
+    fieldsets = (
+        ('Liberação', {
+            'fields': ('produto', 'linha', 'observacao'),
+        }),
+        ('Auditoria', {
+            'fields': ('liberado_por', 'liberado_em'),
+            'classes': ('collapse',),
+        }),
+    )
+
+    def observacao_resumida(self, obj):
+        return obj.observacao[:60] + '…' if len(obj.observacao) > 60 else obj.observacao
+    observacao_resumida.short_description = 'Observação'
+
+    def save_model(self, request, obj, form, change):
+        if not obj.pk:
+            obj.liberado_por = request.user
+        super().save_model(request, obj, form, change)
+
+
+@admin.register(ValidacaoQualidade)
+class ValidacaoQualidadeAdmin(admin.ModelAdmin):
+    list_display  = (
+        'produto', 'linha', 'status', 'prazo_minutos',
+        'tempo_producao_acumulado_s', 'percentual_consumido_display',
+        'opc_sinal_enviado', 'aprovado_por', 'aprovado_em', 'criada_em',
+    )
+    list_filter   = ('status', 'linha', 'opc_sinal_enviado')
+    search_fields = ('produto__sku', 'produto__descricao', 'linha__nome')
+    readonly_fields = (
+        'troca', 'produto', 'linha', 'criada_em', 'atualizada_em',
+        'tempo_producao_acumulado_s', 'ultima_leitura_opc', 'opc_sinal_enviado',
+        'percentual_consumido_display',
+    )
+
+    fieldsets = (
+        ('Identificação', {
+            'fields': ('troca', 'produto', 'linha', 'status'),
+        }),
+        ('Timer de Produção', {
+            'fields': (
+                'prazo_minutos', 'tempo_producao_acumulado_s',
+                'percentual_consumido_display', 'ultima_leitura_opc',
+            ),
+        }),
+        ('OPC', {
+            'fields': ('opc_sinal_enviado',),
+        }),
+        ('Aprovação', {
+            'fields': ('aprovado_por', 'aprovado_em'),
+        }),
+        ('Auditoria', {
+            'fields': ('criada_em', 'atualizada_em'),
+            'classes': ('collapse',),
+        }),
+    )
+
+    def percentual_consumido_display(self, obj):
+        return f'{obj.percentual_consumido}%'
+    percentual_consumido_display.short_description = '% prazo consumido'
+
+    def has_add_permission(self, request):
+        # Criada exclusivamente pelo worker/view, nunca manualmente
+        return False
+
+
+@admin.register(HistoricoStatusLinha)
+class HistoricoStatusLinhaAdmin(admin.ModelAdmin):
+    list_display  = (
+        'linha', 'get_status_label', 'sku_em_operacao',
+        'iniciado_em', 'encerrado_em', 'duracao_formatada',
+    )
+    list_filter   = ('linha', 'status_codigo')
+    search_fields = ('linha__nome', 'sku_em_operacao')
+    readonly_fields = (
+        'linha', 'status_codigo', 'sku_em_operacao',
+        'iniciado_em', 'encerrado_em', 'duracao_s',
+    )
+    date_hierarchy = 'iniciado_em'
+
+    def get_status_label(self, obj):
+        return obj.get_status_codigo_display()
+    get_status_label.short_description = 'Status'
+
+    def duracao_formatada(self, obj):
+        if obj.duracao_s is None:
+            return '— em andamento'
+        m, s = divmod(int(obj.duracao_s), 60)
+        h, m = divmod(m, 60)
+        return f'{h:02d}h {m:02d}m {s:02d}s'
+    duracao_formatada.short_description = 'Duração'
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+
+# ==================== RECIPE MONITOR v10.0 ====================
+
+from .models import HistoricoSincronismoReceita
+
+
+@admin.register(HistoricoSincronismoReceita)
+class HistoricoSincronismoReceitaAdmin(admin.ModelAdmin):
+    """
+    Auditoria de sincronismos CLP → FormatoVariavel feitos pelo Recipe Monitor.
+    Read-only para qualquer usuário (auditoria não pode ser alterada). Delete
+    apenas para superuser.
+    """
+    list_display = (
+        'data_hora', 'formato', 'variavel', 'linha', 'usuario',
+        'valor_anterior', 'valor_novo', 'origem_servico', 'lote_uuid',
+    )
+    list_filter = ('formato', 'linha', 'usuario', 'origem_servico', 'data_hora')
+    search_fields = (
+        'formato__nome', 'variavel__nome',
+        'usuario__username', 'lote_uuid', 'observacao',
+    )
+    date_hierarchy = 'data_hora'
+    ordering = ('-data_hora',)
+    list_per_page = 50
+    readonly_fields = (
+        'lote_uuid', 'formato', 'variavel', 'linha',
+        'valor_anterior', 'valor_novo', 'usuario', 'ip_origem',
+        'origem_servico', 'data_hora', 'observacao',
+    )
+
+    def has_add_permission(self, request):
+        # Auditoria só é criada pelo endpoint /api/recipe-monitor/.../sincronizar/
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        # Auditoria protegida — só superuser pode apagar
+        return request.user.is_superuser
+
+
+# ==================== GESTÃO DE USUÁRIOS (item 3) ====================
+
+from .models import ContaUsuarioExpiracao
+
+
+@admin.register(ContaUsuarioExpiracao)
+class ContaUsuarioExpiracaoAdmin(admin.ModelAdmin):
+    """
+    Validade de contas. VISÍVEL/EDITÁVEL SOMENTE POR SUPERUSER.
+
+    Isso impede que o time que apenas CRIA usuários (staff, mas não superuser)
+    consiga estender a própria validade ou de terceiros sem aprovação. A
+    renovação de prazo é uma prerrogativa exclusiva do administrador.
+    """
+    list_display = ('user', 'validade_ate', 'status_calc', 'renovado_em', 'renovado_por')
+    search_fields = ('user__username',)
+    list_filter = ('validade_ate', 'renovado_em')
+    readonly_fields = ('criado_em', 'renovado_em', 'renovado_por')
+    actions = ['renovar_contas']
+
+    # ── Trava total: só superuser vê e mexe neste modelo ──────────────
+    def has_module_permission(self, request):
+        return request.user.is_superuser
+
+    def has_view_permission(self, request, obj=None):
+        return request.user.is_superuser
+
+    def has_add_permission(self, request):
+        # Registros são criados por signal ao criar o usuário. Ninguém cria à mão.
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return request.user.is_superuser
+
+    def has_delete_permission(self, request, obj=None):
+        return request.user.is_superuser
+
+    def status_calc(self, obj):
+        motivo = obj.motivo_expiracao()
+        if not obj.user.is_active:
+            return 'BLOQUEADO'
+        return f'expira ({motivo})' if motivo else 'ativo'
+    status_calc.short_description = 'Status'
+
+    @admin.action(description='Renovar contas selecionadas (+5 meses)')
+    def renovar_contas(self, request, queryset):
+        # Reforço: apenas superuser executa a ação (o menu já é oculto, mas
+        # protegemos contra chamada direta).
+        if not request.user.is_superuser:
+            self.message_user(request, 'Apenas superusuários podem renovar contas.', level='error')
+            return
+        n = 0
+        for exp in queryset:
+            exp.renovar(por_usuario=request.user)
+            n += 1
+        self.message_user(request, f'{n} conta(s) renovada(s).')
+
+
+# ==================== VALIDAÇÃO DE QUALIDADE POR CAIXAS (v11.0) ====================
+
+from .models import (
+    ConfiguracaoValidacaoQualidade, CriterioValidacaoQualidade,
+    HistoricoValidacaoQualidade,
+)
+
+
+@admin.register(ConfiguracaoValidacaoQualidade)
+class ConfiguracaoValidacaoQualidadeAdmin(admin.ModelAdmin):
+    """Singleton — configuração global da validação por caixas."""
+    list_display = ('__str__', 'ativo', 'caixas_default', 'atualizado_em')
+
+    def has_add_permission(self, request):
+        # Singleton: só permite adicionar se ainda não existe.
+        return not ConfiguracaoValidacaoQualidade.objects.exists()
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+
+@admin.register(CriterioValidacaoQualidade)
+class CriterioValidacaoQualidadeAdmin(admin.ModelAdmin):
+    """Meta de caixas por Formato×Linha."""
+    list_display = ('formato', 'linha', 'quantidade_caixas', 'ativo', 'atualizado_em', 'criado_por')
+    list_filter = ('linha', 'ativo', 'formato')
+    search_fields = ('formato__nome', 'linha__nome')
+    autocomplete_fields = ('formato', 'linha')
+    list_editable = ('quantidade_caixas', 'ativo')
+    readonly_fields = ('criado_por', 'criado_em', 'atualizado_em')
+
+    def save_model(self, request, obj, form, change):
+        if not change and not obj.criado_por_id:
+            obj.criado_por = request.user
+        super().save_model(request, obj, form, change)
+
+
+@admin.register(HistoricoValidacaoQualidade)
+class HistoricoValidacaoQualidadeAdmin(admin.ModelAdmin):
+    """Auditoria (read-only) dos eventos de validação de qualidade."""
+    list_display = ('timestamp', 'validacao', 'evento', 'caixas_no_momento',
+                    'meta_caixas', 'usuario')
+    list_filter = ('evento', 'timestamp')
+    search_fields = ('validacao__produto__sku', 'validacao__linha__nome', 'usuario__username')
+    date_hierarchy = 'timestamp'
+    readonly_fields = ('validacao', 'evento', 'caixas_no_momento', 'meta_caixas',
+                       'usuario', 'observacao', 'timestamp')
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return request.user.is_superuser
+
+
+# ==================== HARDENING DO ADMIN DE USUÁRIOS ====================
+# Impede que usuários NÃO-superuser promovam contas a superuser (ou concedam
+# staff/permissões/grupos), mesmo que tenham a permissão auth.change_user.
+# Fecha o vetor de auto-promoção a superuser via admin padrão do Django.
+
+from django.contrib.auth.admin import UserAdmin as DjangoUserAdmin
+from django.contrib.auth.models import User as AuthUser
+
+# Campos de privilégio que só superuser pode alterar.
+_CAMPOS_PRIVILEGIO = ('is_superuser', 'is_staff', 'groups', 'user_permissions')
+
+
+class UserAdminSeguro(DjangoUserAdmin):
+    """
+    UserAdmin com trava de escalonamento de privilégio:
+      - Campos is_superuser/is_staff/groups/user_permissions ficam READ-ONLY
+        para quem não é superuser.
+      - Não-superuser não pode editar contas que JÁ são superuser.
+      - No form de criação, não-superuser não vê os campos de privilégio.
+    """
+
+    def get_readonly_fields(self, request, obj=None):
+        ro = list(super().get_readonly_fields(request, obj))
+        if not request.user.is_superuser:
+            for campo in _CAMPOS_PRIVILEGIO:
+                if campo not in ro:
+                    ro.append(campo)
+        return tuple(ro)
+
+    def has_change_permission(self, request, obj=None):
+        # Não-superuser não edita contas que já são superuser.
+        if obj is not None and obj.is_superuser and not request.user.is_superuser:
+            return False
+        return super().has_change_permission(request, obj)
+
+    def has_delete_permission(self, request, obj=None):
+        # Não-superuser não apaga superusers.
+        if obj is not None and obj.is_superuser and not request.user.is_superuser:
+            return False
+        return super().has_delete_permission(request, obj)
+
+
+# Re-registra o User com a versão segura.
+try:
+    admin.site.unregister(AuthUser)
+except admin.sites.NotRegistered:
+    pass
+admin.site.register(AuthUser, UserAdminSeguro)
 
 
 # Configurações adicionais do admin

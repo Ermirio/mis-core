@@ -60,13 +60,32 @@ class Variavel(models.Model):
     nome = models.CharField(max_length=100, unique=True) # Nome único para a variável mestra
     tipo = models.CharField(max_length=10, choices=TIPO_CHOICES)
     descricao = models.CharField(max_length=200, blank=True)
-    
+
+    # ── Recipe Monitor (mis-recipe-intelligent) ─────────────────────────
+    # Usados pelo serviço externo de monitoramento em tempo real para
+    # classificar leituras OPC contra o valor de receita (FormatoVariavel).
+    # Opcionais: variáveis sem tolerância caem em "normal | alarme" só
+    # (igual / diferente), sem zona de atenção.
+    unidade = models.CharField(
+        max_length=20, blank=True,
+        help_text="Unidade de engenharia (rpm, bar, L, °C...). Vazio para BOOL/STRING."
+    )
+    tolerancia = models.FloatField(
+        null=True, blank=True,
+        help_text=(
+            "Tolerância aceitável (na mesma unidade da variável). "
+            "Usada pelo Recipe Monitor: |atual - receita| <= tol → NORMAL, "
+            "<= 2*tol → ATENÇÃO, > 2*tol → ALARME. "
+            "Aplicável apenas a tipos numéricos (REAL/DINT/UDINT/INT/UINT)."
+        )
+    )
+
     # Este ManyToMany pode ser redundante ou utilizado para fins informativos,
     # já que o mapeamento real se dará via ConfiguracaoEquipamentoTag.
     # Vou mantê-lo, mas é importante entender seu propósito.
     equipamentos_que_usam = models.ManyToManyField(
-        Equipamento, 
-        blank=True, 
+        Equipamento,
+        blank=True,
         related_name='variaveis_utilizadas',
         help_text="Equipamentos que utilizam esta variável mestra conceitual"
     )
@@ -120,6 +139,17 @@ class Formato(models.Model):
         help_text="Peso em gramas do formato (ex: 4000 = 4kg). Usado pelo módulo Andretti para identificar o formato via OPC UA."
     )
 
+    # Vazão nominal para cálculo de toneladas nos insights (kg/h)
+    vazao_kg_hora = models.FloatField(
+        default=0.0,
+        help_text=(
+            "Vazão nominal deste formato em kg/h. "
+            "Usado nos Insights de Formatos para estimar toneladas produzidas "
+            "com base no tempo acumulado em que este formato esteve ativo. "
+            "Ex: 2400 = 2.4 ton/h."
+        )
+    )
+
     # Campos de auditoria
     criado_por = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='formatos_criados')
     atualizado_por = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='formatos_atualizados')
@@ -130,7 +160,7 @@ class Formato(models.Model):
         if self.gramas:
             return f"{self.nome} ({self.gramas}g)"
         return self.nome
-    
+
     class Meta:
         verbose_name = "Formato"
         verbose_name_plural = "Formatos"
@@ -202,6 +232,67 @@ class Linha(models.Model):
         help_text=(
             "Tag OPC UA que retorna o formato atual em gramas. "
             "Ex: ns=2;s=Program:MainProgram.FormatoAtualGramas — valor esperado: 4000 para 4kg."
+        )
+    )
+
+    # ── Status do Produto — Tags OPC (v9.0) ─────────────────────────────
+    tag_status_linha_opc = models.CharField(
+        max_length=300, blank=True, null=True,
+        help_text=(
+            "Tag OPC UA que retorna o status operacional da linha como inteiro. "
+            "Valores esperados: 10=Rodando, 20=Aguardando, 30=Bloqueado, 40=Falha."
+        )
+    )
+    tag_sku_atual_opc = models.CharField(
+        max_length=300, blank=True, null=True,
+        help_text="Tag OPC UA que retorna o SKU atual em operação na linha (string)."
+    )
+    tag_giveaway_opc = models.CharField(
+        max_length=300, blank=True, null=True,
+        help_text="Tag OPC UA para leitura do giveaway (g ou %). Ex: ns=2;s=Program:MainProgram.Giveaway"
+    )
+    tag_descarte_turno_opc = models.CharField(
+        max_length=300, blank=True, null=True,
+        help_text="Tag OPC UA para contador de descartes no turno atual."
+    )
+    tag_peso_medio_opc = models.CharField(
+        max_length=300, blank=True, null=True,
+        help_text="Tag OPC UA para peso médio do produto em gramas."
+    )
+    tag_caixas_turno_opc = models.CharField(
+        max_length=300, blank=True, null=True,
+        help_text=(
+            "Tag OPC UA para quantidade de caixas produzidas no turno. "
+            "Usado em conjunto com Formato.gramas para calcular toneladas/turno."
+        )
+    )
+    tag_aguardando_validacao_opc = models.CharField(
+        max_length=300, blank=True, null=True,
+        help_text=(
+            "Tag OPC UA (escrita, bool) para sinalizar ao CLP que o SKU aguarda "
+            "validação de qualidade. CLP age com lógica fail-safe: para a linha se "
+            "receber True ou se não conseguir ler a tag."
+        )
+    )
+    # ── Validação de Qualidade por CAIXAS (v11.0) ──────────────────────
+    tag_caixas_sku_opc = models.CharField(
+        max_length=300, blank=True, null=True,
+        help_text=(
+            "Tag OPC UA (leitura, inteiro) com a quantidade de caixas produzidas "
+            "DESDE A TROCA do SKU atual. O CLP zera este contador quando um SKU "
+            "novo é escrito na linha. Usada pela validação de qualidade por caixas: "
+            "ao atingir a meta, o MIS escreve True em tag_aguardando_validacao_opc."
+        )
+    )
+    # Servidor OPC UA usado para leitura das tags de status da linha (v9.0)
+    conexao_opc_status = models.ForeignKey(
+        ConexaoOPCUAServidor,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='linhas_status',
+        help_text=(
+            "Servidor OPC UA de onde as tags de status da linha são lidas "
+            "(tag_status_linha_opc, tag_sku_atual_opc, etc.)."
         )
     )
 
@@ -509,6 +600,10 @@ class LogEquipamentoTroca(models.Model):
     erro_detalhado = models.TextField(blank=True)
     variaveis_escritas = models.IntegerField(default=0)
     variaveis_total = models.IntegerField(default=0)
+    variaveis_detalhes = models.JSONField(
+        default=list, blank=True,
+        help_text='Detalhe de cada variável: [{nome, tag_plc, valor, sucesso}]'
+    )
     tempo_execucao = models.FloatField(null=True, blank=True)
     
     ip_equipamento = models.GenericIPAddressField(null=True, blank=True)
@@ -680,3 +775,546 @@ class HistoricoIntertravamento(models.Model):
         verbose_name = 'Histórico de Intertravamento'
         verbose_name_plural = 'Histórico de Intertravamentos'
         ordering = ['-timestamp']
+
+
+# ==================== VALIDAÇÕES E HISTÓRICO — v9.0 ====================
+
+class LiberacaoSAP(models.Model):
+    """
+    Pré-requisito obrigatório antes de qualquer troca de SKU.
+    Um profissional do grupo 'SAP' valida a lista técnica no MIS,
+    substituindo o processo atual de envio de e-mail.
+    A liberação é sempre por SKU + linha (nunca global).
+    """
+    produto     = models.ForeignKey(Produto, on_delete=models.PROTECT, related_name='liberacoes_sap')
+    linha       = models.ForeignKey(Linha,   on_delete=models.PROTECT, related_name='liberacoes_sap')
+    liberado_por = models.ForeignKey(User,   on_delete=models.PROTECT, related_name='liberacoes_sap_concedidas')
+    liberado_em  = models.DateTimeField(auto_now_add=True)
+    observacao   = models.TextField(blank=True, help_text='Observação opcional sobre a lista técnica validada.')
+
+    class Meta:
+        verbose_name = 'Liberação SAP'
+        verbose_name_plural = 'Liberações SAP'
+        constraints = [
+            models.UniqueConstraint(fields=['produto', 'linha'], name='unique_liberacao_sap_produto_linha')
+        ]
+        ordering = ['-liberado_em']
+
+    def __str__(self):
+        return f'SAP {self.produto.sku} / {self.linha.nome} — {self.liberado_por.username}'
+
+
+class ValidacaoQualidade(models.Model):
+    """
+    Controle de qualidade para a primeira rodada de um SKU em uma linha.
+    Criada automaticamente quando TrocaSKU.primeira_rodada=True.
+
+    O timer acumula apenas o tempo em que tag_status_linha_opc == 10 (rodando)
+    com o SKU desta validação em operação. Ao esgotar o prazo sem aprovação,
+    o worker escreve True em tag_aguardando_validacao_opc, sinalizando ao CLP
+    que deve parar a linha (lógica fail-safe no CLP).
+    """
+    class StatusValidacao(models.TextChoices):
+        PENDENTE = 'pendente', 'Pendente'
+        APROVADO = 'aprovado', 'Aprovado'
+        EXPIRADO = 'expirado', 'Expirado — aguardando qualidade'
+        CANCELADO = 'cancelado', 'Cancelado — SKU trocado antes do prazo'
+
+    troca   = models.OneToOneField(
+        TrocaSKU, on_delete=models.PROTECT,
+        related_name='validacao_qualidade',
+        null=True, blank=True,
+        help_text='Troca que originou esta validação. Null quando aprovado diretamente por engenheiro (bypass).'
+    )
+    produto = models.ForeignKey(Produto, on_delete=models.PROTECT, related_name='validacoes_qualidade')
+    linha   = models.ForeignKey(Linha,   on_delete=models.PROTECT, related_name='validacoes_qualidade')
+
+    status        = models.CharField(max_length=20, choices=StatusValidacao.choices, default=StatusValidacao.PENDENTE)
+    prazo_minutos = models.PositiveIntegerField(default=30, help_text='[LEGADO] Prazo por tempo. Substituído por meta de caixas na v11.0.')
+
+    # ── Critério por CAIXAS (v11.0) — substitui o timer por tempo ──────
+    quantidade_caixas_meta = models.PositiveIntegerField(
+        default=0,
+        help_text='Meta de caixas a produzir antes de parar para validação. '
+                  '0 = não valida (não para a linha). Copiada do CriterioValidacaoQualidade na criação.'
+    )
+    caixas_produzidas = models.PositiveIntegerField(
+        default=0,
+        help_text='Última leitura do contador de caixas desde a troca (tag_caixas_sku_opc).'
+    )
+
+    # Timer legado (mantido para compatibilidade de dados; não mais usado)
+    tempo_producao_acumulado_s = models.FloatField(default=0.0)
+    ultima_leitura_opc         = models.DateTimeField(null=True, blank=True,
+                                    help_text='Timestamp da última leitura OPC pelo worker.')
+
+    # Escrita OPC
+    opc_sinal_enviado = models.BooleanField(default=False,
+                            help_text='True quando o worker já escreveu True em tag_aguardando_validacao_opc.')
+    parada_em = models.DateTimeField(null=True, blank=True,
+                            help_text='Quando a meta de caixas foi atingida e a linha foi sinalizada para parar.')
+
+    # Aprovação
+    aprovado_por = models.ForeignKey(User, on_delete=models.PROTECT, null=True, blank=True,
+                                     related_name='validacoes_qualidade_aprovadas')
+    aprovado_em  = models.DateTimeField(null=True, blank=True)
+    caixas_na_aprovacao = models.PositiveIntegerField(
+        null=True, blank=True,
+        help_text='Quantidade de caixas produzidas no momento da aprovação (amostra avaliada).'
+    )
+    observacao_qualidade = models.TextField(blank=True,
+                            help_text='Observação da qualidade sobre a amostra avaliada.')
+
+    criada_em    = models.DateTimeField(auto_now_add=True)
+    atualizada_em = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Validação de Qualidade'
+        verbose_name_plural = 'Validações de Qualidade'
+        ordering = ['-criada_em']
+        indexes = [
+            models.Index(fields=['linha', 'status']),
+            models.Index(fields=['status', '-criada_em']),
+        ]
+
+    def __str__(self):
+        return f'Qualidade {self.produto.sku} / {self.linha.nome} — {self.get_status_display()}'
+
+    @property
+    def prazo_segundos(self):
+        return self.prazo_minutos * 60
+
+    @property
+    def tempo_restante_s(self):
+        """Segundos restantes. Negativo significa prazo já estourado."""
+        return self.prazo_segundos - self.tempo_producao_acumulado_s
+
+    @property
+    def percentual_consumido(self):
+        if self.prazo_segundos == 0:
+            return 100
+        return min(100, round((self.tempo_producao_acumulado_s / self.prazo_segundos) * 100, 1))
+
+    # ── Progresso por CAIXAS (v11.0) ──────────────────────────────────
+    @property
+    def caixas_restantes(self):
+        return max(0, self.quantidade_caixas_meta - self.caixas_produzidas)
+
+    @property
+    def percentual_caixas(self):
+        if not self.quantidade_caixas_meta:
+            return 0
+        return min(100, round((self.caixas_produzidas / self.quantidade_caixas_meta) * 100, 1))
+
+    @property
+    def meta_atingida(self):
+        return (self.quantidade_caixas_meta > 0
+                and self.caixas_produzidas >= self.quantidade_caixas_meta)
+
+
+class ConfiguracaoValidacaoQualidade(models.Model):
+    """
+    Configuração global (singleton) da validação de qualidade por caixas.
+
+    Define a quantidade padrão de caixas usada quando um Formato×Linha não tem
+    um CriterioValidacaoQualidade específico. Permite ativar/desativar a
+    validação globalmente sem mexer em cada critério (útil no rollout).
+    """
+    caixas_default = models.PositiveIntegerField(
+        default=50,
+        help_text='Meta de caixas padrão quando não há critério específico para o Formato×Linha. '
+                  '0 = não valida por padrão (linhas sem critério não param).'
+    )
+    ativo = models.BooleanField(
+        default=True,
+        help_text='Chave geral: se desmarcado, NENHUMA validação por caixas é criada/aplicada '
+                  '(nenhuma linha é parada). Útil para pausar o recurso durante manutenção.'
+    )
+    atualizado_em = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Configuração da Validação de Qualidade'
+        verbose_name_plural = 'Configuração da Validação de Qualidade'
+
+    def __str__(self):
+        estado = 'ativo' if self.ativo else 'INATIVO'
+        return f'Validação por caixas: {estado} (default {self.caixas_default} caixas)'
+
+    @classmethod
+    def get_solo(cls):
+        """Retorna (criando se preciso) a configuração única."""
+        obj, _ = cls.objects.get_or_create(pk=1)
+        return obj
+
+
+class CriterioValidacaoQualidade(models.Model):
+    """
+    Critério de validação por caixas para um cruzamento Formato × Linha.
+
+    Quando um SKU roda pela primeira vez numa linha, a meta de caixas vem do
+    critério correspondente ao formato do produto naquela linha. Se não houver
+    critério cadastrado, usa ConfiguracaoValidacaoQualidade.caixas_default.
+    """
+    formato = models.ForeignKey('Formato', on_delete=models.CASCADE, related_name='criterios_validacao')
+    linha   = models.ForeignKey(Linha,     on_delete=models.CASCADE, related_name='criterios_validacao')
+    quantidade_caixas = models.PositiveIntegerField(
+        help_text='Caixas a produzir antes de parar para validação de qualidade. '
+                  '0 = não valida este Formato×Linha (não para a linha).'
+    )
+    ativo = models.BooleanField(default=True)
+    observacao = models.CharField(max_length=200, blank=True)
+
+    criado_por    = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True,
+                                      related_name='criterios_validacao_criados')
+    criado_em     = models.DateTimeField(auto_now_add=True)
+    atualizado_em = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Critério de Validação (Formato×Linha)'
+        verbose_name_plural = 'Critérios de Validação (Formato×Linha)'
+        constraints = [
+            models.UniqueConstraint(fields=['formato', 'linha'], name='unique_criterio_formato_linha')
+        ]
+        ordering = ['linha__nome', 'formato__nome']
+
+    def __str__(self):
+        return f'{self.formato.nome} / {self.linha.nome} → {self.quantidade_caixas} caixas'
+
+    @staticmethod
+    def resolver_meta(formato, linha):
+        """
+        Resolve a meta de caixas para um formato+linha, aplicando a hierarquia:
+          1. Se a config global estiver inativa → 0 (não valida)
+          2. CriterioValidacaoQualidade ativo específico → sua quantidade
+          3. Senão → ConfiguracaoValidacaoQualidade.caixas_default
+        """
+        cfg = ConfiguracaoValidacaoQualidade.get_solo()
+        if not cfg.ativo:
+            return 0
+        if formato is not None and linha is not None:
+            crit = CriterioValidacaoQualidade.objects.filter(
+                formato=formato, linha=linha, ativo=True
+            ).first()
+            if crit is not None:
+                return crit.quantidade_caixas
+        return cfg.caixas_default
+
+
+class HistoricoValidacaoQualidade(models.Model):
+    """
+    Tracking imutável dos eventos de cada validação de qualidade — mesmo espírito
+    do histórico de trocas. Registra o ciclo de vida: criada → produzindo →
+    meta atingida (parou) → aprovada/cancelada, com quem, quantas caixas e quando.
+    """
+    class Evento(models.TextChoices):
+        CRIADA        = 'criada',         'Criada (SKU novo na linha)'
+        META_ATINGIDA = 'meta_atingida',  'Meta atingida — linha parada'
+        APROVADA      = 'aprovada',       'Aprovada pela qualidade'
+        CANCELADA     = 'cancelada',      'Cancelada (SKU trocado antes)'
+        LIBERADA_OPC  = 'liberada_opc',   'Liberação OPC enviada ao CLP'
+        FALHA_OPC     = 'falha_opc',      'Falha ao escrever no CLP'
+
+    validacao = models.ForeignKey(
+        ValidacaoQualidade, on_delete=models.CASCADE, related_name='historico'
+    )
+    evento = models.CharField(max_length=20, choices=Evento.choices)
+    caixas_no_momento = models.PositiveIntegerField(
+        default=0, help_text='Contador de caixas no instante do evento.'
+    )
+    meta_caixas = models.PositiveIntegerField(default=0)
+
+    usuario = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True,
+                                related_name='eventos_validacao_qualidade',
+                                help_text='Quem disparou o evento (ex.: quem aprovou). Null para eventos do worker.')
+    observacao = models.TextField(blank=True)
+    timestamp = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        verbose_name = 'Histórico de Validação de Qualidade'
+        verbose_name_plural = 'Histórico de Validações de Qualidade'
+        ordering = ['-timestamp']
+        indexes = [
+            models.Index(fields=['validacao', 'timestamp'], name='ips_histvq_val_ts_idx'),
+            models.Index(fields=['evento', '-timestamp'], name='ips_histvq_evt_ts_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.get_evento_display()} — VQ#{self.validacao_id} @ {self.timestamp:%Y-%m-%d %H:%M}'
+
+
+class HistoricoStatusLinha(models.Model):
+    """
+    Registro imutável de cada intervalo de status da linha lido via OPC.
+    O worker fecha o registro anterior (preenche encerrado_em e duracao_s)
+    ao detectar mudança no valor de tag_status_linha_opc.
+    Alimenta futuros insights de OEE, tempo parado, falhas por SKU, etc.
+    """
+    class StatusCodigo(models.IntegerChoices):
+        RODANDO  = 10, 'Rodando'
+        WAITING  = 20, 'Aguardando'
+        BLOCK    = 30, 'Bloqueado'
+        FALHA    = 40, 'Falha'
+
+    linha          = models.ForeignKey(Linha, on_delete=models.PROTECT, related_name='historico_status')
+    status_codigo  = models.IntegerField(choices=StatusCodigo.choices)
+    sku_em_operacao = models.CharField(max_length=50, blank=True,
+                          help_text='Snapshot do SKU atual no momento do registro.')
+    iniciado_em    = models.DateTimeField(db_index=True)
+    encerrado_em   = models.DateTimeField(null=True, blank=True,
+                          help_text='Null enquanto este status ainda está ativo.')
+    duracao_s      = models.FloatField(null=True, blank=True,
+                          help_text='Duração em segundos. Calculado ao fechar o registro.')
+
+    class Meta:
+        verbose_name = 'Histórico de Status da Linha'
+        verbose_name_plural = 'Histórico de Status das Linhas'
+        ordering = ['-iniciado_em']
+        indexes = [
+            models.Index(fields=['linha', '-iniciado_em']),
+            models.Index(fields=['linha', 'status_codigo', '-iniciado_em']),
+        ]
+
+    def __str__(self):
+        label = self.get_status_codigo_display()
+        return f'{self.linha.nome} — {label} desde {self.iniciado_em:%Y-%m-%d %H:%M}'
+
+
+# ==================== COMUNICAÇÃO POR LINHA — v9.2 ====================
+
+def _turno_atual():
+    """Retorna A, B ou C com base no horário UTC+0 (turnos em horário local BRT -3)."""
+    from django.utils import timezone as tz
+    hora = tz.localtime(tz.now()).hour   # usa TIME_ZONE do settings
+    if 6 <= hora < 14:
+        return 'A'
+    elif 14 <= hora < 22:
+        return 'B'
+    else:
+        return 'C'
+
+
+class MensagemLinha(models.Model):
+    """
+    Mensagem de chat associada a uma linha de produção.
+    Suporta @menções a outros usuários.
+    """
+    TURNO_CHOICES = [('A', 'Turno A (06-14h)'), ('B', 'Turno B (14-22h)'), ('C', 'Turno C (22-06h)')]
+
+    linha     = models.ForeignKey(Linha, on_delete=models.CASCADE, related_name='mensagens')
+    autor     = models.ForeignKey(User, on_delete=models.PROTECT, related_name='mensagens_linha')
+    texto     = models.TextField(max_length=1000)
+    turno     = models.CharField(max_length=1, choices=TURNO_CHOICES, default=_turno_atual)
+    criada_em = models.DateTimeField(auto_now_add=True, db_index=True)
+    editada   = models.BooleanField(default=False)
+    tags      = models.JSONField(default=list, blank=True,
+                                  help_text='Hashtags extraídas do texto (#manutenção, #qualidade...)')
+
+    class Meta:
+        verbose_name = 'Mensagem de Linha'
+        verbose_name_plural = 'Mensagens de Linha'
+        ordering = ['criada_em']
+        indexes = [
+            models.Index(fields=['linha', '-criada_em']),
+            models.Index(fields=['linha', 'turno', '-criada_em']),
+        ]
+
+    def __str__(self):
+        return f'[{self.linha.nome}] {self.autor.username}: {self.texto[:50]}'
+
+
+class MencaoMensagem(models.Model):
+    """
+    Registro de @menção: uma mensagem menciona um usuário.
+    Controla leitura para exibir badge de notificação.
+    """
+    mensagem   = models.ForeignKey(MensagemLinha, on_delete=models.CASCADE, related_name='mencoes')
+    mencionado = models.ForeignKey(User, on_delete=models.CASCADE, related_name='mencoes_recebidas')
+    lida       = models.BooleanField(default=False)
+    lida_em    = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        verbose_name = 'Menção'
+        verbose_name_plural = 'Menções'
+        unique_together = ('mensagem', 'mencionado')
+
+    def __str__(self):
+        return f'@{self.mencionado.username} em msg#{self.mensagem_id}'
+
+
+# ==================== RECIPE MONITOR — Sincronismo CLP → Receita ====================
+
+class ContaUsuarioExpiracao(models.Model):
+    """
+    Controle de validade de contas de usuários comuns (não-superuser).
+
+    Duas travas de expiração (a que ocorrer primeiro bloqueia o login):
+      1. Inatividade: sem login há mais de DIAS_INATIVIDADE (60 dias / 2 meses)
+      2. Validade: passou de `validade_ate` (criação + VALIDADE_MESES = 5 meses)
+
+    Só superuser pode renovar (reseta validade_ate = agora + 5 meses e
+    reativa is_active). Superusers NÃO têm conta de expiração — nunca expiram.
+    """
+    DIAS_INATIVIDADE = 60      # 2 meses
+    VALIDADE_MESES = 5         # renovação a cada 5 meses
+    VALIDADE_DIAS = 150        # ~5 meses em dias (usado nos cálculos)
+
+    user = models.OneToOneField(
+        User, on_delete=models.CASCADE, related_name='expiracao'
+    )
+    validade_ate = models.DateTimeField(
+        help_text='Conta expira nesta data (criação/renovação + 5 meses).'
+    )
+    criado_em = models.DateTimeField(auto_now_add=True)
+    renovado_em = models.DateTimeField(null=True, blank=True)
+    renovado_por = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='renovacoes_concedidas'
+    )
+
+    class Meta:
+        verbose_name = 'Validade de Conta de Usuário'
+        verbose_name_plural = 'Validades de Contas de Usuários'
+        ordering = ['validade_ate']
+
+    def __str__(self):
+        return f'{self.user.username} — válido até {self.validade_ate:%Y-%m-%d}'
+
+    # ── Lógica de expiração ───────────────────────────────────────────
+
+    def dias_ate_validade(self):
+        from django.utils import timezone
+        delta = self.validade_ate - timezone.now()
+        return delta.days
+
+    def dias_inativo(self):
+        """Dias desde o último login. None se nunca logou."""
+        from django.utils import timezone
+        if not self.user.last_login:
+            return None
+        return (timezone.now() - self.user.last_login).days
+
+    def motivo_expiracao(self):
+        """
+        Retorna 'validade', 'inatividade' ou None se a conta ainda é válida.
+        Superuser nunca expira.
+        """
+        from django.utils import timezone
+        if self.user.is_superuser:
+            return None
+        if self.validade_ate < timezone.now():
+            return 'validade'
+        inativo = self.dias_inativo()
+        if inativo is not None and inativo >= self.DIAS_INATIVIDADE:
+            return 'inatividade'
+        return None
+
+    def expirada(self):
+        return self.motivo_expiracao() is not None
+
+    def renovar(self, por_usuario=None):
+        """
+        Reseta validade por +5 meses, zera o contador de inatividade e reativa.
+
+        IMPORTANTE: também atualiza last_login. Sem isso, uma conta bloqueada
+        por INATIVIDADE (60 dias sem login) continuaria sendo bloqueada no
+        próximo login mesmo após a renovação, porque motivo_expiracao() ainda
+        veria o last_login antigo. Renovar = "vale mais 5 meses e conta como
+        se tivesse acabado de logar".
+        """
+        from django.utils import timezone
+        from datetime import timedelta
+        agora = timezone.now()
+        self.validade_ate = agora + timedelta(days=self.VALIDADE_DIAS)
+        self.renovado_em = agora
+        self.renovado_por = por_usuario
+        self.save()
+
+        update_fields = []
+        if not self.user.is_active:
+            self.user.is_active = True
+            update_fields.append('is_active')
+        # Zera a inatividade (destrava contas bloqueadas por 60 dias sem login)
+        self.user.last_login = agora
+        update_fields.append('last_login')
+        self.user.save(update_fields=update_fields)
+
+
+class HistoricoSincronismoReceita(models.Model):
+    """
+    Registro imutável de cada sincronismo "valores do CLP → FormatoVariavel"
+    feito pelo Recipe Monitor (serviço externo mis-recipe-intelligent).
+
+    Cada linha aqui representa UMA variável atualizada dentro de UM
+    sincronismo. Um único clique em "Atualizar receita" pode gerar N linhas
+    (uma por variável que mudou). O campo `lote_uuid` agrupa as variáveis
+    de um mesmo sincronismo.
+
+    NÃO altera nem depende do fluxo de TrocaSKU / LogEquipamentoTroca —
+    é um histórico paralelo, focado em receituário.
+    """
+    lote_uuid = models.UUIDField(
+        db_index=True,
+        help_text='Agrupa as variáveis atualizadas em um único clique de sincronismo.'
+    )
+    formato = models.ForeignKey(
+        Formato, on_delete=models.PROTECT,
+        related_name='historico_sincronismos'
+    )
+    variavel = models.ForeignKey(
+        Variavel, on_delete=models.PROTECT,
+        related_name='historico_sincronismos'
+    )
+    linha = models.ForeignKey(
+        Linha, on_delete=models.PROTECT,
+        null=True, blank=True,
+        related_name='historico_sincronismos_receita',
+        help_text='Linha de onde o valor foi lido no momento do sincronismo (informativo).'
+    )
+
+    valor_anterior = models.CharField(max_length=100, blank=True)
+    valor_novo = models.CharField(max_length=100)
+
+    usuario = models.ForeignKey(
+        User, on_delete=models.PROTECT,
+        related_name='sincronismos_receita'
+    )
+    ip_origem = models.GenericIPAddressField(null=True, blank=True)
+    origem_servico = models.CharField(
+        max_length=50, default='recipe-monitor',
+        help_text='Serviço que originou o sincronismo. Default: recipe-monitor.'
+    )
+    observacao = models.TextField(blank=True)
+
+    data_hora = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        verbose_name = 'Histórico de Sincronismo de Receita'
+        verbose_name_plural = 'Histórico de Sincronismos de Receita'
+        ordering = ['-data_hora']
+        indexes = [
+            models.Index(fields=['formato', '-data_hora']),
+            models.Index(fields=['lote_uuid']),
+        ]
+
+    def __str__(self):
+        return (f'Sync {self.formato.nome} / {self.variavel.nome}: '
+                f'{self.valor_anterior} → {self.valor_novo} '
+                f'({self.usuario.username} em {self.data_hora:%Y-%m-%d %H:%M})')
+
+
+class UltimaVisualizacaoChat(models.Model):
+    """
+    Registra quando um usuário visualizou pela última vez o chat de uma linha.
+    Usado para calcular mensagens não lidas por linha no sidebar.
+    """
+    usuario    = models.ForeignKey(User, on_delete=models.CASCADE, related_name='visualizacoes_chat')
+    linha      = models.ForeignKey(Linha, on_delete=models.CASCADE, related_name='visualizacoes_chat')
+    visualizado_em = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Última Visualização de Chat'
+        verbose_name_plural = 'Últimas Visualizações de Chat'
+        unique_together = ('usuario', 'linha')
+
+    def __str__(self):
+        return f'{self.usuario.username} — {self.linha.nome} em {self.visualizado_em}'

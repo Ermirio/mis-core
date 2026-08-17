@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(docker images --format \"table {{.Repository}}:{{.Tag}}\\\\t{{.Size}}\\\\t{{.CreatedSince}}\")",
+      "Bash(docker ps --filter \"name=mis-core-node-red\" --format \"table {{.Names}}\\\\t{{.Status}}\\\\t{{.Image}}\")",
+      "Bash(docker commit mis-core-node-red mis-core-node-red:v1.1)",
+      "Bash(docker image ls mis-core-node-red)",
+      "Bash(docker exec mis-core-node-red cat /data/package.json)",
+      "Bash(docker exec mis-core-node-red sh -c \"cat /data/package.json\")",
+      "Bash(docker compose build node-red)",
+      "Bash(docker save mis-core-node-red:v1.2 -o /c/Users/ermir/OneDrive/Documentos/GitHub/mis-core/dist/mis-core-node-red-v1.2.tar)"
+    ],
+    "additionalDirectories": [
+      "C:\\Users\\ermir\\OneDrive\\Documentos\\GitHub\\mis-core\\dist"
+    ]
+  }
+}

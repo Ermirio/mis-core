@@ -7,7 +7,8 @@ echo "🔄 Configurando variáveis de ambiente..."
 cat > /usr/share/nginx/html/env-config.js << EOF
 window.ENV = {
   VITE_DJANGO_API_URL: '${VITE_DJANGO_API_URL}',
-  VITE_FLASK_API_URL: '${VITE_FLASK_API_URL}'
+  VITE_FLASK_API_URL: '${VITE_FLASK_API_URL}',
+  VITE_FASTAPI_V2_URL: '${VITE_FASTAPI_V2_URL}'
 };
 EOF
 

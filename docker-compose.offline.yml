@@ -113,6 +113,7 @@ services:
   # ===== PROXY REVERSO =====
   nginx-proxy:
     image: mis-core-proxy:v7.0
+    pull_policy: never
     container_name: mis-core-proxy
     ports:
       - "${PROXY_HOST_PORT}:80"
@@ -123,6 +124,8 @@ services:
       - ./proxy-reverse/imagens:/usr/share/nginx/html/imagens
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    depends_on:
+      - mis-recipe-monitor
     restart: unless-stopped
 
   # ==========================================
@@ -275,6 +278,58 @@ services:
       - mis-network
     depends_on:
       - mis-changeover-backend
+    restart: unless-stopped
+
+  # ===== REDIS (Cache + pub/sub para Recipe Monitor) =====
+  # Imagem oficial leve. Modo no-persist (cache puro) — não precisa volume.
+  mis-redis:
+    image: redis:7-alpine
+    pull_policy: never
+    container_name: mis-redis
+    command: redis-server --save "" --appendonly no --maxmemory 256mb --maxmemory-policy allkeys-lru
+    ports:
+      - "${MIS_REDIS_PORT:-6379}:6379"
+    networks:
+      - mis-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+  # ===== RECIPE MONITOR (mis-recipe-intelligent) =====
+  # FastAPI + asyncua para leitura OPC em tempo real e sincronismo de receita.
+  # Consome o Django via HTTP — não tem migrations próprias.
+  mis-recipe-monitor:
+    image: mis-recipe-intelligent:v1.0
+    pull_policy: never
+    container_name: mis-recipe-monitor
+    environment:
+      DJANGO_BASE_URL: http://mis-changeover-backend:8000
+      REDIS_URL: redis://mis-redis:6379/0
+      OPC_CONFIG_TTL_SECONDS: "60"
+      OPC_SUBSCRIPTION_INTERVAL_MS: "500"
+      HISTORY_MAX_POINTS: "60"
+      LINES_PRELOAD: "${RECIPE_MONITOR_LINES_PRELOAD:-}"
+      LOG_LEVEL: "${RECIPE_MONITOR_LOG_LEVEL:-INFO}"
+      CORS_ORIGINS: "${RECIPE_MONITOR_CORS_ORIGINS:-http://localhost:3000,http://localhost:3009}"
+      TZ: ${TZ}
+    ports:
+      - "${RECIPE_MONITOR_PORT:-8100}:8100"
+    networks:
+      - mis-network
+    depends_on:
+      mis-redis:
+        condition: service_healthy
+      mis-changeover-backend:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8100/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
     restart: unless-stopped
 
   # ==========================================

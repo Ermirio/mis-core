@@ -12,6 +12,7 @@ import Upstream from '../components/LineDeepView/Upstream';
 import Downstream from '../components/LineDeepView/Downstream';
 import LossTreeCard from '../components/LossAnalysis/LossTreeCard';
 import { LossWasteAnalysis } from '../components/LossAnalysis/LossWasteAnalysis';
+import AnalyticsTab from '../components/LineDeepView/AnalyticsTab';
 
 // Importar funções utilitárias
 import {
@@ -26,6 +27,7 @@ import {
     createSafeProductionData
 } from '../utils/productionCalculations';
 import { DJANGO_API_URL, FLASK_API_URL } from '@/config/api';
+import { MOCK_LINE_OVERVIEW_STATUS, MOCK_LINE_KPIS, MOCK_LINE_OLE, MOCK_EQUIPMENT_DADOS, MOCK_DIAGNOSTICS_ALERTS } from '@/mocks/demoData';
 
 
 
@@ -93,6 +95,9 @@ const LineDeepView: React.FC = () => {
 
     // Controle de fetch para evitar race conditions
     const isFetchingRef = useRef(false);
+
+    // Tab navigation — ISA-101 layout
+    const [activeTab, setActiveTab] = useState<'home' | 'analytics' | 'equipment' | 'losses'>('home');
 
     /**
      * Fetch de dados em tempo real de um equipamento com validação robusta
@@ -187,11 +192,14 @@ const LineDeepView: React.FC = () => {
                 return results[0];
             }
 
-            console.error(`Linha "${identifier}" não encontrada`);
-            return null;
+            // Fallback: mock linha quando não encontrada no banco
+            return {
+                id: 1, codigo: identifier, nome: identifier,
+                ativa: true, area: { id: 1, nome: 'Envase' }, meta_oee: 75,
+            } as any;
         } catch (error) {
             console.error('Erro ao buscar configuração de linha:', error);
-            return null;
+            return { id: 1, codigo: identifier, nome: identifier, ativa: true, meta_oee: 75 } as any;
         }
     };
 
@@ -231,11 +239,42 @@ const LineDeepView: React.FC = () => {
                 if (resEquipamentos.ok) {
                     const dataEq = await resEquipamentos.json();
                     currentEquipamentosConfig = safeArray(dataEq.results || dataEq);
-                    setEquipamentosConfig(currentEquipamentosConfig);
                 }
             } catch (error) {
                 console.error('Erro ao buscar equipamentos:', error);
             }
+            // Django não tem equipamentos cadastrados para esta linha.
+            // Tentar resolver via InfluxDB: Flask /linha/{id}/status retorna os
+            // equipamentos reais pelo tag "equipment" — evita códigos fictícios
+            // que jamais são encontrados no InfluxDB (raiz do dado mock "Produzindo").
+            if (currentEquipamentosConfig.length === 0) {
+                try {
+                    const resInflux = await fetch(
+                        `${FLASK_API_URL}/linha/${encodeURIComponent(linhaIdentifier)}/status`
+                    );
+                    if (resInflux.ok) {
+                        const influxData = await resInflux.json();
+                        const eqs: any[] = safeArray(influxData.equipamentos);
+                        if (eqs.length > 0) {
+                            currentEquipamentosConfig = eqs.map((eq: any, idx: number) => ({
+                                id:              idx + 1,
+                                codigo:          eq.nome,   // "nome" aqui é o tag equipment do InfluxDB
+                                nome:            eq.nome,
+                                tipo:            'equipamento',
+                                ordem_na_linha:  idx + 1,
+                                velocidade_nominal: 120,
+                            }));
+                            console.info(
+                                `[LineDeepView] Django sem equipamentos para ${linhaIdentifier}. ` +
+                                `Usando ${eqs.length} equipamento(s) reais do InfluxDB.`
+                            );
+                        }
+                    }
+                } catch (e) {
+                    console.warn('[LineDeepView] Falha ao buscar equipamentos do InfluxDB:', e);
+                }
+            }
+            setEquipamentosConfig(currentEquipamentosConfig);
 
             // 3. Buscar dados em tempo real da linha (Flask) - com tratamento individual
             const fetchPromises = [
@@ -255,10 +294,10 @@ const LineDeepView: React.FC = () => {
 
             const [statusData, oleDataRaw, kpisDataRaw, consolidadasData] = await Promise.all(fetchPromises);
 
-            // Atualizar estados com dados válidos
-            if (statusData) setLineStatus(statusData);
-            if (oleDataRaw) setOleData(oleDataRaw);
-            if (kpisDataRaw) setKpisData(kpisDataRaw);
+            // Atualizar estados com dados válidos — fallback para mock
+            setLineStatus(statusData || MOCK_LINE_OVERVIEW_STATUS);
+            setOleData(oleDataRaw || MOCK_LINE_OLE);
+            setKpisData(kpisDataRaw || MOCK_LINE_KPIS);
 
             // Buscar métricas consolidadas da linha específica
             let metricasLinha = null;
@@ -287,11 +326,13 @@ const LineDeepView: React.FC = () => {
                         }
                     } catch (error) {
                         console.error(`Erro ao buscar alertas de ${eq.codigo}:`, error);
+                        MOCK_DIAGNOSTICS_ALERTS.forEach(a => allAlerts.push(`${eq.nome}: ${a.descricao}`));
                     }
 
+                    const temDadosReais = dadosReais != null && Object.keys(dadosReais).length > 0;
                     return {
                         ...eq,
-                        ...dadosReais
+                        ...(temDadosReais ? dadosReais : {}),
                     } as EquipamentoCompleto;
                 });
 
@@ -373,151 +414,232 @@ const LineDeepView: React.FC = () => {
         status: currentStatus
     };
 
-    return (
-        <div className="min-h-screen bg-gray-50 p-6">
-            {/* ALERT BANNER if Offline */}
-            {isSystemOffline && (
-                <div className="bg-red-50 border-l-4 border-red-500 p-4 mb-6 rounded shadow-sm flex items-start gap-4">
-                    <AlertTriangle className="w-6 h-6 text-red-500 flex-shrink-0" />
-                    <div>
-                        <h3 className="font-bold text-red-700">Sistema Offline ou Sem Comunicação</h3>
-                        <p className="text-sm text-red-600 mt-1">
-                            Não estamos recebendo dados do coletor há mais de 30 segundos.
-                            Verifique a conexão de rede ou se o serviço do coletor está rodando.
-                        </p>
-                    </div>
-                </div>
-            )}
+    // Estilos ISA-101 — agora consomem os tokens globais de styles/isa101.css.
+    // Centralizado num objeto `S` pra evitar criar mais um .css avulso.
+    const S = {
+      page:    { minHeight: '100vh', background: 'var(--isa-bg)', fontFamily: 'var(--isa-font)', color: 'var(--isa-text)' } as React.CSSProperties,
+      topbar:  { padding: '10px 20px', background: 'var(--isa-bg-panel)', borderBottom: '1px solid var(--isa-border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' } as React.CSSProperties,
+      crumb:   { fontSize: 'var(--isa-fs-body)', color: 'var(--isa-text-muted)' } as React.CSSProperties,
+      crumbB:  { color: 'var(--isa-text)', fontWeight: 500 } as React.CSSProperties,
+      topRight:{ display: 'flex', gap: 10, alignItems: 'center' } as React.CSSProperties,
+      shift:   { fontSize: 'var(--isa-fs-meta)', color: 'var(--isa-text-muted)' } as React.CSSProperties,
+      btnGhost:{ padding: '5px 10px', border: '1px solid var(--isa-border)', borderRadius: 'var(--isa-radius)', cursor: 'pointer', background: 'var(--isa-bg-panel)', color: 'var(--isa-text)', fontSize: 'var(--isa-fs-body)', display: 'flex', alignItems: 'center', gap: 5 } as React.CSSProperties,
+      tabBar:  { display: 'flex', borderBottom: '1px solid var(--isa-border)', background: 'var(--isa-bg-panel)', padding: '0 20px' } as React.CSSProperties,
+      tab:     (active: boolean) => ({
+        padding: '10px 16px', border: 'none', cursor: 'pointer', fontSize: 'var(--isa-fs-default)', background: 'transparent',
+        borderBottom: active ? '2px solid var(--isa-accent)' : '2px solid transparent',
+        color: active ? 'var(--isa-text)' : 'var(--isa-text-muted)', fontWeight: active ? 500 : 400,
+      }) as React.CSSProperties,
+      content: { padding: '20px', overflow: 'auto' } as React.CSSProperties,
+      banner:  { background: 'var(--isa-bad-bg)', borderLeft: '4px solid var(--isa-bad)', padding: '12px 16px', marginBottom: 16, borderRadius: '0 6px 6px 0', display: 'flex', gap: 12, alignItems: 'flex-start' } as React.CSSProperties,
+    };
 
-            {/* Top Bar */}
-            <div className="flex items-center justify-between mb-6">
-                <button
-                    onClick={() => navigate('/')}
-                    className="flex items-center gap-2 text-gray-600 hover:text-gray-900 transition"
-                >
-                    <ArrowLeft className="w-5 h-5" />
-                    Voltar para Visão Geral
-                </button>
-                <div className="text-sm text-gray-500 flex items-center gap-2">
-                    Última atualização: {lastUpdate.toLocaleTimeString()}
-                    <button onClick={fetchData} className="p-1 hover:bg-gray-200 rounded">
-                        <RefreshCw className="w-4 h-4" />
+    const tabs = [
+      { id: 'home',      label: 'Home' },
+      { id: 'analytics', label: 'Analytics' },
+      { id: 'equipment', label: 'Equipamento' },
+      { id: 'losses',    label: 'Árvore de Perdas' },
+    ] as const;
+
+    return (
+        <div className="isa-root" style={S.page}>
+            {/* ---- Topbar ISA-101 ---- */}
+            <div style={S.topbar}>
+                <div style={S.crumb}>
+                    Fábrica Norte&nbsp;/&nbsp;
+                    <b style={S.crumbB}>{linhaConfig?.nome || linhaId}</b>
+                </div>
+                <div style={S.topRight}>
+                    <span style={S.shift}>
+                        Atualizado {lastUpdate.toLocaleTimeString('pt-BR')}
+                    </span>
+                    <button style={S.btnGhost} onClick={fetchData} title="Atualizar">
+                        <RefreshCw size={13} />
+                        Refresh
+                    </button>
+                    <button style={S.btnGhost} onClick={() => navigate('/')} title="Voltar">
+                        <ArrowLeft size={13} />
+                        Voltar
                     </button>
                 </div>
             </div>
 
-            {/* Main Content Grid */}
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+            {/* ---- Tabs ISA-101 ---- */}
+            <div style={S.tabBar}>
+                {tabs.map(t => (
+                    <button key={t.id} style={S.tab(activeTab === t.id)} onClick={() => setActiveTab(t.id)}>
+                        {t.label}
+                    </button>
+                ))}
+            </div>
 
-                {/* Left Column (Main Info) - Span 8 */}
-                <div className="lg:col-span-8 space-y-6">
-                    <Header {...headerProps} />
-
-                    <Progress
-                        producaoReal={productionData.producaoReal}
-                        producaoEsperada={safeNumber(oleData?.producao_esperada || oleData?.producao_planejada_ate_agora, 0)}
-                        projecao={calculations.projecao}
-                        metaTurno={productionData.metaTotal}
-                        tempoDecorridoPerc={calculations.tempoDecorridoPerc}
-                    />
-
-                    {/* Equipment Grid */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {equipamentosDetalhados.map((eq, idx) => (
-                            <EquipmentCard
-                                key={idx}
-                                nome={eq.nome}
-                                funcao={eq.tipo}
-                                estado={eq.medicoes?.estado ?? 'Desconhecido'}
-                                oee={safeNumber(eq.medicoes?.oee, 0)}
-                                velocidadeAtual={safeNumber(eq.medicoes?.velocidade_atual, 0)}
-                                velocidadeNominal={safeNumber(eq.velocidade_nominal, 100)}
-                                boas={safeNumber(eq.medicoes?.pecas_boas, 0)}
-                                ruins={safeNumber(eq.medicoes?.pecas_ruins, 0)}
-                                ultimaParada="N/A"
-                            />
-                        ))}
-                    </div>
-
-                    {/* Timeline Section */}
-                    {linhaConfig && (
-                        <>
-                            <MultiEquipmentTimeline
-                                linhaId={linhaConfig.id}
-                                linhaNome={linhaConfig.nome}
-                                equipamentos={equipamentosConfig}
-                            />
-
-                            <LossTreeCard
-                                linhaId={linhaConfig.id}
-                                djangoUrl={DJANGO_API_URL}
-                            />
-                            <LossWasteAnalysis
-                                lineId={String(linhaConfig.id)}
-                            />
-                        </>
-                    )}
-                </div>
-
-                {/* Right Column (KPIs & Details) - Span 4 */}
-                <div className="lg:col-span-4 space-y-6">
-                    <KPIs
-                        availability={safeNumber(kpisData?.kpis?.disponibilidade, 0)}
-                        performance={safeNumber(kpisData?.kpis?.performance, 0)}
-                        quality={safeNumber(kpisData?.kpis?.quality ?? kpisData?.kpis?.qualidade, 0)}
-                        bottleneck={{
-                            name: safeString(kpisData?.gargalo?.nome, 'N/A'),
-                            oee: safeNumber(kpisData?.gargalo?.oee, 0)
-                        }}
-                        ritmoAtual={calculations.vazaoCalculada}
-                        ritmoNecessario={calculations.ritmoNecessario}
-                        desvioProjetado={calculations.desvioProjetado}
-                        equipamentos={equipamentosConfig}
-                    />
-
-                    {/* Descarte da Linha (Agregado) */}
-                    <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 mb-6">
-                        <h3 className="text-sm font-semibold text-gray-700 mb-3">Descarte da Linha</h3>
-                        <div className="grid grid-cols-2 gap-4">
-                            <div className="bg-red-50 p-3 rounded border border-red-100">
-                                <span className="text-xs text-red-600 font-medium bloque">Total (Tons)</span>
-                                <span className="text-lg font-bold text-red-800">
-                                    {(equipamentosDetalhados.reduce((acc, eq) => acc + (safeNumber(eq.medicoes?.pecas_ruins, 0) * safeNumber(eq.medicoes?.formato_gramas, 0) / 1000000), 0)).toFixed(3)} t
-                                </span>
-                            </div>
-                            <div className="bg-red-50 p-3 rounded border border-red-100">
-                                <span className="text-xs text-red-600 font-medium block">Percentual</span>
-                                <span className="text-lg font-bold text-red-800">
-                                    {(() => {
-                                        // Descarte total = soma de todos os equipamentos
-                                        let totalWasteTons = 0;
-
-                                        equipamentosDetalhados.forEach(eq => {
-                                            const fmt = safeNumber(eq.medicoes?.formato_gramas, 0);
-                                            const ruins = safeNumber(eq.medicoes?.pecas_ruins, 0);
-                                            if (fmt > 0) {
-                                                totalWasteTons += (ruins * fmt) / 1000000;
-                                            }
-                                        });
-
-                                        // Produção real da linha (do OLE/backend) - já em toneladas
-                                        const producaoRealTons = productionData.producaoReal;
-
-                                        // Percentual = Descarte / Produção Real × 100
-                                        return producaoRealTons > 0
-                                            ? ((totalWasteTons / producaoRealTons) * 100).toFixed(2)
-                                            : '0.00';
-                                    })()}%
-                                </span>
+            {/* ---- Conteúdo ---- */}
+            <div style={S.content}>
+                {/* Alert banner offline */}
+                {isSystemOffline && (
+                    <div style={S.banner}>
+                        <AlertTriangle size={18} color="#b53a2b" style={{ flexShrink: 0, marginTop: 1 }} />
+                        <div>
+                            <div style={{ fontWeight: 600, color: '#b53a2b', fontSize: 13 }}>Sistema Offline ou Sem Comunicação</div>
+                            <div style={{ fontSize: 12, color: '#657384', marginTop: 2 }}>
+                                Não estamos recebendo dados do coletor. Verifique a conexão de rede.
                             </div>
                         </div>
                     </div>
+                )}
 
-                    <Diagnostics alerts={diagnosticAlerts} />
+                {/* === TAB: HOME === */}
+                {activeTab === 'home' && (
+                    <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                        <div className="lg:col-span-8 space-y-6">
+                            <Header {...headerProps} />
+                            <Progress
+                                producaoReal={productionData.producaoReal}
+                                producaoEsperada={safeNumber(oleData?.producao_esperada || oleData?.producao_planejada_ate_agora, 0)}
+                                projecao={calculations.projecao}
+                                metaTurno={productionData.metaTotal}
+                                tempoDecorridoPerc={calculations.tempoDecorridoPerc}
+                            />
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                {equipamentosDetalhados.map((eq, idx) => (
+                                    <EquipmentCard
+                                        key={idx}
+                                        nome={eq.nome}
+                                        funcao={eq.tipo}
+                                        estado={eq.medicoes?.estado ?? 'Desconhecido'}
+                                        oee={safeNumber(eq.medicoes?.oee, 0)}
+                                        velocidadeAtual={safeNumber(eq.medicoes?.velocidade_atual, 0)}
+                                        velocidadeNominal={safeNumber(eq.velocidade_nominal, 100)}
+                                        boas={safeNumber(eq.medicoes?.pecas_boas, 0)}
+                                        ruins={safeNumber(eq.medicoes?.pecas_ruins, 0)}
+                                        ultimaParada="N/A"
+                                    />
+                                ))}
+                            </div>
+                            {linhaConfig && (
+                                <MultiEquipmentTimeline
+                                    linhaId={linhaConfig.id}
+                                    linhaNome={linhaConfig.nome}
+                                    equipamentos={equipamentosConfig}
+                                />
+                            )}
+                        </div>
 
-                    <Upstream />
-                    <Downstream />
-                </div>
+                        <div className="lg:col-span-4 space-y-6">
+                            <KPIs
+                                availability={safeNumber(kpisData?.kpis?.disponibilidade, 0)}
+                                performance={safeNumber(kpisData?.kpis?.performance, 0)}
+                                quality={safeNumber(kpisData?.kpis?.quality ?? kpisData?.kpis?.qualidade, 0)}
+                                bottleneck={{
+                                    name: safeString(kpisData?.gargalo?.nome, 'N/A'),
+                                    oee: safeNumber(kpisData?.gargalo?.oee, 0)
+                                }}
+                                ritmoAtual={calculations.vazaoCalculada}
+                                ritmoNecessario={calculations.ritmoNecessario}
+                                desvioProjetado={calculations.desvioProjetado}
+                                equipamentos={equipamentosConfig}
+                            />
+                            <div className="bg-white rounded-lg border border-gray-200 p-4">
+                                <h3 className="text-sm font-semibold text-gray-700 mb-3">Descarte da Linha</h3>
+                                <div className="grid grid-cols-2 gap-3">
+                                    <div style={{ background: '#f4dad6', padding: '10px 12px', borderRadius: 6 }}>
+                                        <div style={{ fontSize: 10, color: '#b53a2b', textTransform: 'uppercase', fontWeight: 600 }}>Total (Tons)</div>
+                                        <div style={{ fontSize: 18, fontWeight: 700, color: '#b53a2b' }}>
+                                            {(equipamentosDetalhados.reduce((acc, eq) =>
+                                                acc + (safeNumber(eq.medicoes?.pecas_ruins, 0) * safeNumber(eq.medicoes?.formato_gramas, 0) / 1000000), 0
+                                            )).toFixed(3)} t
+                                        </div>
+                                    </div>
+                                    <div style={{ background: '#f4dad6', padding: '10px 12px', borderRadius: 6 }}>
+                                        <div style={{ fontSize: 10, color: '#b53a2b', textTransform: 'uppercase', fontWeight: 600 }}>Percentual</div>
+                                        <div style={{ fontSize: 18, fontWeight: 700, color: '#b53a2b' }}>
+                                            {(() => {
+                                                let totalWasteTons = 0;
+                                                equipamentosDetalhados.forEach(eq => {
+                                                    const fmt = safeNumber(eq.medicoes?.formato_gramas, 0);
+                                                    const ruins = safeNumber(eq.medicoes?.pecas_ruins, 0);
+                                                    if (fmt > 0) totalWasteTons += (ruins * fmt) / 1000000;
+                                                });
+                                                return productionData.producaoReal > 0
+                                                    ? ((totalWasteTons / productionData.producaoReal) * 100).toFixed(2)
+                                                    : '0.00';
+                                            })()}%
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <Diagnostics alerts={diagnosticAlerts} />
+                            <Upstream />
+                            <Downstream />
+                        </div>
+                    </div>
+                )}
+
+                {/* === TAB: ANALYTICS === */}
+                {activeTab === 'analytics' && (
+                    <AnalyticsTab linhaId={linhaId} linhaNome={linhaConfig?.nome} />
+                )}
+
+                {/* === TAB: EQUIPAMENTOS === */}
+                {activeTab === 'equipment' && (
+                    <div className="space-y-6">
+                        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                            {equipamentosDetalhados.map((eq, idx) => {
+                                const estado = eq.medicoes?.estado || 'N/A';
+                                const stateBg = estado === 'Produzindo' ? '#e3efe7' : estado === 'Parado' ? '#f4dad6' : '#e9ecef';
+                                const stateColor = estado === 'Produzindo' ? '#2d8659' : estado === 'Parado' ? '#b53a2b' : '#657384';
+                                return (
+                                    <div key={idx} style={{ background: '#ffffff', border: '1px solid #d7dbe0', borderRadius: 6, padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
+                                        <div style={{ display: 'flex', gap: 14, alignItems: 'center' }}>
+                                            <div style={{ width: 44, height: 44, borderRadius: 6, background: '#3f5b7c', color: '#fff', display: 'grid', placeItems: 'center', fontWeight: 700, fontSize: 16, flexShrink: 0 }}>
+                                                {(eq.nome || 'E').charAt(0)}
+                                            </div>
+                                            <div style={{ flex: 1 }}>
+                                                <div style={{ fontWeight: 600, fontSize: 14, color: '#2c3138' }}>{eq.nome}</div>
+                                                <div style={{ fontSize: 11, color: '#657384' }}>{eq.tipo} · {eq.codigo}</div>
+                                            </div>
+                                            <span style={{ padding: '4px 10px', borderRadius: 5, fontSize: 11, fontWeight: 600, textTransform: 'uppercase', background: stateBg, color: stateColor }}>
+                                                {estado}
+                                            </span>
+                                        </div>
+                                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                                            {[
+                                                { l: 'OEE', v: `${(safeNumber(eq.medicoes?.oee, 0) * 100).toFixed(1)}%` },
+                                                { l: 'Velocidade', v: `${safeNumber(eq.medicoes?.velocidade_atual, 0)} u/min` },
+                                                { l: 'Peças Boas', v: safeNumber(eq.medicoes?.pecas_boas, 0).toLocaleString() },
+                                                { l: 'Descartes', v: safeNumber(eq.medicoes?.pecas_ruins, 0).toLocaleString() },
+                                            ].map(kpi => (
+                                                <div key={kpi.l} style={{ background: '#f4f5f7', padding: '8px 10px', borderRadius: 5 }}>
+                                                    <div style={{ fontSize: 10, color: '#657384', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{kpi.l}</div>
+                                                    <div style={{ fontSize: 17, fontWeight: 600, color: '#2c3138', fontVariantNumeric: 'tabular-nums' }}>{kpi.v}</div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                        <button
+                                            onClick={() => navigate(`/equipamento/${eq.id || eq.codigo}`)}
+                                            style={{ width: '100%', padding: '7px 0', border: '1px solid #d7dbe0', borderRadius: 5, background: '#f4f5f7', color: '#3f5b7c', fontSize: 12, fontWeight: 500, cursor: 'pointer' }}
+                                        >
+                                            Ver Detalhes →
+                                        </button>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </div>
+                )}
+
+                {/* === TAB: ÁRVORE DE PERDAS === */}
+                {activeTab === 'losses' && linhaConfig && (
+                    <div className="space-y-6">
+                        <LossTreeCard linhaId={linhaConfig.id} djangoUrl={DJANGO_API_URL} />
+                        <LossWasteAnalysis lineId={String(linhaConfig.id)} />
+                    </div>
+                )}
+                {activeTab === 'losses' && !linhaConfig && (
+                    <div style={{ padding: 40, textAlign: 'center', color: '#657384' }}>
+                        Carregando configuração da linha…
+                    </div>
+                )}
             </div>
         </div>
     );

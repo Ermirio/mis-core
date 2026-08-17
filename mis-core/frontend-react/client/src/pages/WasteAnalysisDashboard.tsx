@@ -1,22 +1,28 @@
+/**
+ * WasteAnalysisDashboard — Análise de Descartes (refugo) — POC ISA-101.
+ *
+ * Reescrita para o padrão da `04_POC_UI.html`:
+ *   - Topbar com filtro de período (Turno/Dia/Semana/Mês/Ano/Custom) + linhas
+ *   - KPI strip 4 colunas (Total kg, %, Produção, Maior descarte)
+ *   - 3 chart-cards: descarte por linha (bar), top equipamentos (pie),
+ *     descarte por estado da máquina (donut)
+ *   - Panel de detalhamento por linha — tabela densa com badge de status
+ *
+ * Mantém: mock fallback, auto-refresh de 30s para Turno/Dia, export CSV.
+ */
 import React, { useState, useEffect, useCallback } from 'react';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Badge } from "@/components/ui/badge";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Calendar } from "@/components/ui/calendar";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import {
     Trash2, TrendingDown, Factory, AlertTriangle, RefreshCw,
-    CalendarIcon, BarChart3, PieChart, LineChart, Download, Filter, ChevronDown
-} from "lucide-react";
-import { format, subDays } from "date-fns";
-import { ptBR } from "date-fns/locale";
+    BarChart3, PieChart, Download, ChevronDown
+} from 'lucide-react';
+import { format, subDays } from 'date-fns';
 import Plot from 'react-plotly.js';
 import axios from 'axios';
 
 import { DJANGO_API_URL as DJANGO_API } from '@/config/api';
+import { MOCK_DESCARTES_LINHAS, MOCK_DESCARTES_RESUMO } from '@/mocks/demoData';
+import { KpiStrip, KpiCard, ChartCard, ChartRow, Panel, Tag } from '@/components/v2';
+import { fmt as numFmt } from '@/components/v2/stats';
 
 interface WasteData {
     periodo: string;
@@ -47,11 +53,7 @@ interface WasteData {
         descarte_tons: number;
         descarte_percentual: number;
     } | null;
-    evolucao_temporal: Array<{
-        hora: string;
-        descarte: number;
-        producao: number;
-    }>;
+    evolucao_temporal: Array<{ hora: string; descarte: number; producao: number; }>;
     descarte_por_estado?: Array<{
         estado_code: number;
         estado_label: string;
@@ -60,11 +62,11 @@ interface WasteData {
     }>;
 }
 
-interface LinhaOption {
-    id: number;
-    nome: string;
-    codigo: string;
-}
+interface LinhaOption { id: number; nome: string; codigo: string; }
+
+// Cores ISA-101 reservadas para gráficos categóricos (sem rosa/laranja-flame
+// dramatic do legado; mais sóbrio).
+const PIE_COLORS = ['#3f5b7c', '#c9932d', '#2d8659', '#8a6ba8', '#b53a2b', '#657384', '#9ba3ad', '#5c6f8d'];
 
 const WasteAnalysisDashboard: React.FC = () => {
     const [linhasDisponiveis, setLinhasDisponiveis] = useState<LinhaOption[]>([]);
@@ -76,73 +78,76 @@ const WasteAnalysisDashboard: React.FC = () => {
     });
     const [data, setData] = useState<WasteData | null>(null);
     const [loading, setLoading] = useState(false);
-    const [error, setError] = useState<string | null>(null);
-    const [autoRefresh, setAutoRefresh] = useState(true);
+    const [isDemo, setIsDemo] = useState(false);
+    const [showLineMenu, setShowLineMenu] = useState(false);
 
-    // Carregar linhas disponíveis
     useEffect(() => {
         axios.get(`${DJANGO_API}/descartes/linhas/`)
-            .then(res => setLinhasDisponiveis(res.data))
-            .catch(err => console.error('Erro ao carregar linhas:', err));
+            .then(res => {
+                const list = res.data || [];
+                setLinhasDisponiveis(list.length > 0 ? list : (MOCK_DESCARTES_LINHAS as any));
+            })
+            .catch(() => setLinhasDisponiveis(MOCK_DESCARTES_LINHAS as any));
     }, []);
 
-    // Fetch dados
     const fetchData = useCallback(async () => {
         setLoading(true);
-        setError(null);
         try {
             const params = new URLSearchParams();
             params.append('periodo', periodo);
-
             if (linhasSelecionadas.includes('todas') || linhasSelecionadas.length === 0) {
                 params.append('linhas', 'todas');
             } else {
                 params.append('linhas', linhasSelecionadas.join(','));
             }
-
             if (periodo === 'CUSTOM') {
                 params.append('data_inicio', dateRange.from.toISOString());
                 params.append('data_fim', dateRange.to.toISOString());
             }
-
             const res = await axios.get(`${DJANGO_API}/descartes/resumo/?${params.toString()}`);
-            setData(res.data);
-        } catch (err: any) {
-            console.error('Erro:', err);
-            setError(err.response?.data?.error || 'Erro ao carregar dados');
+            if (res.data?.por_linha?.length > 0) {
+                setData(res.data);
+                setIsDemo(false);
+            } else {
+                setData(MOCK_DESCARTES_RESUMO as any);
+                setIsDemo(true);
+            }
+        } catch (err) {
+            console.error('Descartes fetch falhou — usando mock', err);
+            setData(MOCK_DESCARTES_RESUMO as any);
+            setIsDemo(true);
         } finally {
             setLoading(false);
         }
     }, [periodo, linhasSelecionadas, dateRange]);
 
-    // Auto-refresh a cada 30s
+    // Auto-refresh para granularidades curtas
     useEffect(() => {
         fetchData();
-        if (autoRefresh && (periodo === 'TURNO' || periodo === 'DIA')) {
+        if (periodo === 'TURNO' || periodo === 'DIA') {
             const interval = setInterval(fetchData, 30000);
             return () => clearInterval(interval);
         }
-    }, [fetchData, autoRefresh, periodo]);
+    }, [fetchData, periodo]);
 
     const toggleLinha = (codigo: string) => {
         if (codigo === 'todas') {
             setLinhasSelecionadas(['todas']);
-        } else {
-            setLinhasSelecionadas(prev => {
-                const withoutTodas = prev.filter(c => c !== 'todas');
-                if (withoutTodas.includes(codigo)) {
-                    const next = withoutTodas.filter(c => c !== codigo);
-                    return next.length === 0 ? ['todas'] : next;
-                } else {
-                    return [...withoutTodas, codigo];
-                }
-            });
+            return;
         }
+        setLinhasSelecionadas(prev => {
+            const without = prev.filter(c => c !== 'todas');
+            if (without.includes(codigo)) {
+                const next = without.filter(c => c !== codigo);
+                return next.length === 0 ? ['todas'] : next;
+            }
+            return [...without, codigo];
+        });
     };
 
     const exportCSV = () => {
         if (!data) return;
-        let csv = "Linha,Descarte (tons),Descarte (%),Produção (tons),Unidades Ruins\n";
+        let csv = 'Linha,Descarte (tons),Descarte (%),Produção (tons),Unidades Ruins\n';
         data.por_linha.forEach(l => {
             csv += `${l.linha},${l.descarte_tons},${l.descarte_percentual},${l.producao_tons},${l.unidades_ruins}\n`;
         });
@@ -154,380 +159,288 @@ const WasteAnalysisDashboard: React.FC = () => {
         a.click();
     };
 
-    // Cores para estados
-    const getEstadoColor = (label: string) => {
-        const lower = label.toLowerCase();
-        if (lower.includes('produzindo')) return '#22c55e'; // Green
-        if (lower.includes('parado')) return '#ef4444'; // Red
-        if (lower.includes('manutenção') || lower.includes('manutencao')) return '#8b5cf6'; // Purple
-        if (lower.includes('aguardando') || lower.includes('block')) return '#f97316'; // Orange
-        if (lower.includes('offline')) return '#64748b'; // Slate
-        return '#94a3b8'; // Default Gray
-    };
-
     return (
-        <div className="w-full h-full p-4 bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-950 dark:to-slate-900 overflow-auto">
+        <div className="isa-root" style={{ padding: '16px 20px', minHeight: '100vh' }}>
             {/* Header */}
-            <div className="flex flex-wrap justify-between items-center mb-6 gap-4">
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', flexWrap: 'wrap', gap: 12, marginBottom: 14 }}>
                 <div>
-                    <h1 className="text-2xl font-bold flex items-center gap-2 text-slate-800 dark:text-white">
-                        <Trash2 className="h-7 w-7 text-red-500" />
+                    <h1 style={{ margin: 0, fontSize: 20, fontWeight: 600, color: 'var(--isa-text)', display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <Trash2 size={20} style={{ color: 'var(--isa-bad)' }} />
                         Análise de Descartes
+                        {isDemo && <Tag tone="warn">SIMULAÇÃO</Tag>}
                     </h1>
-                    <p className="text-sm text-slate-500 dark:text-slate-400">
+                    <div style={{ marginTop: 2, fontSize: 'var(--isa-fs-default)', color: 'var(--isa-text-muted)' }}>
                         {data?.periodo_label || 'Selecione um período'}
-                    </p>
-                </div>
-
-                <div className="flex flex-wrap items-center gap-3">
-                    {/* Seletor de Linhas */}
-                    <Popover>
-                        <PopoverTrigger asChild>
-                            <Button variant="outline" className="w-[200px] justify-between">
-                                <span className="truncate">
-                                    {linhasSelecionadas.includes('todas')
-                                        ? 'Todas as Linhas'
-                                        : `${linhasSelecionadas.length} linha(s)`
-                                    }
-                                </span>
-                                <ChevronDown className="h-4 w-4 ml-2" />
-                            </Button>
-                        </PopoverTrigger>
-                        <PopoverContent className="w-[250px] p-2">
-                            <ScrollArea className="h-[200px]">
-                                <div
-                                    className="flex items-center gap-2 p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded cursor-pointer"
-                                    onClick={() => toggleLinha('todas')}
-                                >
-                                    <Checkbox checked={linhasSelecionadas.includes('todas')} />
-                                    <span className="font-medium">🏭 Todas as Linhas</span>
-                                </div>
-                                <div className="border-t my-2" />
-                                {linhasDisponiveis.map(l => (
-                                    <div
-                                        key={l.codigo}
-                                        className="flex items-center gap-2 p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded cursor-pointer"
-                                        onClick={() => toggleLinha(l.codigo)}
-                                    >
-                                        <Checkbox checked={linhasSelecionadas.includes(l.codigo)} />
-                                        <span>{l.nome}</span>
-                                    </div>
-                                ))}
-                            </ScrollArea>
-                        </PopoverContent>
-                    </Popover>
-
-                    {/* Seletor de Período */}
-                    <Select value={periodo} onValueChange={setPeriodo}>
-                        <SelectTrigger className="w-[150px]">
-                            <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                            <SelectItem value="TURNO">Turno Atual</SelectItem>
-                            <SelectItem value="DIA">Hoje</SelectItem>
-                            <SelectItem value="SEMANA">Esta Semana</SelectItem>
-                            <SelectItem value="MES">Este Mês</SelectItem>
-                            <SelectItem value="ANO">Este Ano</SelectItem>
-                            <SelectItem value="CUSTOM">Personalizado</SelectItem>
-                        </SelectContent>
-                    </Select>
-
-                    {/* Date Picker para período customizado */}
-                    {periodo === 'CUSTOM' && (
-                        <Popover>
-                            <PopoverTrigger asChild>
-                                <Button variant="outline" className="gap-2">
-                                    <CalendarIcon className="h-4 w-4" />
-                                    {format(dateRange.from, 'dd/MM')} - {format(dateRange.to, 'dd/MM')}
-                                </Button>
-                            </PopoverTrigger>
-                            <PopoverContent className="w-auto p-0" align="end">
-                                <Calendar
-                                    mode="range"
-                                    selected={{ from: dateRange.from, to: dateRange.to }}
-                                    onSelect={(range) => range && setDateRange({ from: range.from || new Date(), to: range.to || new Date() })}
-                                    locale={ptBR}
-                                />
-                            </PopoverContent>
-                        </Popover>
-                    )}
-
-                    <Button onClick={fetchData} variant="default" size="sm" disabled={loading}>
-                        <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
-                        Atualizar
-                    </Button>
-
-                    <Button onClick={exportCSV} variant="outline" size="sm" disabled={!data}>
-                        <Download className="h-4 w-4 mr-2" />
-                        CSV
-                    </Button>
-                </div>
-            </div>
-
-            {error && (
-                <div className="bg-red-100 text-red-700 p-4 rounded-lg mb-4 flex items-center gap-2">
-                    <AlertTriangle className="h-5 w-5" />
-                    {error}
-                </div>
-            )}
-
-            {/* KPI Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-                <Card className="bg-gradient-to-br from-red-500 to-red-600 text-white border-0 shadow-lg">
-                    <CardContent className="pt-6">
-                        <div className="flex items-center justify-between">
-                            <div>
-                                <p className="text-red-100 text-sm font-medium">Descarte Total</p>
-                                <p className="text-3xl font-bold">{data?.consolidado.descarte_tons.toFixed(3) || '0.000'} t</p>
-                                <p className="text-red-200 text-xs mt-1">{data?.consolidado.total_unidades.toLocaleString() || 0} unidades</p>
-                            </div>
-                            <Trash2 className="h-12 w-12 text-red-300 opacity-50" />
-                        </div>
-                    </CardContent>
-                </Card>
-
-                <Card className="bg-gradient-to-br from-orange-500 to-amber-500 text-white border-0 shadow-lg">
-                    <CardContent className="pt-6">
-                        <div className="flex items-center justify-between">
-                            <div>
-                                <p className="text-orange-100 text-sm font-medium">Percentual</p>
-                                <p className="text-3xl font-bold">{data?.consolidado.descarte_percentual.toFixed(2) || '0.00'}%</p>
-                                <p className="text-orange-200 text-xs mt-1">sobre produção total</p>
-                            </div>
-                            <TrendingDown className="h-12 w-12 text-orange-300 opacity-50" />
-                        </div>
-                    </CardContent>
-                </Card>
-
-                <Card className="bg-gradient-to-br from-emerald-500 to-green-600 text-white border-0 shadow-lg">
-                    <CardContent className="pt-6">
-                        <div className="flex items-center justify-between">
-                            <div>
-                                <p className="text-emerald-100 text-sm font-medium">Produção Total</p>
-                                <p className="text-3xl font-bold">{data?.consolidado.producao_tons.toFixed(2) || '0.00'} t</p>
-                                <p className="text-emerald-200 text-xs mt-1">{data?.por_linha?.length || 0} linha(s)</p>
-                            </div>
-                            <Factory className="h-12 w-12 text-emerald-300 opacity-50" />
-                        </div>
-                    </CardContent>
-                </Card>
-
-                <Card className="bg-gradient-to-br from-rose-500 to-pink-600 text-white border-0 shadow-lg">
-                    <CardContent className="pt-6">
-                        <div className="flex items-center justify-between">
-                            <div>
-                                <p className="text-rose-100 text-sm font-medium">Maior Descarte</p>
-                                <p className="text-xl font-bold truncate">{data?.linha_maior_descarte?.linha || 'N/A'}</p>
-                                <p className="text-rose-200 text-xs mt-1">
-                                    {data?.linha_maior_descarte?.descarte_percentual.toFixed(2) || '0.00'}%
-                                    ({data?.linha_maior_descarte?.descarte_tons.toFixed(3) || '0.000'} t)
-                                </p>
-                            </div>
-                            <AlertTriangle className="h-12 w-12 text-rose-300 opacity-50" />
-                        </div>
-                    </CardContent>
-                </Card>
-            </div>
-
-            {/* Gráficos */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6 mb-6">
-                {/* Comparação por Linha */}
-                <Card className="shadow-lg lg:col-span-2 xl:col-span-1">
-                    <CardHeader>
-                        <CardTitle className="flex items-center gap-2">
-                            <BarChart3 className="h-5 w-5 text-blue-500" />
-                            Descarte por Linha
-                        </CardTitle>
-                        <CardDescription>Comparação entre linhas selecionadas</CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                        {data?.por_linha && data.por_linha.length > 0 ? (
-                            <Plot
-                                data={[
-                                    {
-                                        x: data.por_linha.map(l => l.linha),
-                                        y: data.por_linha.map(l => l.descarte_tons),
-                                        type: 'bar',
-                                        name: 'Descarte (tons)',
-                                        marker: { color: 'rgba(239, 68, 68, 0.8)' },
-                                        text: data.por_linha.map(l => `${l.descarte_percentual.toFixed(2)}%`),
-                                        textposition: 'outside'
-                                    }
-                                ]}
-                                layout={{
-                                    autosize: true,
-                                    height: 300,
-                                    margin: { l: 50, r: 20, t: 30, b: 80 },
-                                    xaxis: { tickangle: -45 },
-                                    yaxis: { title: 'Toneladas' },
-                                    showlegend: false
-                                }}
-                                useResizeHandler
-                                className="w-full"
-                            />
-                        ) : (
-                            <div className="h-[300px] flex items-center justify-center text-slate-400">
-                                Sem dados disponíveis
-                            </div>
-                        )}
-                    </CardContent>
-                </Card>
-
-                {/* Top Equipamentos */}
-                <Card className="shadow-lg">
-                    <CardHeader>
-                        <CardTitle className="flex items-center gap-2">
-                            <PieChart className="h-5 w-5 text-purple-500" />
-                            Top Geradores de Refugo
-                        </CardTitle>
-                        <CardDescription>Equipamentos com maior descarte</CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                        {data?.top_equipamentos && data.top_equipamentos.length > 0 ? (
-                            <Plot
-                                data={[
-                                    {
-                                        labels: data.top_equipamentos.map(e => `${e.equipamento} (${e.linha})`),
-                                        values: data.top_equipamentos.map(e => e.tons),
-                                        type: 'pie',
-                                        hole: 0.4,
-                                        textinfo: 'percent',
-                                        textposition: 'outside',
-                                        marker: {
-                                            colors: [
-                                                '#ef4444', '#f97316', '#eab308', '#22c55e', '#14b8a6',
-                                                '#3b82f6', '#8b5cf6', '#ec4899', '#64748b', '#0ea5e9'
-                                            ]
-                                        }
-                                    }
-                                ]}
-                                layout={{
-                                    autosize: true,
-                                    height: 300,
-                                    margin: { l: 20, r: 20, t: 30, b: 30 },
-                                    showlegend: true,
-                                    legend: { orientation: 'h', y: -0.2 }
-                                }}
-                                useResizeHandler
-                                className="w-full"
-                            />
-                        ) : (
-                            <div className="h-[300px] flex items-center justify-center text-slate-400">
-                                Sem dados disponíveis
-                            </div>
-                        )}
-                    </CardContent>
-                </Card>
-
-                {/* Descarte por Estado (NOVO) */}
-                <Card className="shadow-lg">
-                    <CardHeader>
-                        <CardTitle className="flex items-center gap-2">
-                            <PieChart className="h-5 w-5 text-orange-500" />
-                            Descarte por Estado
-                        </CardTitle>
-                        <CardDescription>Associação com estado da máquina</CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                        {data?.descarte_por_estado && data.descarte_por_estado.length > 0 ? (
-                            <Plot
-                                data={[
-                                    {
-                                        labels: data.descarte_por_estado.map(d => d.estado_label),
-                                        values: data.descarte_por_estado.map(d => d.tons),
-                                        type: 'pie',
-                                        hole: 0.6,
-                                        textinfo: 'percent',
-                                        textposition: 'outside',
-                                        marker: {
-                                            colors: data.descarte_por_estado.map(d => getEstadoColor(d.estado_label))
-                                        }
-                                    }
-                                ]}
-                                layout={{
-                                    autosize: true,
-                                    height: 300,
-                                    margin: { l: 20, r: 20, t: 30, b: 30 },
-                                    showlegend: true,
-                                    legend: { orientation: 'h', y: -0.2 }
-                                }}
-                                useResizeHandler
-                                className="w-full"
-                            />
-                        ) : (
-                            <div className="h-[300px] flex items-center justify-center text-slate-400">
-                                Sem dados disponíveis
-                            </div>
-                        )}
-                    </CardContent>
-                </Card>
-            </div>
-
-            {/* Tabela Detalhada */}
-            <Card className="shadow-lg">
-                <CardHeader>
-                    <CardTitle>Detalhamento por Linha</CardTitle>
-                </CardHeader>
-                <CardContent>
-                    <div className="overflow-x-auto">
-                        <table className="w-full text-sm">
-                            <thead>
-                                <tr className="border-b bg-slate-50 dark:bg-slate-800">
-                                    <th className="text-left p-3 font-semibold">Linha</th>
-                                    <th className="text-right p-3 font-semibold">Produção (t)</th>
-                                    <th className="text-right p-3 font-semibold">Descarte (t)</th>
-                                    <th className="text-right p-3 font-semibold">Descarte (%)</th>
-                                    <th className="text-right p-3 font-semibold">Unidades</th>
-                                    <th className="text-center p-3 font-semibold">Status</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {data?.por_linha?.map((linha, idx) => (
-                                    <tr key={linha.codigo} className={`border-b ${idx % 2 === 0 ? 'bg-white dark:bg-slate-900' : 'bg-slate-50/50 dark:bg-slate-800/50'}`}>
-                                        <td className="p-3 font-medium">{linha.linha}</td>
-                                        <td className="p-3 text-right">{linha.producao_tons.toFixed(2)}</td>
-                                        <td className="p-3 text-right text-red-600 font-semibold">{linha.descarte_tons.toFixed(4)}</td>
-                                        <td className="p-3 text-right">
-                                            <Badge variant={linha.descarte_percentual > 1 ? 'destructive' : linha.descarte_percentual > 0.5 ? 'secondary' : 'outline'}>
-                                                {linha.descarte_percentual.toFixed(2)}%
-                                            </Badge>
-                                        </td>
-                                        <td className="p-3 text-right">{linha.unidades_ruins.toLocaleString()}</td>
-                                        <td className="p-3 text-center">
-                                            {linha.descarte_percentual > 1 ? (
-                                                <span className="text-red-500">⚠️ Alto</span>
-                                            ) : linha.descarte_percentual > 0.5 ? (
-                                                <span className="text-yellow-500">⚡ Atenção</span>
-                                            ) : (
-                                                <span className="text-green-500">✅ OK</span>
-                                            )}
-                                        </td>
-                                    </tr>
-                                ))}
-                                {(!data?.por_linha || data.por_linha.length === 0) && (
-                                    <tr>
-                                        <td colSpan={6} className="p-8 text-center text-slate-400">
-                                            Nenhum dado disponível para o período selecionado
-                                        </td>
-                                    </tr>
-                                )}
-                            </tbody>
-                            {data?.por_linha && data.por_linha.length > 0 && (
-                                <tfoot>
-                                    <tr className="bg-slate-100 dark:bg-slate-800 font-bold">
-                                        <td className="p-3">TOTAL</td>
-                                        <td className="p-3 text-right">{data.consolidado.producao_tons.toFixed(2)}</td>
-                                        <td className="p-3 text-right text-red-600">{data.consolidado.descarte_tons.toFixed(4)}</td>
-                                        <td className="p-3 text-right">{data.consolidado.descarte_percentual.toFixed(2)}%</td>
-                                        <td className="p-3 text-right">{data.consolidado.total_unidades.toLocaleString()}</td>
-                                        <td className="p-3"></td>
-                                    </tr>
-                                </tfoot>
-                            )}
-                        </table>
                     </div>
-                </CardContent>
-            </Card>
+                </div>
+
+                <div className="isa-toolbar" style={{ marginBottom: 0 }}>
+                    {/* Linhas — popover simples nativo */}
+                    <div style={{ position: 'relative' }}>
+                        <button
+                            type="button" className="ghost"
+                            onClick={() => setShowLineMenu(s => !s)}
+                            style={{ minWidth: 160 }}
+                        >
+                            {linhasSelecionadas.includes('todas') ? 'Todas as Linhas' : `${linhasSelecionadas.length} linha(s)`}
+                            <ChevronDown size={12} style={{ marginLeft: 4 }} />
+                        </button>
+                        {showLineMenu && (
+                            <div style={{
+                                position: 'absolute', top: 'calc(100% + 4px)', right: 0, zIndex: 20,
+                                background: 'var(--isa-bg-panel)', border: '1px solid var(--isa-border)',
+                                borderRadius: 'var(--isa-radius)', padding: 6, minWidth: 220,
+                                maxHeight: 240, overflowY: 'auto', boxShadow: 'var(--isa-shadow-2)',
+                            }}>
+                                <label style={{ display: 'flex', alignItems: 'center', gap: 6, padding: 6, cursor: 'pointer' }}>
+                                    <input type="checkbox" checked={linhasSelecionadas.includes('todas')} onChange={() => toggleLinha('todas')} />
+                                    <span style={{ fontWeight: 500 }}>Todas as Linhas</span>
+                                </label>
+                                <div style={{ borderTop: '1px solid var(--isa-border)', margin: '4px 0' }} />
+                                {linhasDisponiveis.map(l => (
+                                    <label key={l.codigo} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: 6, cursor: 'pointer' }}>
+                                        <input type="checkbox" checked={linhasSelecionadas.includes(l.codigo)} onChange={() => toggleLinha(l.codigo)} />
+                                        <span style={{ fontSize: 'var(--isa-fs-body)' }}>{l.nome}</span>
+                                    </label>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+
+                    <label htmlFor="periodo">Período</label>
+                    <select id="periodo" value={periodo} onChange={e => setPeriodo(e.target.value)}>
+                        <option value="TURNO">Turno atual</option>
+                        <option value="DIA">Hoje</option>
+                        <option value="SEMANA">Esta semana</option>
+                        <option value="MES">Este mês</option>
+                        <option value="ANO">Este ano</option>
+                        <option value="CUSTOM">Personalizado</option>
+                    </select>
+                    {periodo === 'CUSTOM' && (
+                        <>
+                            <input
+                                type="date"
+                                value={format(dateRange.from, 'yyyy-MM-dd')}
+                                onChange={e => setDateRange({ ...dateRange, from: new Date(e.target.value) })}
+                            />
+                            <input
+                                type="date"
+                                value={format(dateRange.to, 'yyyy-MM-dd')}
+                                onChange={e => setDateRange({ ...dateRange, to: new Date(e.target.value) })}
+                            />
+                        </>
+                    )}
+                    <button type="button" onClick={fetchData} disabled={loading}>
+                        <RefreshCw size={12} style={{ marginRight: 4, verticalAlign: -1 }} />
+                        {loading ? 'Atualizando…' : 'Atualizar'}
+                    </button>
+                    <button type="button" className="ghost" onClick={exportCSV} disabled={!data}>
+                        <Download size={12} style={{ marginRight: 4, verticalAlign: -1 }} />
+                        CSV
+                    </button>
+                </div>
+            </div>
+
+            {/* KPI strip */}
+            <KpiStrip cols={4}>
+                <KpiCard
+                    label="Descarte Total"
+                    value={numFmt.num(data?.consolidado.descarte_tons, 3)}
+                    unit="t"
+                    delta={
+                        data
+                            ? { value: `${data.consolidado.total_unidades.toLocaleString('pt-BR')} unidades`, tone: 'neutral' }
+                            : undefined
+                    }
+                />
+                <KpiCard
+                    label="Percentual"
+                    value={numFmt.num(data?.consolidado.descarte_percentual, 2)}
+                    unit="%"
+                    delta={
+                        data
+                            ? { value: 'sobre produção total', tone: data.consolidado.descarte_percentual > 1 ? 'down' : 'up' }
+                            : undefined
+                    }
+                />
+                <KpiCard
+                    label="Produção Total"
+                    value={numFmt.num(data?.consolidado.producao_tons, 2)}
+                    unit="t"
+                    delta={
+                        data
+                            ? { value: `${data.por_linha?.length || 0} linha(s)`, tone: 'neutral' }
+                            : undefined
+                    }
+                />
+                <KpiCard
+                    label="Maior Descarte"
+                    value={data?.linha_maior_descarte?.linha || '—'}
+                    delta={
+                        data?.linha_maior_descarte
+                            ? { value: `${data.linha_maior_descarte.descarte_percentual.toFixed(2)}% (${data.linha_maior_descarte.descarte_tons.toFixed(3)} t)`, tone: 'down' }
+                            : undefined
+                    }
+                />
+            </KpiStrip>
+
+            {/* Chart row 3 col */}
+            <ChartRow cols={3}>
+                <ChartCard title="Descarte por Linha" desc="Comparação entre linhas selecionadas">
+                    {data?.por_linha && data.por_linha.length > 0 ? (
+                        <Plot
+                            data={[{
+                                x: data.por_linha.map(l => l.linha),
+                                y: data.por_linha.map(l => l.descarte_tons),
+                                type: 'bar',
+                                name: 'Descarte (t)',
+                                marker: { color: '#b53a2b' },
+                                text: data.por_linha.map(l => `${l.descarte_percentual.toFixed(2)}%`),
+                                textposition: 'outside',
+                            }]}
+                            layout={{
+                                autosize: true,
+                                height: undefined,
+                                margin: { l: 50, r: 20, t: 10, b: 70 },
+                                xaxis: { tickangle: -40 },
+                                yaxis: { title: { text: 'Toneladas' } },
+                                showlegend: false,
+                                paper_bgcolor: 'transparent',
+                                plot_bgcolor: 'transparent',
+                                font: { family: 'system-ui', color: '#657384', size: 11 },
+                            } as any}
+                            useResizeHandler
+                            style={{ width: '100%', height: '100%' }}
+                        />
+                    ) : (
+                        <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--isa-text-muted)' }}>
+                            Sem dados disponíveis
+                        </div>
+                    )}
+                </ChartCard>
+
+                <ChartCard title="Top Geradores de Refugo" desc="Equipamentos com maior descarte">
+                    {data?.top_equipamentos && data.top_equipamentos.length > 0 ? (
+                        <Plot
+                            data={[{
+                                labels: data.top_equipamentos.map(e => `${e.equipamento} (${e.linha})`),
+                                values: data.top_equipamentos.map(e => e.tons),
+                                type: 'pie',
+                                hole: 0.4,
+                                textinfo: 'percent',
+                                textposition: 'outside',
+                                marker: { colors: PIE_COLORS },
+                            }]}
+                            layout={{
+                                autosize: true,
+                                margin: { l: 10, r: 10, t: 10, b: 30 },
+                                showlegend: true,
+                                legend: { orientation: 'h', y: -0.15, font: { size: 10 } },
+                                paper_bgcolor: 'transparent',
+                                plot_bgcolor: 'transparent',
+                                font: { family: 'system-ui', color: '#657384', size: 11 },
+                            } as any}
+                            useResizeHandler
+                            style={{ width: '100%', height: '100%' }}
+                        />
+                    ) : (
+                        <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--isa-text-muted)' }}>
+                            Sem dados disponíveis
+                        </div>
+                    )}
+                </ChartCard>
+
+                <ChartCard title="Descarte por Estado" desc="Associação com estado da máquina">
+                    {data?.descarte_por_estado && data.descarte_por_estado.length > 0 ? (
+                        <Plot
+                            data={[{
+                                labels: data.descarte_por_estado.map(d => d.estado_label),
+                                values: data.descarte_por_estado.map(d => d.tons),
+                                type: 'pie',
+                                hole: 0.6,
+                                textinfo: 'percent',
+                                textposition: 'outside',
+                                marker: { colors: PIE_COLORS },
+                            }]}
+                            layout={{
+                                autosize: true,
+                                margin: { l: 10, r: 10, t: 10, b: 30 },
+                                showlegend: true,
+                                legend: { orientation: 'h', y: -0.15, font: { size: 10 } },
+                                paper_bgcolor: 'transparent',
+                                plot_bgcolor: 'transparent',
+                                font: { family: 'system-ui', color: '#657384', size: 11 },
+                            } as any}
+                            useResizeHandler
+                            style={{ width: '100%', height: '100%' }}
+                        />
+                    ) : (
+                        <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--isa-text-muted)' }}>
+                            Sem dados disponíveis
+                        </div>
+                    )}
+                </ChartCard>
+            </ChartRow>
+
+            {/* Tabela detalhada */}
+            <Panel title="Detalhamento por Linha" style={{ marginTop: 12 }}>
+                <div style={{ overflowX: 'auto' }}>
+                    <table className="isa-tbl">
+                        <thead>
+                            <tr>
+                                <th>Linha</th>
+                                <th style={{ textAlign: 'right' }}>Produção (t)</th>
+                                <th style={{ textAlign: 'right' }}>Descarte (t)</th>
+                                <th style={{ textAlign: 'right' }}>Descarte (%)</th>
+                                <th style={{ textAlign: 'right' }}>Unidades</th>
+                                <th style={{ textAlign: 'center' }}>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {data?.por_linha
+                                ?.slice()
+                                .sort((a, b) => b.descarte_percentual - a.descarte_percentual)
+                                .map(linha => {
+                                    const tone: 'ok' | 'warn' | 'bad' =
+                                        linha.descarte_percentual > 1 ? 'bad'
+                                        : linha.descarte_percentual > 0.5 ? 'warn'
+                                        : 'ok';
+                                    return (
+                                        <tr key={linha.codigo}>
+                                            <td style={{ fontWeight: 500 }}>{linha.linha}</td>
+                                            <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{linha.producao_tons.toFixed(2)}</td>
+                                            <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: 'var(--isa-bad)', fontWeight: 600 }}>{linha.descarte_tons.toFixed(4)}</td>
+                                            <td style={{ textAlign: 'right' }}>
+                                                <Tag tone={tone}>{linha.descarte_percentual.toFixed(2)}%</Tag>
+                                            </td>
+                                            <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{linha.unidades_ruins.toLocaleString('pt-BR')}</td>
+                                            <td style={{ textAlign: 'center' }}>
+                                                {tone === 'bad' && <span style={{ color: 'var(--isa-bad)', fontWeight: 500 }}>Alto</span>}
+                                                {tone === 'warn' && <span style={{ color: 'var(--isa-warn)', fontWeight: 500 }}>Atenção</span>}
+                                                {tone === 'ok'   && <span style={{ color: 'var(--isa-ok)',   fontWeight: 500 }}>OK</span>}
+                                            </td>
+                                        </tr>
+                                    );
+                                })}
+                            {(!data?.por_linha || data.por_linha.length === 0) && (
+                                <tr><td colSpan={6} style={{ textAlign: 'center', color: 'var(--isa-text-muted)', padding: 20 }}>Sem dados de descarte no período.</td></tr>
+                            )}
+                        </tbody>
+                        {data?.por_linha && data.por_linha.length > 0 && (
+                            <tfoot>
+                                <tr style={{ background: 'var(--isa-bg-muted)' }}>
+                                    <td style={{ fontWeight: 700 }}>TOTAL</td>
+                                    <td style={{ textAlign: 'right', fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>{data.consolidado.producao_tons.toFixed(2)}</td>
+                                    <td style={{ textAlign: 'right', fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: 'var(--isa-bad)' }}>{data.consolidado.descarte_tons.toFixed(4)}</td>
+                                    <td style={{ textAlign: 'right', fontWeight: 600 }}>{data.consolidado.descarte_percentual.toFixed(2)}%</td>
+                                    <td style={{ textAlign: 'right', fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>{data.consolidado.total_unidades.toLocaleString('pt-BR')}</td>
+                                    <td></td>
+                                </tr>
+                            </tfoot>
+                        )}
+                    </table>
+                </div>
+            </Panel>
         </div>
     );
 };

@@ -241,10 +241,7 @@ const TrocaAutomaticaContent = ({ selectedLine }) => {
     if (!searchTerm) return skus;
     const term = searchTerm.toLowerCase();
     return skus.filter(sku =>
-      (sku.codigo_sku && sku.codigo_sku.toLowerCase().includes(term)) ||
-      (sku.descricao_sku && sku.descricao_sku.toLowerCase().includes(term)) ||
-      (sku.numero_op && sku.numero_op.toLowerCase().includes(term)) ||
-      (sku.dun14 && sku.dun14.toLowerCase().includes(term))
+      sku.numero_op && sku.numero_op.toLowerCase().includes(term)
     );
   }, [skus, searchTerm]);
 
@@ -770,7 +767,7 @@ const TrocaAutomaticaContent = ({ selectedLine }) => {
                             </InputGroup.Text>
                             <Form.Control
                               type="text"
-                              placeholder="    Buscar por SKU, Descrição, Nº da OP ou DUN14..."
+                              placeholder="    Digite a Ordem de Produção (OP) para filtrar..."
                               value={searchTerm}
                               onChange={(e) => setSearchTerm(e.target.value)}
                               className="border-start-0 shadow-sm"
@@ -788,7 +785,7 @@ const TrocaAutomaticaContent = ({ selectedLine }) => {
                         <Col md={4} className="d-flex align-items-center">
                           <div className="text-muted">
                             <FaFilter className="me-2" />
-                            <strong>{filteredSkus.length}</strong> de <strong>{skus.length}</strong> SKUs
+                            <strong>{filteredSkus.length}</strong> de <strong>{skus.length}</strong> Ordens
                           </div>
                         </Col>
                       </Row>
@@ -804,12 +801,10 @@ const TrocaAutomaticaContent = ({ selectedLine }) => {
                           <Table hover className="align-middle">
                             <thead className="table-dark">
                               <tr>
-                                <th className="fw-bold">SKU</th>
-                                <th className="fw-bold">Descrição</th>
                                 <th className="fw-bold">Nº OP</th>
+                                <th className="fw-bold">Descrição</th>
                                 <th className="fw-bold">Data OP</th>
                                 <th className="fw-bold">Status</th>
-                                <th className="fw-bold">DUN14</th>
                                 <th className="fw-bold text-center">Ação</th>
                               </tr>
                             </thead>
@@ -821,9 +816,7 @@ const TrocaAutomaticaContent = ({ selectedLine }) => {
                                 >
                                   <td>
                                     <div className="d-flex align-items-center gap-2">
-                                      <strong className="text-primary">
-                                        <HighlightText text={sku.codigo_sku} highlight={searchTerm} />
-                                      </strong>
+                                      <code><HighlightText text={sku.numero_op} highlight={searchTerm} /></code>
                                       {!sku.ja_rodou_nesta_linha && (
                                         <Badge bg="warning" text="dark" title="Este SKU nunca rodou nesta linha">
                                           Novo nesta linha
@@ -832,11 +825,10 @@ const TrocaAutomaticaContent = ({ selectedLine }) => {
                                     </div>
                                   </td>
                                   <td>
-                                    <div className="text-truncate" style={{ maxWidth: '200px' }} title={sku.descricao_sku}>
-                                      <HighlightText text={sku.descricao_sku} highlight={searchTerm} />
+                                    <div className="text-truncate" style={{ maxWidth: '220px' }} title={sku.descricao_sku}>
+                                      {sku.descricao_sku}
                                     </div>
                                   </td>
-                                  <td><code><HighlightText text={sku.numero_op} highlight={searchTerm} /></code></td>
                                   <td><small>{sku.dataop}</small></td>
                                   <td>
                                     <Badge
@@ -846,7 +838,6 @@ const TrocaAutomaticaContent = ({ selectedLine }) => {
                                       {sku.status_op}
                                     </Badge>
                                   </td>
-                                  <td><small className="font-monospace"><HighlightText text={sku.dun14} highlight={searchTerm} /></small></td>
                                   <td className="text-center">
                                     <Button
                                       variant="primary"

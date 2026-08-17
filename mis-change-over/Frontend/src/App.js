@@ -9,11 +9,12 @@
  * @version 3.1.1 - Implementação de Autenticação JWT
  */
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext'; // Importar AuthProvider
 import ProtectedRoute from './components/ProtectedRoute'; // Importar ProtectedRoute
 import LoginPage from './components/LoginPage'; // Importar LoginPage
+import useAxios from './hooks/useAxios'; // Para polling de não lidas
 
 // Componentes de layout
 import Navbar from './components/layout/Navbar';
@@ -22,7 +23,11 @@ import Header from './components/layout/Header'; // Header original mantido
 
 // Componentes de conteúdo existentes
 import KpisContent from './components/KpisContent';
-import ProductStatusContent from './components/ProductStatusContent';
+// [v10.2] Tela "Status do Produto" desativada temporariamente.
+// O worker do Django (OPCValidacaoQualidadeWorker) continua rodando para a
+// Validação de Qualidade, mas a tela em si foi escondida.
+// Para REATIVAR: descomente o import + a rota abaixo + o NavLink em Header.jsx.
+// import ProductStatusContent from './components/ProductStatusContent';
 import TrocaAutomaticaContent from './components/TrocaAutomaticaContent';
 import TrocasContent from './components/TrocasContent'; // Descomentado para uso
 
@@ -31,10 +36,14 @@ import CartuchoContent from './components/CartuchoContent';
 
 // Novos componentes implementados
 import ProcessVariablesContent from './components/ProcessVariablesContent';
-import ReportsContent from './components/ReportsContent';
+import AndrettiContent from './components/AndrettiContent';
 import MachineChat from './components/MachineChat';
 import HistoricoDataContent from './components/HistoricoDataContent'; // Componente de histórico de dados
 import IntertravamentosContent from './components/IntertravamentosContent'; // Módulo de Intertravamentos
+import ValidacoesContent from './components/ValidacoesContent'; // Módulo de Validações v9.0
+import ComunicacaoContent from './components/ComunicacaoContent'; // Central de Comunicação v9.2
+import ReceitaMonitorContent from './components/ReceitaMonitorContent'; // Recipe Monitor (mis-recipe-intelligent)
+import GestaoUsuariosContent from './components/GestaoUsuariosContent'; // Gestão de usuários (só superuser)
 
 // Estilos
 import './styles/App.css';
@@ -55,6 +64,36 @@ const AppContent = () => {
    * Estado para controle da sidebar
    */
   const [sidebarVisible, setSidebarVisible] = useState(true);
+
+  /**
+   * Mensagens não lidas por linha { L01: 3, L02: 0, ... }
+   * Usa useAxios para garantir auth header e baseURL idênticos ao resto da app.
+   */
+  const api = useAxios();
+  const apiRef = useRef(api);
+  apiRef.current = api;
+
+  const [unreadCounts, setUnreadCounts] = useState({});
+
+  const fetchUnreadCounts = useCallback(async () => {
+    try {
+      const res = await apiRef.current.get('/api/chat/nao-lidas-por-linha/');
+      setUnreadCounts(res.data || {});
+    } catch (_) {}
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    fetchUnreadCounts();
+    const id = setInterval(fetchUnreadCounts, 30000);
+    return () => clearInterval(id);
+  }, [fetchUnreadCounts]);
+
+  /** Chamado pelo ComunicacaoContent após abrir o chat de uma linha */
+  const handleMarkRead = useCallback((linha) => {
+    setUnreadCounts(prev => ({ ...prev, [linha]: 0 }));
+    // Também dispara uma re-busca para sincronizar com o servidor
+    setTimeout(fetchUnreadCounts, 500);
+  }, [fetchUnreadCounts]);
 
   // ===== MANIPULADORES DE EVENTOS =====
 
@@ -81,6 +120,7 @@ const AppContent = () => {
         selectedLine={selectedLine}
         onSelectLine={handleSelectLine}
         visible={sidebarVisible}
+        unreadCounts={unreadCounts}
       />
 
       {/* Container principal de conteúdo */}
@@ -93,7 +133,7 @@ const AppContent = () => {
         />
 
         {/* Header original mantido - "MIS Developed By Process Engineer" */}
-        <Header />
+        <Header unreadCounts={unreadCounts} />
 
         <div className="content-area">
           <Routes>
@@ -102,18 +142,21 @@ const AppContent = () => {
 
             {/* Rotas Protegidas */}
             <Route element={<ProtectedRoute />}>
-              {/* Rota padrão redireciona para KPIs */}
-              <Route path="/" element={<Navigate to="/kpis" replace />} />
+              {/* Rota padrão redireciona para Troca Automática (Status Produto desativado v10.2) */}
+              <Route path="/" element={<Navigate to="/troca-automatica" replace />} />
 
               {/* Rotas principais existentes */}
               <Route
                 path="/kpis"
                 element={<KpisContent selectedLine={selectedLine} />}
               />
+              {/* [v10.2] Tela Status do Produto desativada.
+                  Para REATIVAR: descomente abaixo + import em App.js + NavLink em Header.jsx.
               <Route
                 path="/product-status"
                 element={<ProductStatusContent selectedLine={selectedLine} />}
               />
+              */}
               <Route
                 path="/troca-automatica"
                 element={<TrocaAutomaticaContent selectedLine={selectedLine} />}
@@ -138,8 +181,8 @@ const AppContent = () => {
                 element={<ProcessVariablesContent selectedLine={selectedLine} />}
               />
               <Route
-                path="/reports"
-                element={<ReportsContent selectedLine={selectedLine} />}
+                path="/andretti"
+                element={<AndrettiContent selectedLine={selectedLine} />}
               />
               <Route
                 path="/machine-chat"
@@ -153,9 +196,34 @@ const AppContent = () => {
                 path="/intertravamentos"
                 element={<IntertravamentosContent selectedLine={selectedLine} />}
               />
+              <Route
+                path="/validacoes"
+                element={<ValidacoesContent selectedLine={selectedLine} />}
+              />
+              <Route
+                path="/comunicacao"
+                element={
+                  <ComunicacaoContent
+                    selectedLine={selectedLine}
+                    onMarkRead={handleMarkRead}
+                  />
+                }
+              />
 
-              {/* Rota de fallback */}
-              <Route path="*" element={<Navigate to="/kpis" replace />} />
+              {/* Recipe Monitor — leitura OPC contínua + sincronismo de receita */}
+              <Route
+                path="/receita-monitor"
+                element={<ReceitaMonitorContent selectedLine={selectedLine} />}
+              />
+
+              {/* Gestão de Usuários — só superuser (o componente também valida) */}
+              <Route
+                path="/gestao-usuarios"
+                element={<GestaoUsuariosContent />}
+              />
+
+              {/* Rota de fallback (Status Produto desativado v10.2 → troca-automatica) */}
+              <Route path="*" element={<Navigate to="/troca-automatica" replace />} />
             </Route>
           </Routes>
         </div>

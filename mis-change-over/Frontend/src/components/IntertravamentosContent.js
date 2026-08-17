@@ -34,6 +34,10 @@ const IntertravamentosContent = ({ selectedLine }) => {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [historyData, setHistoryData] = useState([]);
   const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyPage, setHistoryPage] = useState(1);
+  const [historyTotalPages, setHistoryTotalPages] = useState(1);
+  const [historyTotal, setHistoryTotal] = useState(0);
+  const [historyItemId, setHistoryItemId] = useState(null);
 
   // Resync State
   const [resyncingId, setResyncingId] = useState(null);
@@ -112,17 +116,28 @@ const IntertravamentosContent = ({ selectedLine }) => {
     }
   };
 
-  const openHistory = async (id) => {
+  const openHistory = async (id, page = 1) => {
     setDrawerOpen(true);
     setHistoryLoading(true);
+    setHistoryItemId(id);
     try {
-      const res = await apiRef.current.get(`/intertravamentos/${id}/historico/`);
-      setHistoryData(res.data);
+      const res = await apiRef.current.get(
+        `/intertravamentos/${id}/historico/?page=${page}&per_page=20`
+      );
+      setHistoryData(res.data.results);
+      setHistoryPage(res.data.page);
+      setHistoryTotalPages(res.data.total_pages);
+      setHistoryTotal(res.data.total);
     } catch (err) {
       console.error("Erro ao carregar histórico", err);
     } finally {
       setHistoryLoading(false);
     }
+  };
+
+  const changeHistoryPage = (page) => {
+    if (page < 1 || page > historyTotalPages) return;
+    openHistory(historyItemId, page);
   };
 
   // ── Helpers de estado ──────────────────────────────────────────────────────
@@ -433,6 +448,24 @@ const IntertravamentosContent = ({ selectedLine }) => {
                 </div>
               )}
             </div>
+            {historyTotalPages > 1 && !historyLoading && (
+              <div className="drawer-pagination">
+                <button
+                  className="drawer-page-btn"
+                  onClick={() => changeHistoryPage(historyPage - 1)}
+                  disabled={historyPage <= 1}
+                >‹</button>
+                <span className="drawer-page-info">
+                  {historyPage} / {historyTotalPages}
+                  <small> ({historyTotal} registros)</small>
+                </span>
+                <button
+                  className="drawer-page-btn"
+                  onClick={() => changeHistoryPage(historyPage + 1)}
+                  disabled={historyPage >= historyTotalPages}
+                >›</button>
+              </div>
+            )}
           </div>
         </div>
       )}

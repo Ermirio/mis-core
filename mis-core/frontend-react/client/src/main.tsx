@@ -2,6 +2,7 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App";
 import "./index.css";
+import "./styles/isa101.css";   // ISA-101 design tokens (POC blueprint)
 
 // IMPORTANTE: importe seu ThemeProvider custom
 import { ThemeProvider } from "./contexts/ThemeContext";
