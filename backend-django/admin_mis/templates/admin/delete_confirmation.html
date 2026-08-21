@@ -1,0 +1,4 @@
+{% extends "admin/delete_confirmation.html" %}
+{% load admin_mis i18n %}
+
+{% block topbar_crumb %}Excluir {{ object|truncatechars:30 }}{% endblock %}

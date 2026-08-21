@@ -1,0 +1,78 @@
+{% extends "admin/base_site.html" %}
+{% load admin_mis %}
+
+{% block topbar_crumb %}Importar variáveis{% endblock %}
+
+{% block content %}
+<div class="mis-page-h">
+  <div>
+    <p class="mis-bc" style="margin-bottom:4px">
+      <a href="{% admin_url 'index' %}">Início</a>
+      <span class="sep">›</span>
+      <a href="{{ changelist_url }}">Equipamentos</a>
+      <span class="sep">›</span>
+      <a href="{{ change_url }}">{{ equipamento }}</a>
+      <span class="sep">›</span>
+      <b>Importar variáveis</b>
+    </p>
+    <h1>Importar variáveis de {{ equipamento.nome }}</h1>
+    <p class="mis-page-h__sub">
+      {{ equipamento.linha.codigo }} · {{ equipamento.codigo }} · três abas independentes
+    </p>
+  </div>
+  <div class="mis-topbar__actions">
+    <a href="{{ export_url }}" class="button">Baixar planilha atual</a>
+    <a href="{{ change_url }}" class="button">Voltar</a>
+  </div>
+</div>
+
+<div class="module" style="max-width:980px;">
+  <form method="post" enctype="multipart/form-data" novalidate>
+    {% csrf_token %}
+    <fieldset class="module aligned">
+      {% for field in form %}
+        <div class="form-row">
+          {{ field.errors }}
+          <div>
+            {{ field.label_tag }}
+            {{ field }}
+            {% if field.help_text %}<div class="help">{{ field.help_text }}</div>{% endif %}
+          </div>
+        </div>
+      {% endfor %}
+    </fieldset>
+    <div class="submit-row">
+      <input type="submit" value="Validar planilha" class="default">
+      <input type="submit" name="importar" value="Importar salvando">
+    </div>
+  </form>
+</div>
+
+{% if summary %}
+<div class="module" style="max-width:980px;margin-top:18px;">
+  <h2>Resultado da validação</h2>
+  <table>
+    <tbody>
+      <tr><th>Linhas lidas</th><td>{{ summary.total_rows }}</td></tr>
+      <tr><th>Linhas processadas</th><td>{{ summary.processed_rows }}</td></tr>
+      <tr><th>Variáveis criadas</th><td>{{ summary.tags_created }}</td></tr>
+      <tr><th>Variáveis atualizadas</th><td>{{ summary.tags_updated }}</td></tr>
+      <tr><th>Sensores criados</th><td>{{ summary.sensors_created }}</td></tr>
+      <tr><th>Sensores atualizados</th><td>{{ summary.sensors_updated }}</td></tr>
+    </tbody>
+  </table>
+
+  {% if summary.errors %}
+    <h3>Erros encontrados</h3>
+    <table>
+      <thead><tr><th>Aba</th><th>Linha</th><th>Erro</th></tr></thead>
+      <tbody>
+        {% for err in summary.errors %}
+          <tr><td>{{ err.sheet }}</td><td>{{ err.row }}</td><td>{{ err.error }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% endif %}
+</div>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,13 @@
+{% load admin_mis i18n %}
+
+<header class="mis-topbar">
+  <div class="mis-bc">
+    <a href="{% admin_url 'index' %}">MIS Core</a>
+    <span class="sep">›</span>
+    <b>{% block topbar_crumb %}{{ title|default:_('Início') }}{% endblock %}</b>
+    <span class="mis-pill">Backend</span>
+  </div>
+  <div class="mis-topbar__actions">
+    <a href="/" class="mis-btn" title="Voltar ao app">↗ Frontend</a>
+  </div>
+</header>

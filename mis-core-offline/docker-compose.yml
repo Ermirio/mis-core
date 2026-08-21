@@ -1,0 +1,374 @@
+# =============================================================================
+# docker-compose.yml — MIS Core OFFLINE (rede OT, sem internet)
+# =============================================================================
+#
+# Fonte de verdade para deploy offline. Build local com export_images.ps1
+# (que invoca o compose de DEV para buildar), depois import_images.ps1 sobe
+# essa stack sem internet.
+#
+# CARACTERÍSTICAS:
+#   • image: <nome>:${MIS_VERSION}  → tag deve bater com tarball importado
+#   • pull_policy: never            → IMPEDE qualquer pull (servidor OT offline)
+#   • DJANGO_DEBUG=False            → produção
+#   • Healthchecks de verdade
+#   • Volumes nomeados para persistência
+#
+# Subir:
+#   bash scripts/install.sh        # importa imagens + valida + cria .env
+#   docker compose up -d
+#
+# Diagnóstico de versão:
+#   curl http://localhost:8080/version.json
+#   curl http://localhost:8001/api/version/
+# =============================================================================
+
+x-common-env: &common-env
+  TZ: "${TZ:-America/Sao_Paulo}"
+
+services:
+  # ---------------------------------------------------------------------------
+  # FRONTEND (nginx — SPA + reverse-proxy interno)
+  # ---------------------------------------------------------------------------
+  frontend:
+    image: "mis-core-frontend:${MIS_VERSION:?MIS_VERSION é obrigatório}"
+    pull_policy: never
+    container_name: mis-core-frontend
+    restart: unless-stopped
+    ports:
+      - "${FRONTEND_PORT:-8080}:80"
+    environment:
+      <<: *common-env
+      VITE_DJANGO_API_URL: "${VITE_DJANGO_API_URL:-/api}"
+      VITE_FLASK_API_URL: "${VITE_FLASK_API_URL:-/api}"
+      VITE_FASTAPI_V2_URL: "${VITE_FASTAPI_V2_URL:-/api/v2}"
+      MIS_MODE: "${MIS_MODE:-production}"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://127.0.0.1/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    depends_on:
+      django:
+        condition: service_healthy
+      fastapi:
+        condition: service_healthy
+    networks: [mis-network]
+
+  # ---------------------------------------------------------------------------
+  # DJANGO  (ORM + CRUD + admin v2)
+  # ---------------------------------------------------------------------------
+  django:
+    image: "mis-core-django:${MIS_VERSION:?MIS_VERSION é obrigatório}"
+    pull_policy: never
+    container_name: mis-core-django
+    restart: unless-stopped
+    ports:
+      - "${DJANGO_PORT:-8001}:8000"
+    environment:
+      <<: *common-env
+      MYSQL_HOST: mysql
+      MYSQL_PORT: "${MYSQL_PORT:-3306}"
+      MYSQL_DB: "${MYSQL_DATABASE:-mis_core_db}"
+      MYSQL_DATABASE: "${MYSQL_DATABASE:-mis_core_db}"
+      MYSQL_USER: "${MYSQL_USER:-mis}"
+      MYSQL_PASSWORD: "${MYSQL_PASSWORD:?obrigatório}"
+      INFLUXDB_HOST: influxdb
+      INFLUXDB_PORT: "${INFLUXDB_PORT:-8086}"
+      INFLUXDB_DATABASE: "${INFLUXDB_DATABASE:-industrial_db}"
+      INFLUXDB_USER: "${INFLUXDB_USER:-admin}"
+      INFLUXDB_PASSWORD: "${INFLUXDB_PASSWORD:?obrigatório}"
+      DJANGO_SECRET_KEY: "${DJANGO_SECRET_KEY:?obrigatório}"
+      DJANGO_DEBUG: "${DJANGO_DEBUG:-False}"
+      DJANGO_ALLOWED_HOSTS: "${DJANGO_ALLOWED_HOSTS:-*}"
+      DJANGO_SUPERUSER_USERNAME: "${DJANGO_SUPERUSER_USERNAME:-admin}"
+      DJANGO_SUPERUSER_EMAIL: "${DJANGO_SUPERUSER_EMAIL:-admin@mis.local}"
+      DJANGO_SUPERUSER_PASSWORD: "${DJANGO_SUPERUSER_PASSWORD:?obrigatório}"
+      CSRF_TRUSTED_ORIGINS: "${CSRF_TRUSTED_ORIGINS:-}"
+      CORS_ALLOWED_ORIGINS: "${CORS_ALLOWED_ORIGINS:-}"
+      # === Toggle único de origem aberta (vale para Django, Flask e FastAPI) ===
+      # ALLOW_ANY_ORIGIN=True  → ALLOWED_HOSTS=*, CSRF wildcard, CORS aberto
+      # ALLOW_ANY_ORIGIN=False → respeita listas DJANGO_ALLOWED_HOSTS/CSRF/CORS
+      ALLOW_ANY_ORIGIN: "${ALLOW_ANY_ORIGIN:-False}"
+      ALLOW_ANY_HOST: "${ALLOW_ANY_ORIGIN:-False}"  # compat com nome antigo
+      CORS_ALLOW_ALL_ORIGINS: "${ALLOW_ANY_ORIGIN:-False}"
+      MIS_MODE: "${MIS_MODE:-production}"
+      JWT_SECRET_KEY: "${JWT_SECRET_KEY:?obrigatório}"
+      SESSION_COOKIE_DOMAIN: "${SESSION_COOKIE_DOMAIN:-}"
+      # Sub-path quando atrás de proxy externo: ex /mis-core
+      FORCE_SCRIPT_NAME: "${FORCE_SCRIPT_NAME:-}"
+    volumes:
+      - django_static:/app/staticfiles
+    depends_on:
+      mysql:
+        condition: service_healthy
+      influxdb:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fs", "http://localhost:8000/api/health/"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 40s
+    networks: [mis-network]
+
+  # ---------------------------------------------------------------------------
+  # FASTAPI v2
+  # ---------------------------------------------------------------------------
+  fastapi:
+    image: "mis-core-fastapi:${MIS_VERSION:?MIS_VERSION é obrigatório}"
+    pull_policy: never
+    container_name: mis-core-fastapi
+    restart: unless-stopped
+    ports:
+      - "${FASTAPI_PORT:-8002}:8000"
+    environment:
+      <<: *common-env
+      APP_NAME: mis-core-fastapi
+      ENVIRONMENT: prod
+      DEBUG: "false"
+      API_V2_PREFIX: /api/v2
+      LOG_LEVEL: "${FASTAPI_LOG_LEVEL:-INFO}"
+      # Quando ALLOW_ANY_ORIGIN=True, FastAPI usa "*". Caso contrário usa lista.
+      CORS_ORIGINS: "${FASTAPI_CORS_ORIGINS:-*}"
+      ALLOW_ANY_ORIGIN: "${ALLOW_ANY_ORIGIN:-False}"
+      INFLUX_HOST: influxdb
+      INFLUX_PORT: "${INFLUXDB_PORT:-8086}"
+      INFLUX_DB: "${INFLUXDB_DATABASE:-industrial_db}"
+      INFLUX_USERNAME: "${INFLUXDB_USER:-admin}"
+      INFLUX_PASSWORD: "${INFLUXDB_PASSWORD:?obrigatório}"
+      INFLUX_TIMEOUT_S: 10
+      DJANGO_API_URL: http://django:8000/api
+      JWT_SECRET: "${JWT_SECRET_KEY:?obrigatório}"
+      JWT_ALGORITHM: HS256
+      MAX_POINTS_PER_RESPONSE: "${MAX_POINTS_PER_RESPONSE:-10000}"
+      MAX_CORRELATION_VARIABLES: "${MAX_CORRELATION_VARIABLES:-25}"
+      PROMETHEUS_ENABLED: "${PROMETHEUS_ENABLED:-true}"
+    depends_on:
+      influxdb:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fs", "http://localhost:8000/api/v2/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 20s
+    networks: [mis-network]
+
+  # ---------------------------------------------------------------------------
+  # COLETOR OPC UA  (ou simulador quando MIS_MODE=demo)
+  # ---------------------------------------------------------------------------
+  coletor:
+    image: "mis-core-coletor:${MIS_VERSION:?MIS_VERSION é obrigatório}"
+    pull_policy: never
+    container_name: mis-core-coletor
+    restart: unless-stopped
+    environment:
+      <<: *common-env
+      DJANGO_API_URL: http://django:8000/api
+      INGEST_API_URL: http://django:8000/api
+      INTERVALO_COLETA: "${INTERVALO_COLETA:-2}"
+      TIMEOUT_REQUEST: "${TIMEOUT_REQUEST:-10}"
+      MIS_MODE: "${MIS_MODE:-production}"
+      DEMO_BACKFILL_DIAS: "${DEMO_BACKFILL_DIAS:-7}"
+      DEMO_BACKFILL_STEP_S: "${DEMO_BACKFILL_STEP_S:-60}"
+      INFLUXDB_HOST: influxdb
+      INFLUXDB_PORT: "${INFLUXDB_PORT:-8086}"
+      INFLUXDB_DATABASE: "${INFLUXDB_DATABASE:-industrial_db}"
+      INFLUXDB_USER: "${INFLUXDB_USER:-admin}"
+      INFLUXDB_PASSWORD: "${INFLUXDB_PASSWORD:?obrigatório}"
+    depends_on:
+      django:
+        condition: service_healthy
+      influxdb:
+        condition: service_healthy
+    networks: [mis-network]
+
+  # ---------------------------------------------------------------------------
+  # MYSQL
+  # ---------------------------------------------------------------------------
+  mysql:
+    image: mysql:8.0
+    pull_policy: never
+    container_name: mis-core-mysql
+    restart: unless-stopped
+    command: --default-authentication-plugin=mysql_native_password
+    ports:
+      - "${MYSQL_EXPOSED_PORT:-3308}:3306"
+    environment:
+      <<: *common-env
+      MYSQL_DATABASE: "${MYSQL_DATABASE:-mis_core_db}"
+      MYSQL_USER: "${MYSQL_USER:-mis}"
+      MYSQL_PASSWORD: "${MYSQL_PASSWORD:?obrigatório}"
+      MYSQL_ROOT_PASSWORD: "${MYSQL_ROOT_PASSWORD:?obrigatório}"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -uroot -p$$MYSQL_ROOT_PASSWORD"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+    networks: [mis-network]
+
+  # ---------------------------------------------------------------------------
+  # INFLUXDB 1.8
+  # ---------------------------------------------------------------------------
+  influxdb:
+    image: influxdb:1.8-alpine
+    pull_policy: never
+    container_name: mis-core-influxdb
+    restart: unless-stopped
+    ports:
+      - "${INFLUXDB_EXPOSED_PORT:-8087}:8086"
+    environment:
+      <<: *common-env
+      INFLUXDB_DB: "${INFLUXDB_DATABASE:-industrial_db}"
+      INFLUXDB_ADMIN_USER: "${INFLUXDB_USER:-admin}"
+      INFLUXDB_ADMIN_PASSWORD: "${INFLUXDB_PASSWORD:?obrigatório}"
+      INFLUXDB_HTTP_AUTH_ENABLED: "true"
+    volumes:
+      - influxdb_data:/var/lib/influxdb
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://localhost:8086/ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks: [mis-network]
+
+  # ---------------------------------------------------------------------------
+  # CHRONOGRAF (admin web do InfluxDB)
+  # ---------------------------------------------------------------------------
+  chronograf:
+    image: chronograf:1.8
+    pull_policy: never
+    container_name: mis-core-chronograf
+    restart: unless-stopped
+    ports:
+      - "${CHRONOGRAF_PORT:-8889}:8888"
+    environment:
+      <<: *common-env
+      INFLUXDB_URL: http://influxdb:8086
+      INFLUXDB_USERNAME: "${INFLUXDB_USER:-admin}"
+      INFLUXDB_PASSWORD: "${INFLUXDB_PASSWORD:?obrigatório}"
+    depends_on:
+      influxdb:
+        condition: service_healthy
+    networks: [mis-network]
+
+  # ---------------------------------------------------------------------------
+  # GRAFANA (dashboards de observability)
+  # ---------------------------------------------------------------------------
+  grafana:
+    image: grafana/grafana:10.4.2
+    pull_policy: never
+    container_name: mis-core-grafana
+    restart: unless-stopped
+    ports:
+      - "${GRAFANA_PORT:-3001}:3000"
+    environment:
+      <<: *common-env
+      GF_SECURITY_ADMIN_USER: "${GRAFANA_ADMIN_USER:-admin}"
+      GF_SECURITY_ADMIN_PASSWORD: "${GRAFANA_ADMIN_PASSWORD:-admin123}"
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_INSTALL_PLUGINS: ""
+      GF_AUTH_ANONYMOUS_ENABLED: "${GRAFANA_ANON_ACCESS:-false}"
+    volumes:
+      - grafana_data:/var/lib/grafana
+    depends_on:
+      influxdb:
+        condition: service_healthy
+    networks: [mis-network]
+
+  # ---------------------------------------------------------------------------
+  # NODE-RED (orquestração / scripting industrial)
+  # ---------------------------------------------------------------------------
+  node-red:
+    # Imagem CUSTOM (`mis-core-nodered`) buildada pelo export_images.ps1 com
+    # baseline industrial obrigatorio + extras do DEV. Garante que o OT
+    # tenha os nos essenciais sem precisar de internet.
+    image: mis-core-nodered:${MIS_VERSION:-dev}
+    pull_policy: never
+    container_name: mis-core-nodered
+    restart: unless-stopped
+    ports:
+      - "${NODE_RED_PORT:-1880}:1880"
+    environment:
+      <<: *common-env
+      TZ: "${TZ:-America/Sao_Paulo}"
+      # adminAuth do settings.js consulta estes valores para chamar Django.
+      DJANGO_HOST: "django"
+      DJANGO_PORT: "8000"
+    volumes:
+      - nodered_data:/data
+      # settings.js auto-sincronizado pelo export_images.ps1 a partir de
+      # ../../node-red/settings.js (a fonte canônica). Pacote OT é
+      # autossuficiente — só precisa desta pasta mis-core-offline/.
+      - ./node-red/settings.js:/data/settings.js:ro
+    networks: [mis-network]
+    depends_on:
+      - django
+
+  # ---------------------------------------------------------------------------
+  # EMQX (MQTT broker — integração com gateways/CLPs)
+  # ---------------------------------------------------------------------------
+  emqx:
+    image: emqx/emqx:5.6.1
+    pull_policy: never
+    container_name: mis-core-emqx
+    restart: unless-stopped
+    ports:
+      - "${EMQX_MQTT_PORT:-1883}:1883"
+      - "${EMQX_WS_PORT:-8083}:8083"
+      - "${EMQX_DASHBOARD_PORT:-18083}:18083"
+    environment:
+      <<: *common-env
+      EMQX_NAME: mis-core-emqx
+      EMQX_HOST: 127.0.0.1
+      EMQX_DASHBOARD__DEFAULT_USERNAME: "${EMQX_ADMIN_USER:-admin}"
+      EMQX_DASHBOARD__DEFAULT_PASSWORD: "${EMQX_ADMIN_PASSWORD:-public}"
+    volumes:
+      - emqx_data:/opt/emqx/data
+      - emqx_log:/opt/emqx/log
+    networks: [mis-network]
+
+  # ---------------------------------------------------------------------------
+  # PORTAINER (gestao dos containers pelo Hub de Solucoes)
+  # Sem porta publicada: acesso somente por /mc-portainer/ no frontend nginx.
+  # ---------------------------------------------------------------------------
+  portainer:
+    image: portainer/portainer-ce:2.39.5-alpine
+    pull_policy: never
+    container_name: mis-core-portainer
+    restart: unless-stopped
+    command:
+      - --base-url
+      - /mc-portainer
+      # Cria o admin nativo sem depender da janela de setup de cinco minutos.
+      - --admin-password-file
+      - /run/secrets/portainer_admin_password
+    secrets:
+      - portainer_admin_password
+    security_opt:
+      - no-new-privileges:true
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - portainer_data:/data
+    networks: [mis-network]
+
+networks:
+  mis-network:
+    name: mis-core-network
+    driver: bridge
+
+volumes:
+  mysql_data:
+  influxdb_data:
+  django_static:
+  grafana_data:
+  nodered_data:
+  emqx_data:
+  emqx_log:
+  portainer_data:
+
+secrets:
+  portainer_admin_password:
+    environment: PORTAINER_ADMIN_PASSWORD

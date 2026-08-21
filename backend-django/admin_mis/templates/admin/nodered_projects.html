@@ -1,0 +1,120 @@
+{% extends "admin/base_site.html" %}
+{% load i18n admin_urls %}
+
+{% block title %}Projetos Node-RED | {{ block.super }}{% endblock %}
+
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+    <a href="{% url 'admin:index' %}">{% trans 'Home' %}</a>
+    &rsaquo; <a href="{% url 'admin:app_list' app_label=opts.app_label %}">{{ opts.app_config.verbose_name }}</a>
+    &rsaquo; <a href="{{ changelist_url }}">{{ opts.verbose_name_plural|capfirst }}</a>
+    &rsaquo; Projetos Node-RED
+</div>
+{% endblock %}
+
+{% block content %}
+<style>
+    .proj-grid { display:grid; gap:14px; grid-template-columns:repeat(auto-fill,minmax(330px,1fr)); }
+    .proj-card { background:#fff; border:1px solid #cfd8dc; border-radius:8px; padding:18px 20px; box-shadow:0 1px 2px rgba(0,0,0,.04); }
+    .proj-card.active { border-color:#1f7a3b; box-shadow:0 1px 0 #1f7a3b inset; }
+    .proj-head { display:flex; align-items:baseline; gap:10px; margin-bottom:8px; }
+    .proj-name { font-size:16px; font-weight:700; color:#1a3046; }
+    .proj-tag { font-size:11px; padding:2px 8px; border-radius:10px; font-weight:600; }
+    .tag-active { background:#dff4e3; color:#1f7a3b; }
+    .tag-orphan { background:#fbe9c8; color:#a06200; }
+    .proj-stats { font-size:13px; color:#3a4756; margin:8px 0 14px; line-height:1.6; }
+    .proj-stats code { background:#f0f2f5; padding:1px 6px; border-radius:4px; font-size:12px; }
+    .proj-actions { display:flex; gap:8px; }
+    .btn-mis { display:inline-block; padding:6px 14px; border-radius:6px; font-size:12px; font-weight:600; text-decoration:none; border:0; cursor:pointer; }
+    .btn-cap { background:#1565c0; color:#fff; }
+    .btn-cap:hover { background:#0d4a91; }
+    .btn-list { background:#f0f2f5; color:#1a3046; }
+    .btn-list:hover { background:#dde2e8; }
+    .proj-empty { background:#fff8e7; color:#7a5a00; border:1px dashed #d4b878; padding:18px 22px; border-radius:8px; }
+    .toolbar { display:flex; gap:10px; align-items:center; margin-bottom:18px; }
+    .toolbar .grow { flex:1; }
+</style>
+
+<div class="toolbar">
+    <div class="grow">
+        <h1 style="margin:0; font-size:20px;">📁 Projetos Node-RED</h1>
+        <p style="margin:4px 0 0; color:#56697a; font-size:13px;">
+            Live do Node-RED · projeto ativo aparece destacado.
+            Snapshots automáticos a cada 5 min para projetos novos.
+        </p>
+    </div>
+    <form method="post" action="{{ sync_url }}" style="margin:0;">
+        {% csrf_token %}
+        <button class="btn-mis btn-cap" type="submit">🔄 Sincronizar agora</button>
+    </form>
+    <a class="btn-mis btn-list" href="{{ changelist_url }}">← Voltar ao histórico</a>
+</div>
+
+{% if not projects_enabled %}
+    <div class="proj-empty">
+        <strong>Feature Projects desativada.</strong>
+        Habilite em <code>node-red/settings.js</code> com
+        <code>editorTheme.projects.enabled = true</code> e reinicie o container.
+        Sem isso, todos os snapshots ficam na linha do tempo "global".
+    </div>
+{% elif not projetos %}
+    <div class="proj-empty">
+        Projects está habilitado mas nenhum projeto foi criado ainda.
+        Abra o editor Node-RED, menu hambúrguer → Projects → New, e dê um nome.
+    </div>
+{% else %}
+<div class="proj-grid">
+    {% for p in projetos %}
+    <div class="proj-card {% if p.ativo %}active{% endif %}">
+        <div class="proj-head">
+            <span class="proj-name">📁 {{ p.nome }}</span>
+            {% if p.ativo %}
+                <span class="proj-tag tag-active">ATIVO no editor</span>
+            {% endif %}
+            {% if not p.snapshots_total %}
+                <span class="proj-tag tag-orphan">sem snapshot</span>
+            {% endif %}
+        </div>
+        <div class="proj-stats">
+            <strong>{{ p.snapshots_total }}</strong> snapshot{{ p.snapshots_total|pluralize:",s" }} no histórico.
+            {% if p.ultimo %}
+                <br>Último: <code>{{ p.ultimo.hash_sha|slice:":8" }}</code>
+                ({{ p.ultimo.num_nodes }} nós) em
+                {{ p.ultimo.criado_em|date:"d/m H:i" }}
+                — {{ p.ultimo.get_acao_display }}
+            {% else %}
+                <br>Nada capturado ainda. Clique "Capturar agora" para criar o snapshot inicial.
+            {% endif %}
+        </div>
+        <div class="proj-actions">
+            {% if p.ativo %}
+                <form method="post" action="{{ p.capture_url }}" style="margin:0;">
+                    {% csrf_token %}
+                    <button type="submit" class="btn-mis btn-cap"
+                            title="Captura o estado atual deste projeto (que está ativo no editor)">
+                        📸 Capturar agora
+                    </button>
+                </form>
+            {% else %}
+                <form method="post" action="{{ p.capture_url }}" style="margin:0;"
+                      onsubmit="return confirm('Trocar o projeto ativo para &quot;{{ p.nome }}&quot;? Isso INTERROMPE os flows do projeto &quot;{{ active }}&quot; em execução agora.');">
+                    {% csrf_token %}
+                    <input type="hidden" name="trocar" value="1">
+                    <button type="submit" class="btn-mis"
+                            style="background:#a06200;color:#fff;"
+                            title="Troca o projeto ativo para este e captura — interrompe flows do projeto atual">
+                        🔄 Trocar ativo &amp; capturar
+                    </button>
+                </form>
+            {% endif %}
+            {% if p.snapshots_total %}
+            <a href="{{ changelist_url }}?projeto={{ p.nome }}"
+               class="btn-mis btn-list">Ver histórico ({{ p.snapshots_total }})</a>
+            {% endif %}
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% endif %}
+
+{% endblock %}

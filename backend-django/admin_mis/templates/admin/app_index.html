@@ -1,0 +1,37 @@
+{% extends "admin/base_site.html" %}
+{% load admin_mis i18n %}
+
+{% block topbar_crumb %}{{ app_label|capfirst }}{% endblock %}
+
+{% block content %}
+<div class="mis-page-h">
+  <div>
+    <p class="mis-bc" style="margin-bottom:4px">
+      <a href="{% admin_url 'index' %}">Início</a>
+      <span class="sep">›</span>
+      <b>{{ app_label|capfirst }}</b>
+    </p>
+    <h1>{{ app_label|capfirst }}</h1>
+    <p class="mis-page-h__sub">{{ app_list.0.models|length }} modelo{{ app_list.0.models|length|pluralize:"s" }} neste app</p>
+  </div>
+</div>
+
+<div class="mis-apps">
+{% for app in app_list %}
+  {% for model in app.models %}
+  <div class="mis-app-card">
+    <div class="mis-app-card__head">
+      <div class="mis-app-card__icon">▦</div>
+      <div>
+        <div class="mis-app-card__title">{{ model.name }}</div>
+        <div class="mis-app-card__sub">
+          {% if model.admin_url %}<a href="{{ model.admin_url }}">Listar</a>{% endif %}
+          {% if model.add_url %} · <a href="{{ model.add_url }}">Adicionar</a>{% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+{% endfor %}
+</div>
+{% endblock %}

@@ -1,0 +1,143 @@
+{% extends "admin/base_site.html" %}
+{% load i18n admin_urls static %}
+
+{% block title %}Diff snapshot #{{ snap.id }} | {{ block.super }}{% endblock %}
+
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+    <a href="{% url 'admin:index' %}">{% trans 'Home' %}</a>
+    &rsaquo; <a href="{% url 'admin:app_list' app_label=opts.app_label %}">{{ opts.app_config.verbose_name }}</a>
+    &rsaquo; <a href="{% url 'admin:equipamentos_noderedsnapshot_changelist' %}">{{ opts.verbose_name_plural|capfirst }}</a>
+    &rsaquo; Diff #{{ snap.id }}
+</div>
+{% endblock %}
+
+{% block content %}
+<style>
+    .diff-card { background:#fff; border:1px solid #cfd8dc; border-radius:8px; padding:18px 22px; margin-bottom:16px; }
+    .diff-meta { display:flex; flex-wrap:wrap; gap:18px; font-size:13px; color:#3a4756; }
+    .diff-meta strong { color:#212121; }
+    .diff-section { margin-top:20px; }
+    .diff-section h2 { font-size:14px; margin:0 0 10px; padding:6px 12px; border-radius:6px; }
+    .diff-add { background:#dff4e3; color:#1f7a3b; }
+    .diff-rem { background:#f4dad6; color:#b53a2b; }
+    .diff-mod { background:#fbe9c8; color:#a06200; }
+    .diff-section ul { margin:0; padding-left:0; list-style:none; }
+    .diff-section li {
+        padding:10px 14px; border-left:3px solid; background:#f7f8fa;
+        margin-bottom:6px; border-radius:0 4px 4px 0; font-size:13px;
+    }
+    .diff-add + ul li { border-left-color:#1f7a3b; }
+    .diff-rem + ul li { border-left-color:#b53a2b; }
+    .diff-mod + ul li { border-left-color:#a06200; }
+    .diff-node-id { font-family: "SF Mono", ui-monospace, monospace; font-size:11px; color:#657384; margin-left:6px; }
+    .diff-node-type { background:#212121; color:#fff; padding:1px 7px; border-radius:3px; font-size:10px; font-weight:600; text-transform:uppercase; vertical-align:middle; }
+    .diff-side-by-side { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:8px; }
+    .diff-side-by-side pre { background:#fff; border:1px solid #d8dee5; padding:8px 10px; border-radius:4px; font-size:11px; max-height:200px; overflow:auto; margin:0; line-height:1.4; }
+    .diff-side-by-side .label { font-size:10px; font-weight:600; color:#657384; text-transform:uppercase; letter-spacing:.3px; display:block; margin-bottom:3px; }
+    .diff-fields { margin-top:6px; font-size:11px; color:#657384; }
+    .diff-fields code { background:#fbe9c8; color:#7a5400; padding:1px 5px; border-radius:3px; margin-right:4px; }
+    .empty { color:#657384; font-style:italic; font-size:13px; padding:8px 0; }
+    .actions { margin-top:18px; display:flex; gap:8px; flex-wrap:wrap; }
+    .actions .button { padding:8px 16px; border-radius:4px; text-decoration:none; font-size:13px; font-weight:500; display:inline-block; }
+    .actions .restore { background:#a06200; color:#fff; }
+    .actions .back { background:#fff; color:#3a4756; border:1px solid #cfd8dc; }
+</style>
+
+<div class="diff-card">
+    <h1 style="margin:0 0 12px; font-size:18px;">Snapshot #{{ snap.id }}</h1>
+    <div class="diff-meta">
+        <span><strong>Quando:</strong> {{ snap.criado_em|date:"d/m/Y H:i:s" }}</span>
+        <span><strong>Usuário:</strong> {{ snap.usuario_nome|default:"—" }}</span>
+        <span><strong>Ação:</strong> {{ snap.get_acao_display }}</span>
+        <span><strong>Nós:</strong> {{ snap.num_nodes }}</span>
+        <span><strong>Hash:</strong> <code style="font-size:11px;">{{ snap.hash_sha|slice:":12" }}</code></span>
+        {% if parent %}
+            <span><strong>Comparando com:</strong> #{{ parent.id }} ({{ parent.criado_em|date:"d/m H:i" }})</span>
+        {% else %}
+            <span style="color:#1f7a3b;"><strong>📦 Primeira versão</strong></span>
+        {% endif %}
+    </div>
+    {% if snap.descricao %}
+    <p style="margin:12px 0 0; padding:10px 12px; background:#f7f8fa; border-left:3px solid #1565c0; border-radius:0 4px 4px 0; font-size:13px;">
+        {{ snap.descricao }}
+    </p>
+    {% endif %}
+
+    <div class="actions">
+        <a class="button back" href="{% url 'admin:equipamentos_noderedsnapshot_changelist' %}">← Voltar ao histórico</a>
+        <a class="button restore" href="{% url 'admin:nodered-snapshot-restore' snap.id %}"
+           onclick="return confirm('Restaurar esta versão no Node-RED? Isto substitui o fluxograma atual.');">
+            ↩ Restaurar esta versão
+        </a>
+    </div>
+</div>
+
+<div class="diff-section">
+    <h2 class="diff-add">+ Nós adicionados ({{ adicionados|length }})</h2>
+    {% if adicionados %}
+        <ul>
+            {% for n in adicionados %}
+                <li>
+                    <span class="diff-node-type">{{ n.type }}</span>
+                    <strong>{{ n.name }}</strong>
+                    <span class="diff-node-id">· id: {{ n.id }}</span>
+                </li>
+            {% endfor %}
+        </ul>
+    {% else %}
+        <p class="empty">Nenhum nó adicionado.</p>
+    {% endif %}
+</div>
+
+<div class="diff-section">
+    <h2 class="diff-rem">− Nós removidos ({{ removidos|length }})</h2>
+    {% if removidos %}
+        <ul>
+            {% for n in removidos %}
+                <li>
+                    <span class="diff-node-type">{{ n.type }}</span>
+                    <strong>{{ n.name }}</strong>
+                    <span class="diff-node-id">· id: {{ n.id }}</span>
+                </li>
+            {% endfor %}
+        </ul>
+    {% else %}
+        <p class="empty">Nenhum nó removido.</p>
+    {% endif %}
+</div>
+
+<div class="diff-section">
+    <h2 class="diff-mod">~ Nós modificados ({{ modificados|length }})</h2>
+    {% if modificados %}
+        <ul>
+            {% for m in modificados %}
+                <li>
+                    <span class="diff-node-type">{{ m.depois.type }}</span>
+                    <strong>{{ m.depois.name }}</strong>
+                    <span class="diff-node-id">· id: {{ m.depois.id }}</span>
+                    {% if m.campos %}
+                    <div class="diff-fields">
+                        Campos alterados:
+                        {% for c in m.campos %}<code>{{ c }}</code>{% endfor %}
+                    </div>
+                    {% endif %}
+                    <div class="diff-side-by-side">
+                        <div>
+                            <span class="label">antes:</span>
+                            <pre>{{ m.antes.json_pretty }}</pre>
+                        </div>
+                        <div>
+                            <span class="label">depois:</span>
+                            <pre>{{ m.depois.json_pretty }}</pre>
+                        </div>
+                    </div>
+                </li>
+            {% endfor %}
+        </ul>
+    {% else %}
+        <p class="empty">Nenhum nó modificado.</p>
+    {% endif %}
+</div>
+
+{% endblock %}

@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(Test-NetConnection -ComputerName 192.168.15.189 -Port 49320)",
+      "PowerShell(Test-NetConnection -ComputerName 192.168.15.189 -Port 49320 -InformationLevel Quiet 2>&1)"
+    ]
+  }
+}

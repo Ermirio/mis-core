@@ -1,0 +1,55 @@
+{% extends "admin/base.html" %}
+{% load admin_mis i18n %}
+
+{% comment %}
+  base_site é o "shell" do admin — todas as páginas autenticadas (index,
+  changelist, change_form, etc) herdam dele. Aqui re-organizamos o layout
+  inteiro: sidebar à esquerda, faixa accent + topbar, content scrollável.
+
+  O bloco {% block content %} é onde cada página injeta seu HTML.
+{% endcomment %}
+
+{% block title %}{{ title }} | {{ site_title|default:_('Django site admin') }}{% endblock %}
+
+{% block branding %}
+<a href="{% url 'admin:index' %}">{{ site_header|default:_('Django administration') }}</a>
+{% endblock %}
+
+{% block nav-global %}{% endblock %}
+
+{% block extrahead %}
+{{ block.super }}
+{% endblock %}
+
+{% block bodyclass %}{{ block.super }} mis-admin{% endblock %}
+
+{# Removemos o container/header padrão e desenhamos nosso shell #}
+{% block content_wrapper %}
+<div class="mis-shell">
+  {% include "admin_mis/includes/sidebar.html" %}
+
+  <main class="mis-main">
+    <div class="mis-adminbar"></div>
+
+    {% include "admin_mis/includes/topbar.html" %}
+
+    <div class="mis-content">
+      {% block messages %}
+        {% if messages %}
+          <ul class="messagelist">
+            {% for message in messages %}
+              <li{% if message.tags %} class="{{ message.tags }}"{% endif %}>{{ message|capfirst }}</li>
+            {% endfor %}
+          </ul>
+        {% endif %}
+      {% endblock messages %}
+
+      {% block pretitle %}{% endblock %}
+      {% block content_title %}{% endblock %}
+      {% block content_subtitle %}{% endblock %}
+      {% block content %}{% endblock %}
+      {% block sidebar %}{% endblock %}
+    </div>
+  </main>
+</div>
+{% endblock %}

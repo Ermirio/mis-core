@@ -1,0 +1,358 @@
+openapi: 3.0.3
+info:
+  title: MIS Core – Gestão Fabril (KPIs & Mapa de Chão)
+  version: 1.0.0
+  description: |
+    API para KPIs de produção e status do chão de fábrica.
+    Convenções:
+    - TZ padrão: **America/Sao_Paulo**
+    - Unidades: **toneladas (t)** e **t/h**
+    - Janelas de tempo: [início, fim)
+servers:
+  - url: https: //api.exemplo.com
+    description: Produção
+  - url: http: //localhost:8000
+    description: Local (Django)
+
+tags:
+  - name: Production
+    description: KPIs de produção (planejado, real e vazões)
+  - name: Factory
+    description: Status em tempo real do chão de fábrica
+  - name: Shifts
+    description: Turnos e janelas
+
+paths:
+  /api/production/aggregate:
+    get:
+      tags: [Production
+  ]
+      summary: Agrega KPIs no período solicitado
+      description: |
+        Retorna tons planejados/produzidos e vazões para **shift|day|week|month**.
+        - planned_tons: soma do calendário de produção (KG ÷ 1000 => t)
+        - actual_tons: produção real (History + Realtime, sem duplicidade)
+        - actual_tph, min_required_tph: conforme janela e regras de borda
+      parameters:
+        - $ref: '#/components/parameters/Period'
+        - $ref: '#/components/parameters/From'
+        - $ref: '#/components/parameters/To'
+        - $ref: '#/components/parameters/TZ'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProductionAggregateResponse'
+  }
+              examples:
+                dia:
+                  summary: Exemplo (Dia)
+                  value:
+                    planned_tons: 198.0
+                    actual_tons: 41.8
+                    actual_tph: 5.12
+                    min_required_tph: 3.2
+                    window:
+                      from: '2025-12-02T00: 00: 00-03: 00'
+                      to: '2025-12-02T22: 19: 00-03: 00'
+                      elapsedHours: 6.53
+                      hoursRemaining: 1.72
+                      tz: 'America/Sao_Paulo'
+                    notes: ['history+realtime dedup ok'
+  ]
+        '400':
+          $ref: '#/components/responses/BadRequest'
+  /api/production/planned:
+    get:
+      tags: [Production
+  ]
+      summary: Tons planejados para a janela
+      parameters:
+        - $ref: '#/components/parameters/Period'
+        - $ref: '#/components/parameters/From'
+        - $ref: '#/components/parameters/To'
+        - $ref: '#/components/parameters/TZ'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [planned_tons, window
+  ]
+                properties:
+                  planned_tons:
+                    type: number
+                    format: float
+                    description: Toneladas planejadas (t)
+                  window:
+                    $ref: '#/components/schemas/Window'
+              examples:
+                turno:
+                  value:
+                    planned_tons: 111.0
+                    window:
+                      from: '2025-12-02T14: 20: 00-03: 00'
+                      to: '2025-12-02T22: 19: 00-03: 00'
+                      elapsedHours: 6.0
+                      hoursRemaining: 1.72
+                      tz: 'America/Sao_Paulo'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+  /api/production/actual:
+    get:
+      tags: [Production
+  ]
+      summary: Tons produzidos para a janela (até agora)
+      parameters:
+        - $ref: '#/components/parameters/Period'
+        - $ref: '#/components/parameters/From'
+        - $ref: '#/components/parameters/To'
+        - $ref: '#/components/parameters/TZ'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [actual_tons, window
+  ]
+                properties:
+                  actual_tons:
+                    type: number
+                    format: float
+                    description: Toneladas produzidas (t) até `now()`
+                  window:
+                    $ref: '#/components/schemas/Window'
+              examples:
+                turno:
+                  value:
+                    actual_tons: 41.8
+                    window:
+                      from: '2025-12-02T14: 20: 00-03: 00'
+                      to: '2025-12-02T22: 19: 00-03: 00'
+                      elapsedHours: 6.0
+                      hoursRemaining: 1.72
+                      tz: 'America/Sao_Paulo'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+  /api/factory/lines/status:
+    get:
+      tags: [Factory
+  ]
+      summary: Status atual das linhas (herdado do 1º equipamento)
+      description: |
+        - **Regra**: status da linha = status do **primeiro equipamento** da linha.
+        - Ícone e cor devem ser **os mesmos** do equipamento.
+        - Atualização recomendada por **polling** (5s) ou WS/SSE (fora deste contrato).
+      parameters:
+        - $ref: '#/components/parameters/TZ'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/LineStatus'
+  }
+              examples:
+                exemplo:
+                  value:
+                    - line_id: 'L01'
+                      line_name: 'Linha 01'
+                      status: 'PRODUZINDO'
+                      icon_key: 'produzindo'
+                      status_reason: 'from_first_equipment'
+                      updated_at: '2025-12-02T19: 08: 00-03: 00'
+                      staleness_sec: 12
+                    - line_id: 'L02'
+                      line_name: 'Linha 02'
+                      status: 'PARADA_PLANEJADA'
+                      icon_key: 'paradaPlanejada'
+                      status_reason: 'planned_stop_active'
+                      updated_at: '2025-12-02T19: 07: 51-03: 00'
+                      staleness_sec: 21
+        '400':
+          $ref: '#/components/responses/BadRequest'
+  /api/shifts/current:
+    get:
+      tags: [Shifts
+  ]
+      summary: Retorna o turno corrente e sua janela
+      parameters:
+        - $ref: '#/components/parameters/TZ'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CurrentShiftResponse'
+  }
+              examples:
+                t2:
+                  value:
+                    shift:
+                      name: 'T2'
+                      start: '2025-12-02T14: 20: 00-03: 00'
+                      end: '2025-12-02T22: 19: 00-03: 00'
+        '404':
+          description: Sem configuração de turno vigente
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  detail: { type: string
+  }
+
+components:
+  parameters:
+    Period:
+      in: query
+      name: period
+      required: true
+      description: Janela de agregação
+      schema:
+        type: string
+        enum: [shift, day, week, month
+  ]
+    From:
+      in: query
+      name: from
+      required: false
+      description: ISO-8601 override de início (se omitido, derivado de `period`)
+      schema: { type: string, format: date-time
+  }
+    To:
+      in: query
+      name: to
+      required: false
+      description: ISO-8601 override de fim (se omitido, derivado de `period`)
+      schema: { type: string, format: date-time
+  }
+    TZ:
+      in: query
+      name: tz
+      required: false
+      description: Fuso horário IANA (default `America/Sao_Paulo`)
+      schema: { type: string, example: America/Sao_Paulo
+  }
+
+  schemas:
+    Window:
+      type: object
+      required: [from, to, elapsedHours, hoursRemaining, tz
+  ]
+      properties:
+        from: { type: string, format: date-time
+  }
+        to: { type: string, format: date-time
+  }
+        elapsedHours:
+          type: number
+          format: float
+          description: Horas decorrido desde `from` até `now()`
+        hoursRemaining:
+          type: number
+          format: float
+          description: Horas restantes de `now()` até `to`
+        tz: { type: string, example: America/Sao_Paulo
+  }
+    ProductionAggregateResponse:
+      type: object
+      required: [planned_tons, actual_tons, actual_tph, min_required_tph, window
+  ]
+      properties:
+        planned_tons:
+          type: number
+          format: float
+          description: Soma do calendário no período (t)
+        actual_tons:
+          type: number
+          format: float
+          description: Produção real no período até `now()` (t)
+        actual_tph:
+          type: number
+          format: float
+          description: Vazão média atual (t/h)
+        min_required_tph:
+          type: number
+          format: float
+          nullable: true
+          description: Vazão mínima para cumprir plano (t/h); **null** se prazo encerrado com saldo > 0
+        window:
+          $ref: '#/components/schemas/Window'
+        notes:
+          type: array
+          items: { type: string
+  }
+    LineStatus:
+      type: object
+      required: [line_id, line_name, status, icon_key, updated_at
+  ]
+      properties:
+        line_id: { type: string
+  }
+        line_name: { type: string
+  }
+        status:
+          type: string
+          description: Mesmo enum dos equipamentos (9 estados)
+          enum:
+            - PRODUZINDO
+            - OCIOSA
+            - PARADA_PLANEJADA
+            - PARADA_NAO_PLANEJADA
+            - SETUP
+            - ALARME_QUALIDADE
+            - MANUTENCAO
+            - SEM_TELEMETRIA
+            - DESABILITADO
+        icon_key:
+          type: string
+          description: Chave do mesmo ícone usado pelos equipamentos
+          example: produzindo
+        status_reason:
+          type: string
+          description: Motivo resumido (ex. from_first_equipment, planned_stop_active)
+        updated_at: { type: string, format: date-time
+  }
+        staleness_sec:
+          type: integer
+          nullable: true
+          description: Idade (s) do último dado/heartbeat
+    CurrentShiftResponse:
+      type: object
+      required: [shift
+  ]
+      properties:
+        shift:
+          type: object
+          required: [name, start, end
+  ]
+          properties:
+            name: { type: string, example: T2
+  }
+            start: { type: string, format: date-time
+  }
+            end: { type: string, format: date-time
+  }
+
+  responses:
+    BadRequest:
+      description: Parâmetros inválidos
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              detail: { type: string
+  }
+
+# Notas de implementação (não fazem parte do contrato em runtime):
+# - Backend deve garantir: deduplicação History+Realtime, TZ America/Sao_Paulo, conversão KG->t apenas no backend.
+# - Frontend: não converter unidades; apenas formatar exibição (t, t/h).

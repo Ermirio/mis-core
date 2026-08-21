@@ -1,0 +1,618 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>MIS Core v2 — POC ISA-101</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+  /* ===== ISA-101 palette ===== */
+  :root{
+    --bg:            #f4f5f7;
+    --bg-panel:      #ffffff;
+    --bg-muted:      #e9ecef;
+    --border:        #d7dbe0;
+    --text:          #2c3138;
+    --text-muted:    #657384;
+    --text-weak:     #9ba3ad;
+    --accent:        #3f5b7c;  /* azul-acinzentado para seleção */
+    --ok:            #2d8659;  /* verde discreto, quase só em ícone */
+    --warn:          #c9932d;  /* amarelo terroso */
+    --bad:           #b53a2b;  /* vermelho contido */
+    --chart-series:  #3f5b7c;
+    --chart-compare: #c9932d;
+    --chart-grid:    #e1e4e8;
+    --radius:        6px;
+    --mono: 'SF Mono','Consolas','Monaco',monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;font-size:14px;line-height:1.4}
+  /* ===== Layout ===== */
+  .app{display:grid;grid-template-columns:280px 1fr;height:100vh;overflow:hidden}
+  aside.sidebar{background:var(--bg-panel);border-right:1px solid var(--border);display:flex;flex-direction:column;min-height:0}
+  .brand{padding:14px 16px;border-bottom:1px solid var(--border);display:flex;gap:10px;align-items:center}
+  .brand .logo{width:28px;height:28px;background:var(--accent);color:#fff;border-radius:var(--radius);display:grid;place-items:center;font-weight:700;font-size:13px}
+  .brand .name{font-weight:600;color:var(--text)}
+  .brand .sub{font-size:11px;color:var(--text-muted)}
+  .search{padding:10px 12px;border-bottom:1px solid var(--border)}
+  .search input{width:100%;padding:6px 10px;border:1px solid var(--border);border-radius:var(--radius);background:var(--bg);font-size:13px;outline:none}
+  .search input:focus{border-color:var(--accent)}
+  .nav{flex:1;overflow-y:auto;padding:6px 0}
+  .nav::-webkit-scrollbar{width:8px}
+  .nav::-webkit-scrollbar-thumb{background:var(--border);border-radius:4px}
+  details{border:none}
+  details>summary{list-style:none;cursor:pointer;padding:6px 16px;font-size:13px;color:var(--text);display:flex;align-items:center;gap:6px;user-select:none}
+  details>summary::-webkit-details-marker{display:none}
+  details>summary:hover{background:var(--bg-muted)}
+  .chev{display:inline-block;width:10px;transition:transform .15s}
+  details[open]>summary .chev{transform:rotate(90deg)}
+  .nav-item{padding:5px 16px 5px 34px;cursor:pointer;color:var(--text);display:flex;justify-content:space-between;align-items:center;border-left:3px solid transparent}
+  .nav-item:hover{background:var(--bg-muted)}
+  .nav-item.active{background:var(--bg-muted);border-left-color:var(--accent);color:var(--accent);font-weight:500}
+  .nav-item.child{padding-left:50px;font-size:12px;color:var(--text-muted)}
+  .nav-item.grand{padding-left:66px;font-size:12px;color:var(--text-muted)}
+  .nav-badge{font-size:10px;padding:1px 6px;border-radius:10px;background:var(--bg-muted);color:var(--text-muted);font-family:var(--mono)}
+  .nav-badge.ok{background:#e3efe7;color:var(--ok)}
+  .nav-badge.warn{background:#f4e8cf;color:var(--warn)}
+  .nav-badge.bad{background:#f4dad6;color:var(--bad)}
+  .sec-label{padding:14px 16px 4px;font-size:10px;text-transform:uppercase;color:var(--text-weak);letter-spacing:.06em}
+  .sidebar-foot{border-top:1px solid var(--border);padding:10px 16px;font-size:11px;color:var(--text-muted);display:flex;justify-content:space-between}
+  .dot{width:8px;height:8px;border-radius:50%;display:inline-block;margin-right:6px}
+  .dot.ok{background:var(--ok)}
+  .dot.warn{background:var(--warn)}
+  .dot.bad{background:var(--bad)}
+  .dot.off{background:var(--text-weak)}
+  /* ===== Main ===== */
+  main{display:flex;flex-direction:column;min-height:0;overflow:hidden}
+  .topbar{padding:10px 20px;background:var(--bg-panel);border-bottom:1px solid var(--border);display:flex;gap:16px;align-items:center;justify-content:space-between}
+  .breadcrumb{font-size:12px;color:var(--text-muted)}
+  .breadcrumb b{color:var(--text);font-weight:500}
+  .tabs{display:flex;gap:0;border-bottom:1px solid var(--border);background:var(--bg-panel);padding:0 20px}
+  .tab{padding:10px 16px;cursor:pointer;font-size:13px;color:var(--text-muted);border-bottom:2px solid transparent;user-select:none}
+  .tab.active{color:var(--text);border-bottom-color:var(--accent);font-weight:500}
+  .tab:hover{color:var(--text)}
+  .content{flex:1;overflow-y:auto;padding:20px;background:var(--bg)}
+  .content::-webkit-scrollbar{width:10px}
+  .content::-webkit-scrollbar-thumb{background:var(--border);border-radius:5px}
+  /* ===== KPI cards ===== */
+  .kpi-strip{display:grid;grid-template-columns:repeat(6,1fr);gap:10px;margin-bottom:18px}
+  .kpi{background:var(--bg-panel);border:1px solid var(--border);border-radius:var(--radius);padding:12px}
+  .kpi .lbl{font-size:10px;text-transform:uppercase;color:var(--text-muted);letter-spacing:.05em}
+  .kpi .val{font-size:24px;font-weight:600;margin-top:3px;color:var(--text);font-variant-numeric:tabular-nums}
+  .kpi .delta{font-size:11px;margin-top:3px;color:var(--text-muted);font-variant-numeric:tabular-nums}
+  .kpi .delta.up{color:var(--ok)}
+  .kpi .delta.dn{color:var(--bad)}
+  .kpi .spark{margin-top:6px;height:26px}
+  /* ===== Grid de áreas ===== */
+  .section-head{display:flex;justify-content:space-between;align-items:end;margin:6px 0 10px}
+  .section-head h2{margin:0;font-size:15px;font-weight:600;color:var(--text)}
+  .section-head .desc{font-size:12px;color:var(--text-muted)}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:10px}
+  .area-card{background:var(--bg-panel);border:1px solid var(--border);border-radius:var(--radius);padding:12px;cursor:pointer;transition:box-shadow .12s}
+  .area-card:hover{box-shadow:0 1px 4px rgba(0,0,0,.08)}
+  .area-card .head{display:flex;justify-content:space-between;align-items:center}
+  .area-card .name{font-weight:600;font-size:14px}
+  .area-card .sub{font-size:11px;color:var(--text-muted)}
+  .area-card .meta{display:flex;gap:14px;margin-top:8px;font-size:11px;color:var(--text-muted)}
+  .area-card .meta span b{display:block;color:var(--text);font-size:14px;font-weight:600;font-variant-numeric:tabular-nums}
+  .area-card .spark{margin-top:8px;height:36px}
+  /* ===== Lista de alertas ===== */
+  .two-col{display:grid;grid-template-columns:2fr 1fr;gap:14px;margin-top:18px}
+  .panel{background:var(--bg-panel);border:1px solid var(--border);border-radius:var(--radius);padding:14px}
+  .panel h3{margin:0 0 8px;font-size:13px;font-weight:600}
+  .alerts{list-style:none;padding:0;margin:0;max-height:440px;overflow:auto}
+  .alerts li{padding:8px 0;border-bottom:1px solid var(--border);font-size:12px;display:flex;gap:10px;align-items:flex-start}
+  .alerts li:last-child{border-bottom:none}
+  .alerts .time{color:var(--text-muted);font-family:var(--mono);font-size:11px;min-width:58px}
+  .alerts .sev{min-width:8px;margin-top:5px}
+  .alerts .msg{flex:1}
+  .alerts .ctx{color:var(--text-muted);font-size:11px;margin-top:2px}
+  /* ===== Analytics ===== */
+  .toolbar{background:var(--bg-panel);border:1px solid var(--border);border-radius:var(--radius);padding:10px 12px;display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-bottom:14px}
+  .toolbar label{font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.04em;margin-right:4px}
+  .toolbar input,.toolbar select,.toolbar button{font-size:12px;padding:5px 8px;border:1px solid var(--border);border-radius:var(--radius);background:var(--bg-panel);color:var(--text);font-family:inherit}
+  .toolbar button{cursor:pointer;background:var(--accent);color:#fff;border-color:var(--accent)}
+  .toolbar button.ghost{background:var(--bg-panel);color:var(--text);border-color:var(--border)}
+  .toolbar button.active{background:var(--accent);color:#fff}
+  .chips{display:flex;gap:4px;flex-wrap:wrap}
+  .chip{border:1px solid var(--border);border-radius:20px;padding:3px 10px;font-size:11px;cursor:pointer;background:var(--bg-panel);color:var(--text)}
+  .chip.active{background:var(--accent);color:#fff;border-color:var(--accent)}
+  .switches{display:flex;gap:14px;margin-left:auto;font-size:12px;color:var(--text)}
+  .switch{display:flex;align-items:center;gap:6px;cursor:pointer;user-select:none}
+  .switch input{accent-color:var(--accent)}
+  .chart-row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .chart-card{background:var(--bg-panel);border:1px solid var(--border);border-radius:var(--radius);padding:12px;height:340px;display:flex;flex-direction:column}
+  .chart-card h4{margin:0 0 6px;font-size:13px;font-weight:600;display:flex;justify-content:space-between;align-items:baseline}
+  .chart-card h4 .tag{font-size:10px;padding:2px 8px;border-radius:10px;text-transform:uppercase;letter-spacing:.04em}
+  .tag.bad{background:#f4dad6;color:var(--bad)}
+  .tag.ok{background:#e3efe7;color:var(--ok)}
+  .chart-card .desc{font-size:11px;color:var(--text-muted);margin-bottom:6px}
+  .chart-card .cwrap{flex:1;position:relative}
+  .chart-row.triple{grid-template-columns:1fr 1fr 1fr;margin-top:12px}
+  /* ===== EDA stats ===== */
+  .stats-grid{display:grid;grid-template-columns:repeat(6,1fr);gap:8px;margin-top:12px}
+  .stat{background:var(--bg-panel);border:1px solid var(--border);border-radius:var(--radius);padding:8px 10px}
+  .stat .l{font-size:10px;color:var(--text-muted);text-transform:uppercase}
+  .stat .v{font-size:17px;font-weight:600;font-variant-numeric:tabular-nums}
+  /* ===== Equipment detail ===== */
+  .eq-head{background:var(--bg-panel);border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px;display:flex;gap:18px;align-items:center;margin-bottom:14px}
+  .eq-head .avatar{width:48px;height:48px;border-radius:var(--radius);background:var(--accent);color:#fff;display:grid;place-items:center;font-weight:600;font-size:18px}
+  .eq-head .info{flex:1}
+  .eq-head .info .title{font-size:16px;font-weight:600}
+  .eq-head .info .sub{font-size:12px;color:var(--text-muted);margin-top:2px}
+  .eq-head .state{padding:6px 12px;border-radius:var(--radius);font-size:11px;text-transform:uppercase;letter-spacing:.04em;font-weight:600}
+  .eq-head .state.run{background:#e3efe7;color:var(--ok)}
+  .eq-head .state.stop{background:#f4dad6;color:var(--bad)}
+  .eq-head .state.warn{background:#f4e8cf;color:var(--warn)}
+  .eq-head .state.off{background:var(--bg-muted);color:var(--text-muted)}
+  table.tbl{width:100%;border-collapse:collapse;font-size:12px}
+  table.tbl th,table.tbl td{padding:6px 10px;border-bottom:1px solid var(--border);text-align:left}
+  table.tbl th{background:var(--bg-muted);font-weight:600;color:var(--text-muted);text-transform:uppercase;font-size:10px;letter-spacing:.04em}
+  /* Hide/show views */
+  .view{display:none}
+  .view.active{display:block}
+  .note{font-size:12px;padding:10px 14px;border:1px dashed var(--border);border-radius:var(--radius);background:#fafafb;color:var(--text-muted);margin-bottom:12px}
+  .note b{color:var(--text)}
+</style>
+</head>
+<body>
+<div class="app">
+  <!-- ============ SIDEBAR ============ -->
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="logo">M</div>
+      <div>
+        <div class="name">MIS Core</div>
+        <div class="sub">v2 · POC navegável</div>
+      </div>
+    </div>
+    <div class="search"><input id="sidebarSearch" placeholder="Buscar linha, equipamento, tag…" /></div>
+    <div class="nav" id="nav">
+      <div class="sec-label">Fábrica — Unidade Norte</div>
+      <!-- Áreas -->
+      <details open>
+        <summary><span class="chev">▸</span>Área A — Envase</summary>
+        <details open>
+          <summary><span class="chev">▸</span><span style="padding-left:6px">Categoria · Envase</span></summary>
+          <div class="nav-item child active" data-line="L01" onclick="selectLine('L01')"><span><span class="dot ok"></span>Linha 01</span><span class="nav-badge ok">OEE 87</span></div>
+          <div class="nav-item grand" data-eq="ENC-01" onclick="selectEquipment('ENC-01')">Enchedora 01</div>
+          <div class="nav-item grand" data-eq="BAL-01" onclick="selectEquipment('BAL-01')">Balança 01</div>
+          <div class="nav-item child" data-line="L02" onclick="selectLine('L02')"><span><span class="dot warn"></span>Linha 02</span><span class="nav-badge warn">OEE 72</span></div>
+          <div class="nav-item grand" data-eq="ENC-02" onclick="selectEquipment('ENC-02')">Enchedora 02</div>
+          <div class="nav-item child" data-line="L03" onclick="selectLine('L03')"><span><span class="dot bad"></span>Linha 03</span><span class="nav-badge bad">OEE 48</span></div>
+        </details>
+        <details>
+          <summary><span class="chev">▸</span><span style="padding-left:6px">Categoria · Empacotamento</span></summary>
+          <div class="nav-item child" data-line="L04" onclick="selectLine('L04')"><span><span class="dot ok"></span>Linha 04</span><span class="nav-badge ok">OEE 91</span></div>
+          <div class="nav-item grand" data-eq="ECX-04" onclick="selectEquipment('ECX-04')">Encaixotadora 04</div>
+          <div class="nav-item child" data-line="L05" onclick="selectLine('L05')"><span><span class="dot warn"></span>Linha 05</span><span class="nav-badge warn">OEE 68</span></div>
+        </details>
+      </details>
+      <details>
+        <summary><span class="chev">▸</span>Área B — Paletização</summary>
+        <details>
+          <summary><span class="chev">▸</span><span style="padding-left:6px">Categoria · Paletização</span></summary>
+          <div class="nav-item child" data-line="L06" onclick="selectLine('L06')"><span><span class="dot ok"></span>Linha 06</span><span class="nav-badge ok">OEE 83</span></div>
+          <div class="nav-item child" data-line="L07" onclick="selectLine('L07')"><span><span class="dot off"></span>Linha 07</span><span class="nav-badge">OFF</span></div>
+          <div class="nav-item child" data-line="L08" onclick="selectLine('L08')"><span><span class="dot bad"></span>Linha 08</span><span class="nav-badge bad">OEE 41</span></div>
+        </details>
+      </details>
+      <details>
+        <summary><span class="chev">▸</span>Área C — Utilities</summary>
+        <div class="nav-item child" data-line="U01" onclick="selectLine('U01')"><span><span class="dot ok"></span>Compressores</span></div>
+        <div class="nav-item child" data-line="U02" onclick="selectLine('U02')"><span><span class="dot ok"></span>Chiller</span></div>
+      </details>
+      <div class="sec-label">Sistema</div>
+      <div class="nav-item" style="padding-left:16px">Alertas <span class="nav-badge bad" style="margin-left:auto">3</span></div>
+      <div class="nav-item" style="padding-left:16px">Perfis salvos</div>
+      <div class="nav-item" style="padding-left:16px">Configurações</div>
+    </div>
+    <div class="sidebar-foot">
+      <span><span class="dot ok"></span>Coletor OK</span>
+      <span>v2.0.0-poc</span>
+    </div>
+  </aside>
+  <!-- ============ MAIN ============ -->
+  <main>
+    <div class="topbar">
+      <div class="breadcrumb">Fábrica Norte / Área A / Envase / <b id="bcLine">Linha 01</b></div>
+      <div style="display:flex;gap:10px;align-items:center">
+        <span style="font-size:11px;color:var(--text-muted)">Turno 2 · Atualizado 12s atrás</span>
+        <button class="tab" style="padding:6px 10px;border:1px solid var(--border);border-radius:var(--radius);cursor:pointer">Export</button>
+      </div>
+    </div>
+    <div class="tabs">
+      <div class="tab active" data-view="home" onclick="switchView('home')">Home</div>
+      <div class="tab" data-view="analytics" onclick="switchView('analytics')">Analytics</div>
+      <div class="tab" data-view="equipment" onclick="switchView('equipment')">Equipamento</div>
+      <div class="tab" data-view="losses" onclick="switchView('losses')">Árvore de perdas</div>
+    </div>
+    <div class="content">
+      <!-- ===== HOME ===== -->
+      <section class="view active" id="view-home">
+        <div class="note"><b>ISA-101 aplicado:</b> cores saturadas (vermelho/amarelo) aparecem só quando há desvio. Estados normais ficam em cinza. Densidade organizada por hierarquia — Fábrica → Área → Linha → Equipamento.</div>
+        <div class="kpi-strip">
+          <div class="kpi"><div class="lbl">OEE Fábrica</div><div class="val">76.4<span style="font-size:14px;color:var(--text-muted)">%</span></div><div class="delta up">▲ 2.1 vs ontem</div><div class="spark"><canvas id="sparkOee"></canvas></div></div>
+          <div class="kpi"><div class="lbl">Disponibilidade</div><div class="val">84.2<span style="font-size:14px;color:var(--text-muted)">%</span></div><div class="delta dn">▼ 1.4</div><div class="spark"><canvas id="sparkAvail"></canvas></div></div>
+          <div class="kpi"><div class="lbl">Performance</div><div class="val">92.8<span style="font-size:14px;color:var(--text-muted)">%</span></div><div class="delta up">▲ 0.3</div><div class="spark"><canvas id="sparkPerf"></canvas></div></div>
+          <div class="kpi"><div class="lbl">Qualidade</div><div class="val">97.8<span style="font-size:14px;color:var(--text-muted)">%</span></div><div class="delta">&mdash;</div><div class="spark"><canvas id="sparkQual"></canvas></div></div>
+          <div class="kpi"><div class="lbl">Give Away</div><div class="val">+1.2<span style="font-size:14px;color:var(--text-muted)">g/un</span></div><div class="delta dn">+0.3g vs meta</div><div class="spark"><canvas id="sparkGa"></canvas></div></div>
+          <div class="kpi"><div class="lbl">Descarte</div><div class="val">2.2<span style="font-size:14px;color:var(--text-muted)">%</span></div><div class="delta up">▼ 0.4</div><div class="spark"><canvas id="sparkScrap"></canvas></div></div>
+        </div>
+
+        <div class="section-head">
+          <h2>Visão por Área</h2>
+          <div class="desc">Clique em uma área para fazer drill-down</div>
+        </div>
+        <div class="grid" id="areaGrid"></div>
+
+        <div class="two-col">
+          <div class="panel">
+            <h3>Produção acumulada por linha (turno atual)</h3>
+            <div style="height:220px;position:relative"><canvas id="productionChart"></canvas></div>
+          </div>
+          <div class="panel">
+            <h3>Alertas ativos</h3>
+            <ul class="alerts" id="alertList"></ul>
+          </div>
+        </div>
+      </section>
+
+      <!-- ===== ANALYTICS ===== -->
+      <section class="view" id="view-analytics">
+        <div class="note"><b>Analytics v2:</b> range datetime estilo Grafana, tratamento correto de contadores acumulados (delta) e máscara de OFF (equipamento desligado não polui as estatísticas). Compare os dois gráficos abaixo.</div>
+        <div class="toolbar">
+          <label>De</label>
+          <input type="datetime-local" id="dtFrom" value="2026-04-22T06:00">
+          <label>Até</label>
+          <input type="datetime-local" id="dtTo" value="2026-04-23T06:00">
+          <label>Granularidade</label>
+          <select id="gran"><option>auto</option><option>1m</option><option>5m</option><option selected>15m</option><option>1h</option><option>1d</option></select>
+          <div class="chips" style="margin-left:4px">
+            <div class="chip" onclick="setRange(0.25)">15 min</div>
+            <div class="chip" onclick="setRange(1)">1 h</div>
+            <div class="chip" onclick="setRange(8)">8 h</div>
+            <div class="chip active" onclick="setRange(24)">24 h</div>
+            <div class="chip" onclick="setRange(168)">7 d</div>
+          </div>
+          <div class="switches">
+            <label class="switch"><input type="checkbox" id="optOff" checked>Ignorar OFF</label>
+            <label class="switch"><input type="checkbox" id="optDelta" checked>Delta em contadores</label>
+          </div>
+        </div>
+
+        <div class="chart-row">
+          <div class="chart-card">
+            <h4>Refugo — <b>antes</b> (como está hoje) <span class="tag bad">Errado</span></h4>
+            <div class="desc">Contador acumulado plotado direto → série monotônica sempre crescente. Impossível ver oscilação real.</div>
+            <div class="cwrap"><canvas id="chartBefore"></canvas></div>
+          </div>
+          <div class="chart-card">
+            <h4>Refugo — <b>depois</b> (v2: delta + OFF-mask) <span class="tag ok">Correto</span></h4>
+            <div class="desc">Delta por janela de 15min. Quando equipamento OFF, valor = 0. Agora dá para ver picos reais e fazer EDA.</div>
+            <div class="cwrap"><canvas id="chartAfter"></canvas></div>
+          </div>
+        </div>
+
+        <div class="chart-row triple">
+          <div class="chart-card">
+            <h4>Velocidade (gauge)</h4>
+            <div class="desc">Métrica instantânea, com OFF-mask ativo.</div>
+            <div class="cwrap"><canvas id="chartSpeed"></canvas></div>
+          </div>
+          <div class="chart-card">
+            <h4>Distribuição do refugo</h4>
+            <div class="desc">Histograma com LSL/USL (linhas tracejadas).</div>
+            <div class="cwrap"><canvas id="chartHist"></canvas></div>
+          </div>
+          <div class="chart-card">
+            <h4>Boxplot por turno</h4>
+            <div class="desc">Mediana, quartis, outliers (IQR×1.5).</div>
+            <div class="cwrap"><canvas id="chartBox"></canvas></div>
+          </div>
+        </div>
+
+        <div class="stats-grid" id="statsGrid"></div>
+      </section>
+
+      <!-- ===== EQUIPMENT ===== -->
+      <section class="view" id="view-equipment">
+        <div class="eq-head">
+          <div class="avatar">EN</div>
+          <div class="info">
+            <div class="title" id="eqTitle">Enchedora 01 · ENC-01</div>
+            <div class="sub">Linha 01 / Área A / Envase · Velocidade nominal 100 un/min</div>
+          </div>
+          <div class="state run" id="eqState">RUN</div>
+        </div>
+        <div class="kpi-strip" style="grid-template-columns:repeat(4,1fr)">
+          <div class="kpi"><div class="lbl">OEE (24h)</div><div class="val">87.1<span style="font-size:14px">%</span></div><div class="delta up">▲ 3.2</div></div>
+          <div class="kpi"><div class="lbl">Disponibilidade</div><div class="val">91.0<span style="font-size:14px">%</span></div></div>
+          <div class="kpi"><div class="lbl">Performance</div><div class="val">96.4<span style="font-size:14px">%</span></div></div>
+          <div class="kpi"><div class="lbl">Qualidade</div><div class="val">99.2<span style="font-size:14px">%</span></div></div>
+        </div>
+        <div class="panel" style="margin-top:14px">
+          <h3>Últimos 20 eventos de estado</h3>
+          <table class="tbl">
+            <thead><tr><th>Timestamp</th><th>Estado</th><th>Duração</th><th>Categoria</th><th>Comentário</th></tr></thead>
+            <tbody id="eventsBody"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- ===== LOSSES TREE ===== -->
+      <section class="view" id="view-losses">
+        <div class="note"><b>Árvore de perdas WCM:</b> 100% de tempo calendário decomposto em categorias ISO 22400 + perdas TPM clássicas.</div>
+        <div class="panel">
+          <pre id="lossesTree" style="font-family:var(--mono);font-size:12px;line-height:1.6;margin:0;white-space:pre"></pre>
+        </div>
+      </section>
+    </div>
+  </main>
+</div>
+
+<script>
+/* ======================================================================
+   POC MIS Core v2 — dados mock determinísticos para demonstrar conceito
+   ====================================================================== */
+Chart.defaults.color = '#657384';
+Chart.defaults.font.family = 'system-ui, -apple-system, sans-serif';
+Chart.defaults.font.size = 11;
+Chart.defaults.borderColor = '#e1e4e8';
+
+function rng(seed){let s=seed;return ()=>{s=(s*9301+49297)%233280;return s/233280;}}
+const rnd = rng(42);
+
+/* ========== KPI sparklines ========== */
+function makeSpark(id, color){
+  const ctx = document.getElementById(id);
+  if(!ctx) return;
+  const data = Array.from({length:24},()=>50+rnd()*40);
+  new Chart(ctx,{
+    type:'line',
+    data:{labels:data.map((_,i)=>i),datasets:[{data,borderColor:color,borderWidth:1.5,pointRadius:0,tension:.3,fill:true,backgroundColor:color+'20'}]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{enabled:false}},scales:{x:{display:false},y:{display:false}}}
+  });
+}
+['sparkOee','sparkAvail','sparkPerf','sparkQual'].forEach(id=>makeSpark(id,'#3f5b7c'));
+makeSpark('sparkGa','#c9932d');
+makeSpark('sparkScrap','#b53a2b');
+
+/* ========== Áreas (drill-down cards) ========== */
+const areas = [
+  {id:'A',name:'Área A — Envase',linhas:3,equipCount:14,oee:81,status:'ok',scrap:1.8,tph:112},
+  {id:'B',name:'Área B — Paletização',linhas:3,equipCount:8,oee:66,status:'warn',scrap:2.9,tph:48},
+  {id:'C',name:'Área C — Utilities',linhas:2,equipCount:4,oee:94,status:'ok',scrap:0.0,tph:0},
+];
+const grid = document.getElementById('areaGrid');
+areas.forEach((a,ix)=>{
+  const card = document.createElement('div');
+  card.className = 'area-card';
+  const statusCls = a.status==='ok'?'ok':a.status==='warn'?'warn':'bad';
+  card.innerHTML = `
+    <div class="head">
+      <div>
+        <div class="name">${a.name}</div>
+        <div class="sub">${a.linhas} linhas · ${a.equipCount} equipamentos</div>
+      </div>
+      <span class="nav-badge ${statusCls}">${a.status.toUpperCase()}</span>
+    </div>
+    <div class="meta">
+      <span><b>${a.oee.toFixed(1)}%</b>OEE</span>
+      <span><b>${a.tph}</b>TPH</span>
+      <span><b>${a.scrap.toFixed(1)}%</b>Descarte</span>
+    </div>
+    <div class="spark"><canvas id="spark-area-${a.id}"></canvas></div>`;
+  grid.appendChild(card);
+});
+areas.forEach(a => makeSpark(`spark-area-${a.id}`, a.status==='ok'?'#2d8659':a.status==='warn'?'#c9932d':'#b53a2b'));
+
+/* ========== Production chart (home) ========== */
+(function(){
+  const labels = ['06:00','07:00','08:00','09:00','10:00','11:00','12:00','13:00','14:00'];
+  const linhaData = {
+    'L01':[2.2,4.8,7.6,10.1,12.8,15.2,17.9,20.3,23.0],
+    'L02':[1.8,3.6,5.0,6.2,6.2,8.4,10.0,12.1,13.8],
+    'L04':[2.6,5.4,8.3,11.3,14.5,17.8,21.0,24.3,27.5],
+    'L06':[1.5,3.1,4.8,6.0,6.0,7.1,8.5,10.0,11.4],
+  };
+  const colors = {L01:'#3f5b7c',L02:'#c9932d',L04:'#2d8659',L06:'#8a6ba8'};
+  new Chart(document.getElementById('productionChart'),{
+    type:'line',
+    data:{labels,datasets:Object.keys(linhaData).map(l=>({label:l,data:linhaData[l],borderColor:colors[l],backgroundColor:colors[l]+'18',fill:false,tension:.25,borderWidth:2,pointRadius:2}))},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom',labels:{boxWidth:10,padding:8}}},scales:{y:{title:{display:true,text:'Produção acumulada (t)'}}}}
+  });
+})();
+
+/* ========== Alertas ========== */
+const alerts = [
+  {time:'13:47',sev:'bad',msg:'Linha 03 — Falha na Encaixotadora (estado=FAULT)',ctx:'Duração atual: 12min · Operador notificado'},
+  {time:'13:31',sev:'warn',msg:'Linha 02 — Give Away acima de +2g/un por 10min consecutivos',ctx:'Sugestão: verificar calibração da balança 02'},
+  {time:'13:20',sev:'bad',msg:'Linha 08 — OEE caiu abaixo de 50% no turno',ctx:'Principal ofensor: disponibilidade (7 microparadas)'},
+  {time:'12:55',sev:'warn',msg:'Coletor OPC — latência acima de 500ms para PLC Siemens-02',ctx:'Sem perda de dados (buffer local ativo)'},
+  {time:'11:10',sev:'warn',msg:'Linha 05 — velocidade < 80% do nominal por 25min',ctx:'Possível gargalo upstream'},
+  {time:'10:42',sev:'bad',msg:'Linha 07 — OFFLINE (coletor sem conexão OPC há 4min)',ctx:'Reconexão em curso (tentativa 3/10)'},
+  {time:'09:30',sev:'warn',msg:'Linha 01 — Refugo horário acima de 3% (limite 2.5%)',ctx:'SKU: PET-500ml-regular'},
+];
+const al = document.getElementById('alertList');
+alerts.forEach(a => {
+  const li = document.createElement('li');
+  li.innerHTML = `<span class="time">${a.time}</span><span class="sev"><span class="dot ${a.sev}"></span></span><div><div class="msg">${a.msg}</div><div class="ctx">${a.ctx}</div></div>`;
+  al.appendChild(li);
+});
+
+/* ========== Analytics — antes vs depois ========== */
+// simula um contador cumulativo e um "delta real"
+function genAnalyticsData(){
+  const N = 96; // 24h × 15min
+  const labels = [];
+  const base = new Date('2026-04-22T06:00:00');
+  const counter = [0];
+  const deltas = [];
+  const offs = []; // 1 = off
+  for(let i=0;i<N;i++){
+    const ts = new Date(base.getTime()+i*15*60000);
+    labels.push(ts.toTimeString().slice(0,5));
+    // pattern: delta varia, com alguns momentos de OFF
+    let off = 0;
+    let d = 3 + Math.sin(i/6)*2 + (rnd()-.5)*2;
+    if(i>=38 && i<=44){ d = 0; off = 1; }          // parada manutenção
+    if(i>=62 && i<=64){ d = 0; off = 1; }          // microparada
+    if(i%13===0) d += 4*rnd();                     // pico
+    d = Math.max(0, d);
+    deltas.push(d);
+    offs.push(off);
+    counter.push(counter[counter.length-1]+d);
+  }
+  counter.shift();
+  return {labels,counter,deltas,offs};
+}
+const A = genAnalyticsData();
+const deltasMasked = A.deltas.map((d,i)=>A.offs[i]?null:d);
+
+const chartBefore = new Chart(document.getElementById('chartBefore'),{
+  type:'line',
+  data:{labels:A.labels,datasets:[{label:'refugo_op_acumulado (cru)',data:A.counter,borderColor:'#b53a2b',backgroundColor:'#b53a2b18',borderWidth:1.6,pointRadius:0,tension:.1,fill:true}]},
+  options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{mode:'index',intersect:false}},scales:{y:{title:{display:true,text:'kg (acumulado)'}},x:{ticks:{maxTicksLimit:8}}}}
+});
+const chartAfter = new Chart(document.getElementById('chartAfter'),{
+  type:'line',
+  data:{labels:A.labels,datasets:[
+    {label:'refugo por 15min (delta)',data:deltasMasked,borderColor:'#2d8659',backgroundColor:'#2d865922',borderWidth:1.6,pointRadius:0,tension:.25,fill:true,spanGaps:false},
+    {label:'limite 2.5kg/15min',data:Array(A.labels.length).fill(2.5),borderColor:'#c9932d',borderWidth:1,pointRadius:0,borderDash:[4,4],fill:false}
+  ]},
+  options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom',labels:{boxWidth:10,padding:8}},tooltip:{mode:'index',intersect:false}},scales:{y:{title:{display:true,text:'kg por 15min'}},x:{ticks:{maxTicksLimit:8}}}}
+});
+
+// velocidade com OFF-mask
+const speed = A.deltas.map((d,i)=>A.offs[i]?null:95+Math.sin(i/4)*6+(rnd()-.5)*4);
+new Chart(document.getElementById('chartSpeed'),{
+  type:'line',
+  data:{labels:A.labels,datasets:[
+    {label:'velocidade (un/min)',data:speed,borderColor:'#3f5b7c',borderWidth:1.5,pointRadius:0,tension:.3,spanGaps:false},
+    {label:'nominal',data:Array(A.labels.length).fill(100),borderColor:'#9ba3ad',borderWidth:1,pointRadius:0,borderDash:[4,4]}
+  ]},
+  options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{y:{min:0,max:120}}}
+});
+
+// histograma
+function histogram(values, bins=14){
+  const min = Math.min(...values.filter(v=>v!=null)), max = Math.max(...values.filter(v=>v!=null));
+  const step = (max-min)/bins;
+  const labels = [], counts = Array(bins).fill(0);
+  for(let b=0;b<bins;b++) labels.push((min+b*step).toFixed(1));
+  values.forEach(v=>{if(v==null) return; let b=Math.floor((v-min)/step); if(b>=bins)b=bins-1; counts[b]++;});
+  return {labels,counts};
+}
+const H = histogram(A.deltas.filter(d=>d>0));
+new Chart(document.getElementById('chartHist'),{
+  type:'bar',
+  data:{labels:H.labels,datasets:[{data:H.counts,backgroundColor:'#3f5b7c',borderWidth:0}]},
+  options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{title:{display:true,text:'kg/15min'}},y:{title:{display:true,text:'frequência'}}}}
+});
+
+// boxplot manual (Chart.js nativo não tem — desenha retângulos)
+(function(){
+  const turno = {'T1':A.deltas.slice(0,32),'T2':A.deltas.slice(32,64),'T3':A.deltas.slice(64,96)};
+  function stats(arr){
+    const s = arr.filter(v=>v>0).sort((a,b)=>a-b);
+    const q = p => s[Math.floor(p*s.length)];
+    return {q1:q(.25),q2:q(.5),q3:q(.75),min:s[0]||0,max:s[s.length-1]||0,n:s.length};
+  }
+  const data = Object.entries(turno).map(([k,v])=>({k,...stats(v)}));
+  new Chart(document.getElementById('chartBox'),{
+    type:'bar',
+    data:{labels:data.map(d=>d.k),datasets:[
+      {label:'IQR (Q1-Q3)',data:data.map(d=>d.q3-d.q1),backgroundColor:'#3f5b7c88',borderColor:'#3f5b7c',borderWidth:1,base:data.map(d=>d.q1),stack:'box'},
+      {label:'mediana',data:data.map(d=>0.05),backgroundColor:'#2d8659',borderColor:'#2d8659',base:data.map(d=>d.q2),stack:'box'}
+    ]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom',labels:{boxWidth:10}}},scales:{y:{title:{display:true,text:'kg/15min'}}}}
+  });
+})();
+
+// stats grid
+const validDeltas = A.deltas.filter((d,i)=>!A.offs[i]&&d>0).sort((a,b)=>a-b);
+function q(p){return validDeltas[Math.floor(p*validDeltas.length)];}
+const mean = validDeltas.reduce((a,b)=>a+b,0)/validDeltas.length;
+const std = Math.sqrt(validDeltas.reduce((a,b)=>a+(b-mean)**2,0)/validDeltas.length);
+const stats = [
+  {l:'n (amostras)',v:validDeltas.length},
+  {l:'Média',v:mean.toFixed(2)},
+  {l:'Desvio padrão',v:std.toFixed(2)},
+  {l:'p50 (mediana)',v:q(.5).toFixed(2)},
+  {l:'p90',v:q(.9).toFixed(2)},
+  {l:'p99',v:q(.99).toFixed(2)},
+];
+const sg = document.getElementById('statsGrid');
+stats.forEach(s=>{const d=document.createElement('div');d.className='stat';d.innerHTML=`<div class="l">${s.l}</div><div class="v">${s.v}</div>`;sg.appendChild(d);});
+
+/* ========== Equipment events ========== */
+const events = [
+  ['13:47:22','FAULT','12min 10s','Não planejada','Falha sensor óptico encaixotadora'],
+  ['13:35:12','RUN','12min 10s','—','—'],
+  ['13:18:45','SETUP','16min 27s','Planejada','Troca SKU 500→1000ml'],
+  ['12:50:31','RUN','28min 14s','—','—'],
+  ['12:45:02','UNPLANNED_STOP','5min 29s','Não planejada','Microparada (fluxo baixo)'],
+  ['12:30:00','RUN','15min 02s','—','—'],
+  ['12:10:00','PLANNED_STOP','20min','Planejada','Refeição'],
+  ['11:55:42','RUN','14min 18s','—','—'],
+  ['11:02:10','FAULT','53min 32s','Não planejada','Obstrução linha entrada'],
+  ['10:58:45','RUN','3min 25s','—','—'],
+];
+const eb = document.getElementById('eventsBody');
+events.forEach(e=>{const tr=document.createElement('tr');tr.innerHTML=`<td><code>${e[0]}</code></td><td>${e[1]}</td><td>${e[2]}</td><td>${e[3]}</td><td>${e[4]}</td>`;eb.appendChild(tr);});
+
+/* ========== Losses tree ========== */
+document.getElementById('lossesTree').textContent = `
+Tempo calendário turno ........................... 480 min  (100.0%)
+├── Tempo planejado produção ..................... 420 min  ( 87.5%)
+│   ├── Tempo produtivo (RUN) .................... 354 min  ( 73.8%)   ← Availability = 354/420 = 84.3%
+│   │   ├── Produção boa ......................... 1.120 un
+│   │   ├── Produção refugada .................... 24 un              ← Quality loss
+│   │   └── Ineficiência velocidade .............. ~8 min equivalente  ← Performance loss
+│   └── Paradas não planejadas ................... 66 min  ( 13.7%)
+│       ├── Falhas (FAULT) ....................... 40 min
+│       ├── Microparadas ......................... 15 min
+│       ├── Falta de material .................... 8 min
+│       └── Outras ............................... 3 min
+└── Paradas planejadas ........................... 60 min  ( 12.5%)    ← NÃO conta em Availability ISO 22400
+    ├── Setup/Changeover ......................... 16 min
+    ├── Refeição ................................. 20 min
+    ├── Manutenção programada .................... 15 min
+    └── Reunião turno ............................ 9 min
+
+OEE = Availability × Performance × Quality
+    =     84.3%     ×     96.4%     ×   97.8%    = 79.5%
+`;
+
+/* ========== Interações ========== */
+function switchView(v){
+  document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active',t.dataset.view===v));
+  document.querySelectorAll('.view').forEach(s=>s.classList.toggle('active',s.id==='view-'+v));
+}
+function selectLine(id){
+  document.querySelectorAll('.nav-item').forEach(n=>n.classList.toggle('active',n.dataset.line===id));
+  document.getElementById('bcLine').textContent = id==='L01'?'Linha 01':('Linha '+id.replace('L',''));
+}
+function selectEquipment(id){
+  document.getElementById('eqTitle').textContent = id.startsWith('ENC')?`Enchedora ${id.split('-')[1]} · ${id}`: `${id}`;
+  switchView('equipment');
+}
+function setRange(hours){
+  document.querySelectorAll('.chip').forEach(c=>c.classList.remove('active'));
+  event.target.classList.add('active');
+  const to = new Date();
+  const from = new Date(to.getTime()-hours*3600*1000);
+  document.getElementById('dtFrom').value = from.toISOString().slice(0,16);
+  document.getElementById('dtTo').value   = to.toISOString().slice(0,16);
+}
+// busca simples na sidebar
+document.getElementById('sidebarSearch').addEventListener('input', e=>{
+  const q = e.target.value.toLowerCase();
+  document.querySelectorAll('.nav-item').forEach(n=>{
+    n.style.display = n.textContent.toLowerCase().includes(q) ? '' : 'none';
+  });
+});
+</script>
+</body>
+</html>

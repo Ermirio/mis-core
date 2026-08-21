@@ -1,0 +1,229 @@
+{
+	"info": {
+		"_postman_id": "b5a9c8f2-1234-5678-9abc-def012345678",
+		"name": "Flask Industrial API",
+		"description": "Coleção para testar as rotas de tempo real do sistema MIS (Monitoramento Industrial), conectando Flask ao InfluxDB.",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "1. Diagnóstico",
+			"item": [
+				{
+					"name": "Health Check",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/health",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"health"
+							]
+						},
+						"description": "Verifica se a API Flask está rodando."
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "2. Simulação (Ingestão)",
+			"item": [
+				{
+					"name": "Inserir Dados (Simular Máquina)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"equipamento_codigo\": \"{{equipamento_codigo}}\",\n    \"linha_codigo\": \"LINHA-01\",\n    \"timestamp\": null,\n    \"medicoes\": {\n        \"contagem_entrada\": 1500,\n        \"contagem_saida\": 1480,\n        \"descarte\": 20,\n        \"percentual_descarte\": 1.35,\n        \"velocidade_atual\": 200.5,\n        \"estado_maquina\": 1,\n        \"temperatura\": 45.2,\n        \"pressao\": 6.5,\n        \"ordem_producao\": \"OP-2024-999\",\n        \"sku_codigo\": \"SKU-OMO-500\",\n        \"descricao\": \"Detergente Omo 500ml\",\n        \"formato_gramas\": 500,\n        \"planejado_op\": 50000,\n        \"cuc\": \"CUC-BR-123\",\n        \"oee\": 85.5,\n        \"disponibilidade\": 90.0,\n        \"performance\": 96.0,\n        \"qualidade\": 99.0\n    }\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/dados/inserir",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"dados",
+								"inserir"
+							]
+						},
+						"description": "Envia um pacote de dados simulado para o InfluxDB através do Flask. Use isso para popular o banco se não tiver o coletor rodando."
+					},
+					"response": []
+				},
+				{
+					"name": "Inserir Dados (Simular Parada/Erro)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"equipamento_codigo\": \"{{equipamento_codigo}}\",\n    \"linha_codigo\": \"LINHA-01\",\n    \"medicoes\": {\n        \"contagem_entrada\": 1500,\n        \"contagem_saida\": 1480,\n        \"descarte\": 20,\n        \"velocidade_atual\": 0,\n        \"estado_maquina\": 4,\n        \"motivo_parada\": \"Falha no Motor\",\n        \"temperatura\": 80.5,\n        \"pressao\": 0.0\n    }\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/dados/inserir",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"dados",
+								"inserir"
+							]
+						},
+						"description": "Simula uma parada (Estado 4) para testar a mudança de status."
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "3. Consumo (Frontend)",
+			"item": [
+				{
+					"name": "Dados Operação (Produto/OP)",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/operacao/dados/{{equipamento_codigo}}",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"operacao",
+								"dados",
+								"{{equipamento_codigo}}"
+							]
+						},
+						"description": "Rota NOVA: Retorna dados focados na ordem de produção (OP, SKU, Planejado, Velocidade e Contadores) para o painel do operador."
+					},
+					"response": []
+				},
+				{
+					"name": "Dados Equipamento (Técnico)",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/equipamento/dados/{{equipamento_codigo}}",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"equipamento",
+								"dados",
+								"{{equipamento_codigo}}"
+							]
+						},
+						"description": "Rota NOVA: Retorna dados técnicos (Sensores, Estado textual, Velocidade) para detalhamento de manutenção."
+					},
+					"response": []
+				},
+				{
+					"name": "Status Tempo Real (Snapshot Todos)",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/realtime/status",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"realtime",
+								"status"
+							]
+						},
+						"description": "Retorna o último estado de TODOS os equipamentos ativos."
+					},
+					"response": []
+				},
+				{
+					"name": "Variáveis de Processo (Histórico Recente)",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/realtime/variaveis/{{equipamento_codigo}}",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"realtime",
+								"variaveis",
+								"{{equipamento_codigo}}"
+							]
+						},
+						"description": "Retorna os últimos 20 pontos de dados (aprox. 2 minutos) para gráficos de tendência rápida."
+					},
+					"response": []
+				}
+			]
+		}
+	],
+	"event": [
+		{
+			"listen": "prerequest",
+			"script": {
+				"type": "text/javascript",
+				"exec": [
+					""
+				]
+			}
+		},
+		{
+			"listen": "test",
+			"script": {
+				"type": "text/javascript",
+				"exec": [
+					""
+				]
+			}
+		}
+	],
+	"variable": [
+		{
+			"key": "base_url",
+			"value": "http://127.0.0.1:5000",
+			"type": "string"
+		},
+		{
+			"key": "equipamento_codigo",
+			"value": "EQ-TESTE-01",
+			"type": "string"
+		}
+	]
+}

@@ -1,0 +1,3 @@
+1. Ao excluir variáveis das tags e sensores as mesmas devem remover do frontend nas telas de analictys geral e do analicts da linha. Não devem aparecer no campo de busca, hoje desaparece apenas do analictys geral na aba analictycs da linha permancece. 
+2. Quando editamos as variaveis no analictys da linha causa erro, quando seleionamos uma varivel identifica como null e não redneriza os novos valores. 
+3. 

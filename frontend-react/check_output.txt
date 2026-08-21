@@ -1,0 +1,43 @@
+
+> frontend-react@1.0.0 check
+> tsc --noEmit
+
+client/src/components/admin/AdminDataGrid.tsx(104,85): error TS2536: Type '"actions" | keyof T' cannot be used to index type 'T'.
+client/src/components/admin/CalendarForm.tsx(3,29): error TS2307: Cannot find module '@hookform/resolvers/zod' or its corresponding type declarations.
+client/src/components/admin/EquipmentForm.tsx(3,29): error TS2307: Cannot find module '@hookform/resolvers/zod' or its corresponding type declarations.
+client/src/components/admin/EquipmentForm.tsx(37,9): error TS2769: No overload matches this call.
+  Overload 1 of 2, '(params?: string | { error?: string | $ZodErrorMap<$ZodIssueInvalidType<unknown>> | undefined; message?: string | undefined; } | undefined): ZodString', gave the following error.
+    Object literal may only specify known properties, and 'required_error' does not exist in type '{ error?: string | $ZodErrorMap<$ZodIssueInvalidType<unknown>> | undefined; message?: string | undefined; }'.
+  Overload 2 of 2, '(params?: string | { error?: string | $ZodErrorMap<$ZodIssueInvalidType<unknown>> | undefined; message?: string | undefined; } | undefined): $ZodType<...>', gave the following error.
+    Object literal may only specify known properties, and 'required_error' does not exist in type '{ error?: string | $ZodErrorMap<$ZodIssueInvalidType<unknown>> | undefined; message?: string | undefined; }'.
+client/src/components/admin/EquipmentForm.tsx(40,9): error TS2769: No overload matches this call.
+  Overload 1 of 2, '(params?: string | { error?: string | $ZodErrorMap<$ZodIssueInvalidType<unknown>> | undefined; message?: string | undefined; } | undefined): ZodString', gave the following error.
+    Object literal may only specify known properties, and 'required_error' does not exist in type '{ error?: string | $ZodErrorMap<$ZodIssueInvalidType<unknown>> | undefined; message?: string | undefined; }'.
+  Overload 2 of 2, '(params?: string | { error?: string | $ZodErrorMap<$ZodIssueInvalidType<unknown>> | undefined; message?: string | undefined; } | undefined): $ZodType<...>', gave the following error.
+    Object literal may only specify known properties, and 'required_error' does not exist in type '{ error?: string | $ZodErrorMap<$ZodIssueInvalidType<unknown>> | undefined; message?: string | undefined; }'.
+client/src/components/admin/OrderForm.tsx(3,29): error TS2307: Cannot find module '@hookform/resolvers/zod' or its corresponding type declarations.
+client/src/components/admin/ProductForm.tsx(3,29): error TS2307: Cannot find module '@hookform/resolvers/zod' or its corresponding type declarations.
+client/src/components/admin/SensorForm.tsx(3,29): error TS2307: Cannot find module '@hookform/resolvers/zod' or its corresponding type declarations.
+client/src/components/admin/TagForm.tsx(3,29): error TS2307: Cannot find module '@hookform/resolvers/zod' or its corresponding type declarations.
+client/src/pages/admin/AdminDashboard.tsx(74,20): error TS2345: Argument of type '{ disponibilidade: number; performance: number; qualidade: number; oee: number; total_equipamentos: any; equipamentos_offline: number; total_tags: any; taxa_ingestao: string; uptime_30d: number; }' is not assignable to parameter of type 'SetStateAction<SystemMetrics>'.
+  Property 'oee_medio' is missing in type '{ disponibilidade: number; performance: number; qualidade: number; oee: number; total_equipamentos: any; equipamentos_offline: number; total_tags: any; taxa_ingestao: string; uptime_30d: number; }' but required in type 'SystemMetrics'.
+client/src/pages/admin/OPCConnectionsAdmin.tsx(261,11): error TS2322: Type '({ key: string; header: string; width: string; render?: undefined; } | { key: string; header: string; render: (item: OPCConnection) => Element; width?: undefined; } | { key: string; header: string; width: string; render: (item: OPCConnection) => Element; })[]' is not assignable to type 'Column<OPCConnection>[]'.
+  Type '{ key: string; header: string; width: string; render?: undefined; } | { key: string; header: string; render: (item: OPCConnection) => Element; width?: undefined; } | { key: string; header: string; width: string; render: (item: OPCConnection) => Element; }' is not assignable to type 'Column<OPCConnection>'.
+    Type '{ key: string; header: string; width: string; render?: undefined; }' is not assignable to type 'Column<OPCConnection>'.
+      Types of property 'key' are incompatible.
+        Type 'string' is not assignable to type '"actions" | keyof OPCConnection'.
+client/src/pages/admin/ProductionOrdersAdmin.tsx(151,103): error TS2322: Type '{ value: any; className: string; indicatorClassName: string; }' is not assignable to type 'IntrinsicAttributes & ProgressProps & RefAttributes<HTMLDivElement>'.
+  Property 'indicatorClassName' does not exist on type 'IntrinsicAttributes & ProgressProps & RefAttributes<HTMLDivElement>'.
+client/src/pages/LineAnalytics.tsx(384,115): error TS2367: This comparison appears to be unintentional because the types 'number' and 'string' have no overlap.
+client/src/pages/LineDeepView.tsx(167,33): error TS2739: Type '{}' is missing the following properties from type 'LinhaConfig': id, nome, codigo
+client/src/pages/LineDeepView.tsx(183,37): error TS2739: Type '{}' is missing the following properties from type 'LinhaConfig': id, nome, codigo
+client/src/pages/LineDeepView.tsx(187,17): error TS2322: Type 'unknown' is not assignable to type 'LinhaConfig | null'.
+client/src/pages/WasteAnalysisDashboard.tsx(362,46): error TS2769: No overload matches this call.
+  Overload 1 of 2, '(props: PlotParams): Plot', gave the following error.
+    Type 'string' has no properties in common with type 'Partial<DataTitle>'.
+  Overload 2 of 2, '(props: PlotParams, context: any): Plot', gave the following error.
+    Type 'string' has no properties in common with type 'Partial<DataTitle>'.
+client/src/utils/dataValidation.ts(36,3): error TS2322: Type 'unknown[]' is not assignable to type 'T[]'.
+  Type 'unknown' is not assignable to type 'T'.
+    'T' could be instantiated with an arbitrary type which could be unrelated to 'unknown'.
+client/src/utils/dataValidation.ts(193,11): error TS2862: Type 'Partial<T>' is generic and can only be indexed for reading.

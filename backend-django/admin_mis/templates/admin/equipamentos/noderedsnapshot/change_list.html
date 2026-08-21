@@ -1,0 +1,30 @@
+{% extends "admin/change_list.html" %}
+{% load i18n %}
+
+{% block content %}
+{# Banner sticky no topo da changelist (object-tools fica escondido
+   porque has_add_permission=False neste model). #}
+{% if nodered_projects_url %}
+<div style="background:linear-gradient(90deg,#1565c0,#1a4a8c);color:#fff;
+            padding:14px 22px;border-radius:8px;margin-bottom:18px;
+            display:flex;align-items:center;gap:14px;
+            box-shadow:0 2px 4px rgba(0,0,0,.1);">
+    <div style="flex:1;">
+        <div style="font-size:15px;font-weight:600;margin-bottom:2px;">
+            📁 Gestão de Projetos Node-RED
+        </div>
+        <div style="font-size:12px;opacity:.85;">
+            Veja todos os projetos ativos, capture snapshots iniciais e
+            sincronize com o histórico.
+        </div>
+    </div>
+    <a href="{{ nodered_projects_url }}"
+       style="background:#fff;color:#1565c0;padding:9px 18px;border-radius:6px;
+              font-weight:700;text-decoration:none;font-size:13px;">
+        Abrir Projetos →
+    </a>
+</div>
+{% endif %}
+
+{{ block.super }}
+{% endblock %}

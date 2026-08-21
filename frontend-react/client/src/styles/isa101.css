@@ -1,0 +1,553 @@
+/**
+ * ISA-101 Design System — MIS Core v2
+ * ====================================
+ * Tokens globais derivados da POC (docs/blueprint/04_POC_UI.html).
+ *
+ * Filosofia (ISA 101.01):
+ *   - Cinza domina; saturação é reservada para desvio (warn / bad).
+ *   - Hierarquia visual = densidade > cor. O olho deve cair em <200ms no KPI.
+ *   - Tipografia tabular-nums para qualquer número (KPI, tabelas, %).
+ *   - Tudo que é numérico OBRIGA `font-variant-numeric: tabular-nums`.
+ *
+ * Importado UMA vez em main.tsx. Todos os átomos em components/v2/ consomem
+ * estas variáveis (nunca hardcode de hex). Para troca de tema, rebatize aqui.
+ */
+
+:root {
+  /* === Cores neutras === */
+  --isa-bg:            #f4f5f7;
+  --isa-bg-panel:      #ffffff;
+  --isa-bg-muted:      #e9ecef;
+  --isa-border:        #d7dbe0;
+
+  /* === Texto === */
+  --isa-text:          #2c3138;
+  --isa-text-muted:    #657384;
+  --isa-text-weak:     #9ba3ad;
+
+  /* === Acento e semântica === */
+  --isa-accent:        #3f5b7c;   /* azul-acinzentado: seleção, foco, série principal */
+  --isa-accent-soft:   #eaf0f7;   /* fundo do estado active */
+  --isa-ok:            #2d8659;   /* verde discreto (uso restrito) */
+  --isa-warn:          #c9932d;   /* amarelo terroso */
+  --isa-bad:           #b53a2b;   /* vermelho contido */
+
+  /* === Backgrounds semânticos (badges/cards) === */
+  --isa-ok-bg:         #e3efe7;
+  --isa-warn-bg:       #f4e8cf;
+  --isa-bad-bg:        #f4dad6;
+
+  /* === Charts === */
+  --isa-chart-series:  #3f5b7c;
+  --isa-chart-compare: #c9932d;
+  --isa-chart-grid:    #e1e4e8;
+  --isa-chart-bad:     #b53a2b;
+  --isa-chart-ok:      #2d8659;
+  --isa-chart-mono4:   #8a6ba8;
+
+  /* === Layout === */
+  --isa-radius:        6px;
+  --isa-radius-lg:     8px;
+  --isa-mono:          'SF Mono','Consolas','Monaco',ui-monospace,monospace;
+  --isa-font:          system-ui,-apple-system,'Segoe UI',Roboto,Arial,sans-serif;
+
+  /* === Densidade tipográfica === */
+  --isa-fs-label:      10px;
+  --isa-fs-meta:       11px;
+  --isa-fs-body:       12px;
+  --isa-fs-default:    13px;
+  --isa-fs-strong:     14px;
+  --isa-fs-h3:         15px;
+  --isa-fs-h2:         17px;
+  --isa-fs-kpi:        24px;
+
+  /* === Sombras (sutis, nunca dramáticas — ISA 101 é flat) === */
+  --isa-shadow-1:      0 1px 4px rgba(0,0,0,.06);
+  --isa-shadow-2:      0 2px 6px rgba(16,24,40,.08);
+}
+
+/* ============ Reset/normalizações leves ============ */
+.isa-root {
+  background: var(--isa-bg);
+  color: var(--isa-text);
+  font-family: var(--isa-font);
+  font-size: var(--isa-fs-default);
+  line-height: 1.4;
+}
+
+/* ============ Painéis / Cards ============ */
+.isa-panel {
+  background: var(--isa-bg-panel);
+  border: 1px solid var(--isa-border);
+  border-radius: var(--isa-radius);
+  padding: 14px;
+}
+.isa-panel h3 {
+  margin: 0 0 8px;
+  font-size: var(--isa-fs-default);
+  font-weight: 600;
+  color: var(--isa-text);
+}
+
+/* ============ KPI strip ============ */
+.isa-kpi-strip {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 10px;
+  margin-bottom: 18px;
+}
+.isa-kpi-strip--4 { grid-template-columns: repeat(4, 1fr); }
+.isa-kpi-strip--3 { grid-template-columns: repeat(3, 1fr); }
+
+.isa-kpi {
+  background: var(--isa-bg-panel);
+  border: 1px solid var(--isa-border);
+  border-radius: var(--isa-radius);
+  padding: 12px;
+}
+.isa-kpi__lbl {
+  font-size: var(--isa-fs-label);
+  text-transform: uppercase;
+  color: var(--isa-text-muted);
+  letter-spacing: .05em;
+}
+.isa-kpi__val {
+  font-size: var(--isa-fs-kpi);
+  font-weight: 600;
+  margin-top: 3px;
+  color: var(--isa-text);
+  font-variant-numeric: tabular-nums;
+}
+.isa-kpi__val small {
+  font-size: var(--isa-fs-strong);
+  color: var(--isa-text-muted);
+  font-weight: 500;
+}
+.isa-kpi__delta {
+  font-size: var(--isa-fs-meta);
+  margin-top: 3px;
+  color: var(--isa-text-muted);
+  font-variant-numeric: tabular-nums;
+}
+.isa-kpi__delta--up   { color: var(--isa-ok); }
+.isa-kpi__delta--down { color: var(--isa-bad); }
+.isa-kpi__spark { margin-top: 6px; height: 26px; }
+
+/* ============ Toolbar (datetime range Grafana-like) ============ */
+.isa-toolbar {
+  background: var(--isa-bg-panel);
+  border: 1px solid var(--isa-border);
+  border-radius: var(--isa-radius);
+  padding: 10px 12px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+.isa-toolbar label {
+  font-size: var(--isa-fs-meta);
+  color: var(--isa-text-muted);
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  margin-right: 4px;
+}
+.isa-toolbar input,
+.isa-toolbar select,
+.isa-toolbar button {
+  font-size: var(--isa-fs-body);
+  padding: 5px 8px;
+  border: 1px solid var(--isa-border);
+  border-radius: var(--isa-radius);
+  background: var(--isa-bg-panel);
+  color: var(--isa-text);
+  font-family: inherit;
+}
+.isa-toolbar button {
+  cursor: pointer;
+  background: var(--isa-accent);
+  color: #fff;
+  border-color: var(--isa-accent);
+}
+.isa-toolbar button.ghost {
+  background: var(--isa-bg-panel);
+  color: var(--isa-text);
+  border-color: var(--isa-border);
+}
+.isa-toolbar button:disabled {
+  opacity: .5;
+  cursor: not-allowed;
+}
+
+/* ============ Chips ============ */
+.isa-chips { display: flex; gap: 4px; flex-wrap: wrap; }
+.isa-chip {
+  border: 1px solid var(--isa-border);
+  border-radius: 20px;
+  padding: 3px 10px;
+  font-size: var(--isa-fs-meta);
+  cursor: pointer;
+  background: var(--isa-bg-panel);
+  color: var(--isa-text);
+  user-select: none;
+}
+.isa-chip:hover { background: var(--isa-bg-muted); }
+.isa-chip--active {
+  background: var(--isa-accent);
+  color: #fff;
+  border-color: var(--isa-accent);
+}
+
+/* ============ Switches ============ */
+.isa-switches {
+  display: flex;
+  gap: 14px;
+  margin-left: auto;
+  font-size: var(--isa-fs-body);
+  color: var(--isa-text);
+}
+.isa-switch {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  user-select: none;
+}
+.isa-switch input { accent-color: var(--isa-accent); }
+
+/* ============ Chart card ============ */
+.isa-chart-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.isa-chart-row--triple { grid-template-columns: 1fr 1fr 1fr; }
+.isa-chart-row--single { grid-template-columns: 1fr; }
+
+.isa-chart-card {
+  background: var(--isa-bg-panel);
+  border: 1px solid var(--isa-border);
+  border-radius: var(--isa-radius);
+  padding: 12px;
+  height: 340px;
+  display: flex;
+  flex-direction: column;
+}
+.isa-chart-card__title {
+  margin: 0 0 6px;
+  font-size: var(--isa-fs-default);
+  font-weight: 600;
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+}
+.isa-chart-card__desc {
+  font-size: var(--isa-fs-meta);
+  color: var(--isa-text-muted);
+  margin-bottom: 6px;
+}
+.isa-chart-card__body {
+  flex: 1;
+  position: relative;
+  min-height: 0;
+}
+
+/* ============ Tags semânticas ============ */
+.isa-tag {
+  font-size: var(--isa-fs-label);
+  padding: 2px 8px;
+  border-radius: 10px;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  font-weight: 600;
+  background: var(--isa-bg-muted);
+  color: var(--isa-text-muted);
+  display: inline-block;
+}
+.isa-tag--ok   { background: var(--isa-ok-bg);   color: var(--isa-ok); }
+.isa-tag--warn { background: var(--isa-warn-bg); color: var(--isa-warn); }
+.isa-tag--bad  { background: var(--isa-bad-bg);  color: var(--isa-bad); }
+
+/* ============ Stats grid (EDA) ============ */
+.isa-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 8px;
+  margin-top: 12px;
+}
+.isa-stat {
+  background: var(--isa-bg-panel);
+  border: 1px solid var(--isa-border);
+  border-radius: var(--isa-radius);
+  padding: 8px 10px;
+}
+.isa-stat__lbl {
+  font-size: var(--isa-fs-label);
+  color: var(--isa-text-muted);
+  text-transform: uppercase;
+}
+.isa-stat__val {
+  font-size: var(--isa-fs-h2);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--isa-text);
+}
+
+/* ============ Equipment header (eq-head) ============ */
+.isa-eq-head {
+  background: var(--isa-bg-panel);
+  border: 1px solid var(--isa-border);
+  border-radius: var(--isa-radius);
+  padding: 14px 16px;
+  display: flex;
+  gap: 18px;
+  align-items: center;
+  margin-bottom: 14px;
+}
+.isa-eq-head__avatar {
+  width: 48px; height: 48px;
+  border-radius: var(--isa-radius);
+  background: var(--isa-accent);
+  color: #fff;
+  display: grid;
+  place-items: center;
+  font-weight: 600;
+  font-size: 18px;
+}
+.isa-eq-head__info { flex: 1; }
+.isa-eq-head__title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--isa-text);
+}
+.isa-eq-head__sub {
+  font-size: var(--isa-fs-body);
+  color: var(--isa-text-muted);
+  margin-top: 2px;
+}
+.isa-eq-head__state {
+  padding: 6px 12px;
+  border-radius: var(--isa-radius);
+  font-size: var(--isa-fs-meta);
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  font-weight: 600;
+}
+.isa-eq-head__state--run  { background: var(--isa-ok-bg);   color: var(--isa-ok); }
+.isa-eq-head__state--stop { background: var(--isa-bad-bg);  color: var(--isa-bad); }
+.isa-eq-head__state--warn { background: var(--isa-warn-bg); color: var(--isa-warn); }
+.isa-eq-head__state--off  { background: var(--isa-bg-muted); color: var(--isa-text-muted); }
+
+/* ============ Tabela densa ============ */
+.isa-tbl {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--isa-fs-body);
+}
+.isa-tbl th, .isa-tbl td {
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--isa-border);
+  text-align: left;
+}
+.isa-tbl th {
+  background: var(--isa-bg-muted);
+  font-weight: 600;
+  color: var(--isa-text-muted);
+  text-transform: uppercase;
+  font-size: var(--isa-fs-label);
+  letter-spacing: .04em;
+}
+.isa-tbl tr:hover td { background: var(--isa-bg); }
+
+/* ============ Section heads ============ */
+.isa-section-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: end;
+  margin: 6px 0 10px;
+}
+.isa-section-head h2 {
+  margin: 0;
+  font-size: var(--isa-fs-h3);
+  font-weight: 600;
+  color: var(--isa-text);
+}
+.isa-section-head__desc {
+  font-size: var(--isa-fs-body);
+  color: var(--isa-text-muted);
+}
+
+/* ============ Topbar (breadcrumb + actions) ============ */
+.isa-topbar {
+  padding: 10px 20px;
+  background: var(--isa-bg-panel);
+  border-bottom: 1px solid var(--isa-border);
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  justify-content: space-between;
+}
+.isa-breadcrumb {
+  font-size: var(--isa-fs-body);
+  color: var(--isa-text-muted);
+}
+.isa-breadcrumb b {
+  color: var(--isa-text);
+  font-weight: 500;
+}
+
+/* ============ Tabs ============ */
+.isa-tabs {
+  display: flex;
+  gap: 0;
+  border-bottom: 1px solid var(--isa-border);
+  background: var(--isa-bg-panel);
+  padding: 0 20px;
+}
+.isa-tab {
+  padding: 10px 16px;
+  cursor: pointer;
+  font-size: var(--isa-fs-default);
+  color: var(--isa-text-muted);
+  border-bottom: 2px solid transparent;
+  user-select: none;
+  background: none;
+  border-left: 0; border-right: 0; border-top: 0;
+  font-family: inherit;
+}
+.isa-tab:hover { color: var(--isa-text); }
+.isa-tab--active {
+  color: var(--isa-text);
+  border-bottom-color: var(--isa-accent);
+  font-weight: 500;
+}
+
+/* ============ Note (banner explicativo da POC) ============ */
+.isa-note {
+  font-size: var(--isa-fs-body);
+  padding: 10px 14px;
+  border: 1px dashed var(--isa-border);
+  border-radius: var(--isa-radius);
+  background: #fafafb;
+  color: var(--isa-text-muted);
+  margin-bottom: 12px;
+}
+.isa-note b { color: var(--isa-text); }
+
+/* ============ Lista de alertas ============ */
+.isa-alerts {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  max-height: 440px;
+  overflow: auto;
+}
+.isa-alerts li {
+  padding: 8px 0;
+  border-bottom: 1px solid var(--isa-border);
+  font-size: var(--isa-fs-body);
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+}
+.isa-alerts li:last-child { border-bottom: none; }
+.isa-alerts__time {
+  color: var(--isa-text-muted);
+  font-family: var(--isa-mono);
+  font-size: var(--isa-fs-meta);
+  min-width: 58px;
+}
+.isa-alerts__sev { min-width: 8px; margin-top: 5px; }
+.isa-alerts__msg { flex: 1; }
+.isa-alerts__ctx {
+  color: var(--isa-text-muted);
+  font-size: var(--isa-fs-meta);
+  margin-top: 2px;
+}
+
+/* ============ Status dots (bandeirinhas) ============ */
+.isa-dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+  margin-right: 6px;
+}
+.isa-dot--ok   { background: var(--isa-ok); }
+.isa-dot--warn { background: var(--isa-warn); }
+.isa-dot--bad  { background: var(--isa-bad); }
+.isa-dot--off  { background: var(--isa-text-weak); }
+
+/* ============ Two-col panel layout ============ */
+.isa-two-col {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 14px;
+  margin-top: 18px;
+}
+
+/* ============ Grid auto-fill (área cards) ============ */
+.isa-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 10px;
+}
+.isa-grid--narrow {
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+}
+
+/* ============ Area card ============ */
+.isa-area-card {
+  background: var(--isa-bg-panel);
+  border: 1px solid var(--isa-border);
+  border-radius: var(--isa-radius);
+  padding: 12px;
+  cursor: pointer;
+  transition: box-shadow .12s, border-color .12s, transform .12s;
+  text-decoration: none;
+  color: inherit;
+  display: block;
+}
+.isa-area-card:hover {
+  box-shadow: var(--isa-shadow-1);
+  border-color: var(--isa-accent);
+  transform: translateY(-1px);
+}
+.isa-area-card__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.isa-area-card__name { font-weight: 600; font-size: var(--isa-fs-strong); }
+.isa-area-card__sub  { font-size: var(--isa-fs-meta); color: var(--isa-text-muted); }
+.isa-area-card__meta {
+  display: flex; gap: 14px;
+  margin-top: 8px;
+  font-size: var(--isa-fs-meta);
+  color: var(--isa-text-muted);
+}
+.isa-area-card__meta b {
+  display: block;
+  color: var(--isa-text);
+  font-size: var(--isa-fs-strong);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.isa-area-card__spark { margin-top: 8px; height: 36px; }
+
+/* ============ Scrollbar discreto (área de conteúdo) ============ */
+.isa-root ::-webkit-scrollbar { width: 10px; height: 10px; }
+.isa-root ::-webkit-scrollbar-thumb {
+  background: var(--isa-border);
+  border-radius: 5px;
+}
+.isa-root ::-webkit-scrollbar-thumb:hover { background: var(--isa-text-weak); }
+
+/* ============ Densidade responsive (≤1100 cai pra 3 KPI) ============ */
+@media (max-width: 1100px) {
+  .isa-kpi-strip { grid-template-columns: repeat(3, 1fr); }
+  .isa-stats-grid { grid-template-columns: repeat(3, 1fr); }
+  .isa-chart-row, .isa-chart-row--triple { grid-template-columns: 1fr; }
+  .isa-two-col { grid-template-columns: 1fr; }
+}

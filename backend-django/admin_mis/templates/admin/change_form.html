@@ -1,0 +1,35 @@
+{% extends "admin/change_form.html" %}
+{% load admin_mis i18n admin_urls %}
+
+{% comment %}
+  Override mínimo do change_form: mantém os fieldsets, inlines, formsets,
+  validação, save buttons. Só envelopa com a nossa topbar/breadcrumb.
+{% endcomment %}
+
+{% block topbar_crumb %}
+  {% if original %}{{ original|truncatechars:40 }}{% else %}{{ opts.verbose_name|capfirst }}{% endif %}
+{% endblock %}
+
+{% block content_title %}
+<div class="mis-page-h">
+  <div>
+    <p class="mis-bc" style="margin-bottom:4px">
+      <a href="{% admin_url 'index' %}">Início</a>
+      <span class="sep">›</span>
+      <a href="{% url 'admin:app_list' app_label=opts.app_label %}">{{ opts.app_config.verbose_name }}</a>
+      <span class="sep">›</span>
+      <a href="{% url opts|admin_urlname:'changelist' %}">{{ opts.verbose_name_plural|capfirst }}</a>
+      <span class="sep">›</span>
+      <b>{% if original %}{{ original|truncatechars:40 }}{% else %}{% blocktranslate with name=opts.verbose_name %}Adicionar {{ name }}{% endblocktranslate %}{% endif %}</b>
+    </p>
+    <h1>
+      {% if original %}{{ original|truncatechars:60 }}{% else %}{% blocktranslate with name=opts.verbose_name %}Adicionar {{ name }}{% endblocktranslate %}{% endif %}
+    </h1>
+    {% if original %}
+    <p class="mis-page-h__sub">
+      Edição de <code>{{ opts.verbose_name }}</code>
+    </p>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

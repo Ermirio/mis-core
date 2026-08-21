@@ -1,0 +1,25 @@
+{% extends "admin/base.html" %}
+{% load static %}
+
+{% comment %}
+  Override de admin/base.html — apenas injeta nosso CSS no <head>.
+  O resto da estrutura vem do template do contrib.admin.
+{% endcomment %}
+
+{% block extrastyle %}
+{{ block.super }}
+<link rel="stylesheet" type="text/css" href="{% static 'admin_mis/css/admin-mis.css' %}">
+<link rel="stylesheet" type="text/css" href="{% static 'admin_mis/css/admin-inline-fixes.css' %}">
+{% endblock %}
+
+{% block footer %}
+{{ block.super }}
+<script src="{% static 'admin_mis/js/admin-mis.js' %}" defer></script>
+{% endblock %}
+
+{% block extrahead %}
+{{ block.super }}
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="mis-version" content="{{ MIS_VERSION }}">
+<meta name="mis-git" content="{{ MIS_GIT_HASH }}">
+{% endblock %}

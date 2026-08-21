@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1" />
+    <link rel="icon" type="image/png" href="%VITE_APP_LOGO%" />
+    <link rel="apple-touch-icon" href="%VITE_APP_LOGO%" />
+    <title>%VITE_APP_TITLE%</title>
+    <!-- Add Google Fonts here, example:
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+    -->
+  </head>
+
+  <body>
+    <div id="root"></div>
+    <!-- env-config.js é gerado em runtime pelo docker-entrypoint.sh.
+         Inclui VITE_*_URL e MIS_MODE para banner de demonstração. -->
+    <script src="/env-config.js"></script>
+    <script>
+      (function () {
+        try {
+          var mode = (window.ENV && window.ENV.MIS_MODE) || '';
+          if (String(mode).toLowerCase() !== 'demo') return;
+          // Badge "S" discreto no canto inferior direito — indica modo simulação
+          var badge = document.createElement('div');
+          badge.id = 'mis-demo-badge';
+          badge.textContent = 'S';
+          badge.title = 'Modo simulação ativo';
+          badge.style.cssText = [
+            'position:fixed', 'bottom:8px', 'right:8px', 'z-index:99999',
+            'width:18px', 'height:18px', 'border-radius:50%',
+            'background:#facc15', 'color:#78350f',
+            'font:700 11px/18px Inter,system-ui,sans-serif',
+            'text-align:center', 'cursor:default', 'user-select:none',
+            'opacity:0.85', 'box-shadow:0 1px 2px rgba(0,0,0,.15)',
+          ].join(';');
+          document.addEventListener('DOMContentLoaded', function () {
+            document.body.appendChild(badge);
+          });
+        } catch (_) { /* não bloqueia o app */ }
+      })();
+    </script>
+    <script type="module" src="/src/main.tsx"></script>
+    <!--
+    <script
+      defer
+      src="%VITE_ANALYTICS_ENDPOINT%/umami"
+      data-website-id="%VITE_ANALYTICS_WEBSITE_ID%"></script>
+    -->
+  </body>
+
+</html>

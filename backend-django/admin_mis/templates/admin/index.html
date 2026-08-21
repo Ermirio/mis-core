@@ -1,0 +1,92 @@
+{% extends "admin/base_site.html" %}
+{% load admin_mis i18n static %}
+
+{% block title %}{{ site_title|default:_('Django site admin') }}{% endblock %}
+
+{% block topbar_crumb %}Início{% endblock %}
+
+{% block content %}
+{% grouped_apps as buckets %}
+
+<div class="mis-page-h">
+  <div>
+    <h1>Painel de gestão</h1>
+    <p class="mis-page-h__sub">
+      Bem-vindo, <b>{{ user.get_short_name|default:user.username }}</b>.
+      Versão da imagem: <code>v{{ MIS_VERSION }} · {{ MIS_GIT_HASH }}</code>
+    </p>
+  </div>
+</div>
+
+{# KPI strip — números rápidos baseados em counters cached #}
+<div class="mis-kpi-strip">
+  {% for bucket in buckets %}
+  <div class="mis-kpi">
+    <div class="mis-kpi__lbl">{{ bucket.label }}</div>
+    <div class="mis-kpi__val">{{ bucket.models|length }}</div>
+    <div class="mis-kpi__delta">{{ bucket.models|length }} módulo{{ bucket.models|length|pluralize:"s" }} disponível{{ bucket.models|length|pluralize:"is" }}</div>
+  </div>
+  {% endfor %}
+</div>
+
+{# Apps por bucket #}
+<div class="mis-apps">
+  {% for bucket in buckets %}
+  <div class="mis-app-card">
+    <div class="mis-app-card__head">
+      <div class="mis-app-card__icon">{{ bucket.emoji }}</div>
+      <div>
+        <div class="mis-app-card__title">{{ bucket.label }}</div>
+        <div class="mis-app-card__sub">{{ bucket.models|length }} modelos</div>
+      </div>
+    </div>
+    <ul class="mis-app-card__list">
+      {% for model in bucket.models %}
+      <li>
+        <a href="{{ model.admin_url }}">
+          <span style="margin-right:6px">{{ model.icon }}</span>
+          {{ model.name }}
+        </a>
+        {% if model.count %}<span class="count">{{ model.count }}</span>{% endif %}
+        {% if model.add_url %}
+        <span class="actions">
+          <a href="{{ model.add_url }}" class="mis-btn" style="padding:3px 8px;font-size:11px">+ Add</a>
+        </span>
+        {% endif %}
+      </li>
+      {% endfor %}
+    </ul>
+  </div>
+  {% endfor %}
+
+  {# Atividade recente — vem do log do admin #}
+  <div class="mis-app-card">
+    <div class="mis-app-card__head">
+      <div class="mis-app-card__icon">⚐</div>
+      <div>
+        <div class="mis-app-card__title">Atividade recente</div>
+        <div class="mis-app-card__sub">Últimas ações do admin</div>
+      </div>
+    </div>
+    {% load log %}
+    {% get_admin_log 10 as admin_log for_user user %}
+    {% if not admin_log %}
+      <p style="font-size:12px;color:var(--isa-text-muted);margin:6px 0 0">Nenhuma ação recente.</p>
+    {% else %}
+    <ul class="mis-app-card__list">
+      {% for entry in admin_log %}
+      <li>
+        <a href="{% if entry.is_deletion or not entry.get_admin_url %}#{% else %}{{ entry.get_admin_url }}{% endif %}">
+          {{ entry.object_repr }}
+        </a>
+        <span class="count" style="font-size:10px">
+          {% if entry.is_addition %}+{% elif entry.is_change %}✎{% elif entry.is_deletion %}✕{% endif %}
+          {{ entry.action_time|timesince }}
+        </span>
+      </li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

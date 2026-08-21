@@ -1,0 +1,100 @@
+/* Ajustes de usabilidade para inlines do admin MIS. */
+
+.tabular {
+  overflow-x: auto;
+}
+
+.tabular table {
+  table-layout: auto;
+  min-width: 980px;
+}
+
+.tabular tr.has_original td.original,
+.tabular tr.has_original th.original,
+.tabular .original {
+  display: none !important;
+}
+
+.tabular td,
+.tabular th {
+  vertical-align: top !important;
+}
+
+.tabular td {
+  min-height: 42px;
+}
+
+.tabular td input[type="text"],
+.tabular td input[type="number"],
+.tabular td select,
+.tabular td textarea {
+  box-sizing: border-box;
+  min-height: 34px;
+  line-height: 1.35;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tabular td select {
+  min-width: 180px;
+  white-space: nowrap;
+}
+
+.tabular td.field-node_id input {
+  width: min(520px, 42vw);
+  min-width: 340px;
+  font-family: var(--isa-mono, Consolas, monospace);
+}
+
+.tabular td.field-variavel_padrao input {
+  width: 220px;
+  min-width: 220px;
+  color: var(--isa-text, #2c3138);
+  background: var(--isa-bg-muted, #e9ecef);
+  font-weight: 600;
+}
+
+.tabular td.field-dica_padrao {
+  min-width: 92px;
+  color: var(--isa-text-muted, #657384);
+}
+
+.tabular td.field-tipo_dado,
+.tabular td.field-unidade,
+.tabular td.field-fator_conversao {
+  min-width: 90px;
+}
+
+.related-widget-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+}
+
+.related-widget-wrapper select,
+.related-widget-wrapper input {
+  min-width: 220px;
+  flex: 1 1 220px;
+}
+
+select,
+.selector select,
+.actions select,
+.form-row select {
+  min-height: 34px;
+  line-height: 1.35;
+  max-width: 100%;
+  text-overflow: ellipsis;
+}
+
+select option {
+  white-space: normal;
+}
+
+@media (max-width: 1100px) {
+  .tabular td.field-node_id input {
+    width: 360px;
+  }
+}

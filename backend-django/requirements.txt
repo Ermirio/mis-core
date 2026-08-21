@@ -1,0 +1,18 @@
+Django==5.0.0
+djangorestframework==3.14.0
+django-cors-headers==4.3.1
+python-decouple==3.8
+influxdb==5.3.1
+gunicorn==21.2.0
+whitenoise==6.6.0
+django-apscheduler==0.6.2
+django-import-export==3.3.1
+openpyxl==3.1.5
+pymysql==1.1.1
+djangorestframework-simplejwt==5.3.1
+# Flask-out Onda 6: analytics (stats, correlation, timeseries) porta
+# pandas/scipy do backend-flask para Django.
+pandas==2.3.3
+numpy==2.3.5
+scipy==1.15.3
+python-dateutil==2.9.0

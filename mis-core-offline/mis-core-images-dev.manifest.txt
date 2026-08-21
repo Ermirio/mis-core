@@ -1,0 +1,18 @@
+MIS Core Offline Image Pack
+version=dev
+git_hash=85efa65
+build_time=2026-05-15T02:48:55Z
+host_target=192.168.70.160:8080
+
+images:
+- mis-core-frontend:dev id=sha256:6626e0e5b6fbf22b739b283a5b6e84da5f369020447808c577aa18eafb9a2dbf size_bytes=30383560
+- mis-core-django:dev id=sha256:5baaf2edef07e6f454e96c2a2bb79f90b08595d1792ca9128b3bf2c29605e575 size_bytes=172060835
+- mis-core-flask:dev id=sha256:fd253f8d31ad3e975c20696ecbb34c4c6b5916667c7aa8914404dd0d6f2914ee size_bytes=276932810
+- mis-core-fastapi:dev id=sha256:c18d2406a3a52d1b02bcda8b93e747fba2177ff7a594a06421cda2e92f9e33a6 size_bytes=269459406
+- mis-core-coletor:dev id=sha256:6da810b83e2b21998a6841a79fd452828e03b09051a9e9c09844a2a6cf615ccf size_bytes=130576069
+- mysql:8.0 id=sha256:d0304ed9fdb64a3f6c7ad11a5fb4f13abfc10e6dfa3f288d652e7320c34df7f9 size_bytes=233592821
+- influxdb:1.8-alpine id=sha256:2601e27d6b7eac276017d7ea48d2685d52639cea974744b5877924376283a4cd size_bytes=59528113
+- chronograf:1.8 id=sha256:91a11019d5082212a0e21051c3273cc6559e8b17ddcbbc9c5d4adee10a58c845 size_bytes=69898228
+- grafana/grafana:10.4.2 id=sha256:7d5faae481a4c6f436c99e98af11534f7fd5e8d3e35213552dd1dd02bc393d2e size_bytes=118506934
+- nodered/node-red:3.1.9 id=sha256:4872f67418a36ac2adf9f2793cfab1e3130796dd0c874acce7eddaca2e2e96e6 size_bytes=186077663
+- emqx/emqx:5.6.1 id=sha256:b14a3c6d04f680869e3ca181b552c9338b7cd20c2d43d8af6c1e3b8aec48a0cc size_bytes=123269500

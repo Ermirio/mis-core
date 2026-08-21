@@ -1,0 +1,1428 @@
+<!doctype html>
+<html lang="pt-br">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>MIS Core — Admin Backend (POC)</title>
+<style>
+/* ====================================================================
+   ISA-101 tokens — espelhados de frontend-react/client/src/styles/isa101.css
+   Diferenciador "Admin" sutil: faixa superior accent + wordmark "BACKEND".
+   ==================================================================== */
+:root {
+  --isa-bg:           #f4f5f7;
+  --isa-bg-panel:     #ffffff;
+  --isa-bg-muted:     #e9ecef;
+  --isa-border:       #d7dbe0;
+
+  --isa-text:         #2c3138;
+  --isa-text-muted:   #657384;
+  --isa-text-weak:    #9ba3ad;
+
+  --isa-accent:       #3f5b7c;
+  --isa-accent-soft:  #eaf0f7;
+  --isa-accent-dark:  #2d4661;     /* exclusivo do admin: barra superior */
+  --isa-ok:           #2d8659;
+  --isa-warn:         #c9932d;
+  --isa-bad:          #b53a2b;
+  --isa-ok-bg:        #e3efe7;
+  --isa-warn-bg:      #f4e8cf;
+  --isa-bad-bg:       #f4dad6;
+
+  --isa-radius:       6px;
+  --isa-radius-lg:    8px;
+  --isa-mono:         'SF Mono','Consolas','Monaco',ui-monospace,monospace;
+  --isa-font:         system-ui,-apple-system,'Segoe UI',Roboto,Arial,sans-serif;
+
+  --isa-fs-label:     10px;
+  --isa-fs-meta:      11px;
+  --isa-fs-body:      12px;
+  --isa-fs-default:   13px;
+  --isa-fs-strong:    14px;
+  --isa-fs-h3:        15px;
+  --isa-fs-h2:        17px;
+
+  --isa-shadow-1:     0 1px 4px rgba(0,0,0,.06);
+  --isa-shadow-2:     0 2px 6px rgba(16,24,40,.08);
+}
+
+* { box-sizing: border-box; }
+html, body { margin:0; padding:0; }
+body {
+  font-family: var(--isa-font);
+  font-size: var(--isa-fs-default);
+  color: var(--isa-text);
+  background: var(--isa-bg);
+  line-height: 1.4;
+}
+
+a { color: var(--isa-accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+/* ============ Demo switcher (apenas para a POC) ============ */
+.demo-switch {
+  position: fixed;
+  bottom: 14px; right: 14px;
+  background: var(--isa-bg-panel);
+  border: 1px solid var(--isa-border);
+  border-radius: var(--isa-radius-lg);
+  box-shadow: var(--isa-shadow-2);
+  padding: 6px;
+  display: flex;
+  gap: 4px;
+  z-index: 99;
+  font-size: var(--isa-fs-meta);
+}
+.demo-switch button {
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--isa-radius);
+  padding: 6px 12px;
+  cursor: pointer;
+  font: inherit;
+  color: var(--isa-text-muted);
+}
+.demo-switch button:hover { background: var(--isa-bg-muted); }
+.demo-switch button.is-active {
+  background: var(--isa-accent);
+  color: #fff;
+  border-color: var(--isa-accent);
+}
+
+/* ============ Layout principal ============ */
+.layout { display: flex; height: 100vh; overflow: hidden; }
+
+/* ============ Sidebar admin ============ */
+.sb {
+  width: 244px;
+  flex-shrink: 0;
+  background: var(--isa-bg-panel);
+  border-right: 1px solid var(--isa-border);
+  display: flex;
+  flex-direction: column;
+  font-size: var(--isa-fs-default);
+}
+.sb__header {
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--isa-border);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.sb__brand-mark {
+  width: 30px; height: 30px;
+  border-radius: var(--isa-radius);
+  background: var(--isa-accent-dark);
+  color: #fff;
+  display: grid; place-items: center;
+  font-weight: 700;
+  font-size: 12px;
+  letter-spacing: 0.5px;
+}
+.sb__brand-text { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.sb__brand-name { font-weight: 600; color: var(--isa-text); }
+.sb__brand-sub  {
+  font-size: var(--isa-fs-label);
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--isa-accent-dark);
+  font-weight: 600;
+}
+.sb__primary, .sb__group, .sb__footer { padding: 8px; }
+.sb__primary { border-bottom: 1px solid var(--isa-border); }
+.sb__group   { border-bottom: 1px solid var(--isa-border); }
+
+.sb__section-title {
+  font-size: var(--isa-fs-label);
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--isa-text-weak);
+  font-weight: 600;
+  padding: 6px 8px 4px;
+}
+
+.sb__link {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 7px 10px;
+  border-radius: 5px;
+  color: var(--isa-text);
+  text-decoration: none;
+  font-size: var(--isa-fs-default);
+  border-left: 2px solid transparent;
+  cursor: pointer;
+}
+.sb__link:hover { background: var(--isa-bg-muted); text-decoration: none; }
+.sb__link.is-active {
+  background: var(--isa-accent-soft);
+  color: var(--isa-accent);
+  font-weight: 500;
+  border-left-color: var(--isa-accent);
+  padding-left: 8px;
+}
+.sb__link .ico { font-size: 14px; width: 18px; text-align: center; flex-shrink: 0; }
+.sb__link .count {
+  margin-left: auto;
+  font-size: var(--isa-fs-label);
+  background: var(--isa-bg-muted);
+  border: 1px solid var(--isa-border);
+  border-radius: 8px;
+  padding: 1px 6px;
+  color: var(--isa-text-weak);
+  font-variant-numeric: tabular-nums;
+}
+
+.sb__footer { margin-top: auto; }
+.sb__footer .sb__user {
+  display: flex; align-items: center; gap: 9px;
+  padding: 8px;
+  border: 1px solid var(--isa-border);
+  border-radius: var(--isa-radius);
+  background: var(--isa-bg-muted);
+}
+.sb__footer .sb__user-avatar {
+  width: 28px; height: 28px;
+  border-radius: 50%;
+  background: var(--isa-accent);
+  color: #fff;
+  display: grid; place-items: center;
+  font-weight: 600;
+  font-size: 11px;
+}
+.sb__footer .sb__user-info { flex: 1; min-width: 0; }
+.sb__footer .sb__user-name { font-weight: 500; font-size: var(--isa-fs-body); }
+.sb__footer .sb__user-meta { font-size: var(--isa-fs-label); color: var(--isa-text-muted); }
+
+/* ============ Conteúdo principal ============ */
+.main {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow: hidden;
+}
+
+/* Faixa superior estreita exclusiva do ADMIN — diferenciador sutil. */
+.adminbar {
+  height: 4px;
+  background: linear-gradient(90deg,
+    var(--isa-accent-dark) 0%,
+    var(--isa-accent) 60%,
+    var(--isa-accent-soft) 100%);
+}
+
+.topbar {
+  background: var(--isa-bg-panel);
+  border-bottom: 1px solid var(--isa-border);
+  padding: 10px 20px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  justify-content: space-between;
+}
+.topbar__bc {
+  font-size: var(--isa-fs-body);
+  color: var(--isa-text-muted);
+}
+.topbar__bc b { color: var(--isa-text); font-weight: 500; }
+.topbar__bc .sep { color: var(--isa-text-weak); margin: 0 6px; }
+.topbar__pill {
+  font-size: var(--isa-fs-label);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  background: var(--isa-accent-dark);
+  color: #fff;
+  padding: 2px 8px;
+  border-radius: 10px;
+  margin-left: 8px;
+  font-weight: 700;
+}
+.topbar__actions { display: flex; gap: 8px; align-items: center; }
+.topbar__search {
+  display: flex; align-items: center; gap: 6px;
+  background: var(--isa-bg-muted);
+  border: 1px solid var(--isa-border);
+  border-radius: var(--isa-radius);
+  padding: 4px 8px;
+  width: 240px;
+  color: var(--isa-text-muted);
+}
+.topbar__search input {
+  flex: 1; border: 0; background: transparent; outline: none;
+  color: var(--isa-text); font: inherit; font-size: var(--isa-fs-body);
+}
+
+.btn {
+  font-family: inherit;
+  font-size: var(--isa-fs-body);
+  padding: 6px 12px;
+  border-radius: var(--isa-radius);
+  border: 1px solid var(--isa-border);
+  background: var(--isa-bg-panel);
+  color: var(--isa-text);
+  cursor: pointer;
+  display: inline-flex; align-items: center; gap: 6px;
+}
+.btn:hover { background: var(--isa-bg-muted); }
+.btn--primary {
+  background: var(--isa-accent);
+  color: #fff;
+  border-color: var(--isa-accent);
+}
+.btn--primary:hover { background: var(--isa-accent-dark); border-color: var(--isa-accent-dark); }
+.btn--ghost  { background: transparent; }
+.btn--danger {
+  color: var(--isa-bad); border-color: var(--isa-bad-bg); background: var(--isa-bad-bg);
+}
+.btn--sm { padding: 3px 8px; font-size: var(--isa-fs-meta); }
+
+.content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 18px 22px 28px;
+}
+
+/* ============ Página: Dashboard (admin index) ============ */
+.page-h {
+  display: flex; align-items: end; justify-content: space-between;
+  margin-bottom: 14px;
+}
+.page-h h1 {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 600;
+}
+.page-h__sub {
+  font-size: var(--isa-fs-body);
+  color: var(--isa-text-muted);
+  margin-top: 3px;
+}
+
+/* KPI strip */
+.kpi-strip {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+  margin-bottom: 16px;
+}
+.kpi {
+  background: var(--isa-bg-panel);
+  border: 1px solid var(--isa-border);
+  border-radius: var(--isa-radius);
+  padding: 12px 14px;
+}
+.kpi__lbl {
+  font-size: var(--isa-fs-label);
+  text-transform: uppercase;
+  color: var(--isa-text-muted);
+  letter-spacing: .05em;
+}
+.kpi__val {
+  font-size: 22px;
+  font-weight: 600;
+  margin-top: 3px;
+  font-variant-numeric: tabular-nums;
+}
+.kpi__delta {
+  font-size: var(--isa-fs-meta);
+  color: var(--isa-text-muted);
+  margin-top: 3px;
+  font-variant-numeric: tabular-nums;
+}
+.kpi__delta--ok   { color: var(--isa-ok); }
+.kpi__delta--bad  { color: var(--isa-bad); }
+
+/* Apps grid */
+.apps {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 12px;
+}
+.app-card {
+  background: var(--isa-bg-panel);
+  border: 1px solid var(--isa-border);
+  border-radius: var(--isa-radius);
+  padding: 14px 16px;
+}
+.app-card__head {
+  display: flex; align-items: center; gap: 10px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--isa-border);
+  margin-bottom: 8px;
+}
+.app-card__icon {
+  width: 32px; height: 32px;
+  border-radius: var(--isa-radius);
+  background: var(--isa-accent-soft);
+  color: var(--isa-accent);
+  display: grid; place-items: center;
+  font-size: 16px;
+  font-weight: 600;
+}
+.app-card__title { font-weight: 600; font-size: var(--isa-fs-strong); }
+.app-card__sub   { font-size: var(--isa-fs-meta); color: var(--isa-text-muted); }
+.app-card__list { list-style: none; padding: 0; margin: 0; }
+.app-card__list li {
+  display: flex; align-items: center;
+  padding: 5px 0;
+  border-bottom: 1px dashed transparent;
+}
+.app-card__list li:not(:last-child) { border-bottom-color: var(--isa-border); }
+.app-card__list a { flex: 1; }
+.app-card__list .actions { display: flex; gap: 4px; }
+.app-card__list .count {
+  font-size: var(--isa-fs-meta);
+  color: var(--isa-text-muted);
+  font-variant-numeric: tabular-nums;
+  margin-right: 6px;
+}
+
+/* ============ Página: Changelist ============ */
+.toolbar {
+  background: var(--isa-bg-panel);
+  border: 1px solid var(--isa-border);
+  border-radius: var(--isa-radius);
+  padding: 10px 12px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 12px;
+}
+.toolbar select, .toolbar input[type="search"] {
+  font-size: var(--isa-fs-body);
+  padding: 5px 8px;
+  border: 1px solid var(--isa-border);
+  border-radius: var(--isa-radius);
+  background: var(--isa-bg-panel);
+  color: var(--isa-text);
+  font-family: inherit;
+}
+.toolbar input[type="search"] { width: 220px; }
+.toolbar .spacer { flex: 1; }
+
+.tbl-wrap {
+  background: var(--isa-bg-panel);
+  border: 1px solid var(--isa-border);
+  border-radius: var(--isa-radius);
+  overflow: hidden;
+}
+.tbl {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--isa-fs-body);
+}
+.tbl th, .tbl td {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--isa-border);
+  text-align: left;
+  vertical-align: middle;
+}
+.tbl th {
+  background: var(--isa-bg-muted);
+  font-weight: 600;
+  color: var(--isa-text-muted);
+  text-transform: uppercase;
+  font-size: var(--isa-fs-label);
+  letter-spacing: .04em;
+  position: sticky; top: 0;
+}
+.tbl tr:hover td { background: var(--isa-bg); }
+.tbl tr.is-selected td { background: var(--isa-accent-soft); }
+.tbl td.num, .tbl th.num { text-align: right; font-variant-numeric: tabular-nums; }
+.tbl td.code { font-family: var(--isa-mono); font-size: var(--isa-fs-meta); color: var(--isa-text-muted); }
+.tbl input[type="checkbox"] { accent-color: var(--isa-accent); }
+
+.tag {
+  display: inline-block;
+  font-size: var(--isa-fs-label);
+  padding: 2px 8px;
+  border-radius: 10px;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  font-weight: 600;
+  background: var(--isa-bg-muted);
+  color: var(--isa-text-muted);
+}
+.tag--ok   { background: var(--isa-ok-bg);   color: var(--isa-ok); }
+.tag--warn { background: var(--isa-warn-bg); color: var(--isa-warn); }
+.tag--bad  { background: var(--isa-bad-bg);  color: var(--isa-bad); }
+.tag--info { background: var(--isa-accent-soft); color: var(--isa-accent); }
+
+.dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 6px; }
+.dot--ok   { background: var(--isa-ok); }
+.dot--warn { background: var(--isa-warn); }
+.dot--bad  { background: var(--isa-bad); }
+.dot--off  { background: var(--isa-text-weak); }
+
+.changelist-foot {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 10px 12px;
+  border-top: 1px solid var(--isa-border);
+  background: var(--isa-bg-muted);
+  font-size: var(--isa-fs-meta);
+  color: var(--isa-text-muted);
+}
+.pagination { display: flex; gap: 4px; }
+.pagination .pg {
+  display: inline-grid; place-items: center;
+  width: 26px; height: 26px;
+  border: 1px solid var(--isa-border);
+  border-radius: var(--isa-radius);
+  background: var(--isa-bg-panel);
+  cursor: pointer;
+  font-size: var(--isa-fs-meta);
+}
+.pagination .pg.is-active {
+  background: var(--isa-accent);
+  color: #fff;
+  border-color: var(--isa-accent);
+}
+
+/* ============ Página: Form de edição ============ */
+.form-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 280px;
+  gap: 14px;
+  align-items: start;
+}
+.fset {
+  background: var(--isa-bg-panel);
+  border: 1px solid var(--isa-border);
+  border-radius: var(--isa-radius);
+  margin-bottom: 12px;
+}
+.fset__head {
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--isa-border);
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+}
+.fset__head h3 { margin: 0; font-size: var(--isa-fs-strong); font-weight: 600; }
+.fset__head .desc { font-size: var(--isa-fs-meta); color: var(--isa-text-muted); }
+.fset__body {
+  padding: 14px;
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px 16px;
+}
+.fset__body .full { grid-column: 1 / -1; }
+
+.field { display: flex; flex-direction: column; gap: 4px; }
+.field label {
+  font-size: var(--isa-fs-meta);
+  color: var(--isa-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-weight: 600;
+}
+.field label .req { color: var(--isa-bad); margin-left: 2px; }
+.field input[type="text"],
+.field input[type="number"],
+.field input[type="time"],
+.field select,
+.field textarea {
+  font-family: inherit;
+  font-size: var(--isa-fs-default);
+  padding: 6px 9px;
+  border: 1px solid var(--isa-border);
+  border-radius: var(--isa-radius);
+  background: var(--isa-bg-panel);
+  color: var(--isa-text);
+  width: 100%;
+}
+.field input:focus, .field select:focus, .field textarea:focus {
+  outline: 0;
+  border-color: var(--isa-accent);
+  box-shadow: 0 0 0 3px rgba(63,91,124,.18);
+}
+.field .help { font-size: var(--isa-fs-meta); color: var(--isa-text-weak); }
+.field--inline { flex-direction: row; align-items: center; gap: 8px; }
+.field--inline label { text-transform: none; letter-spacing: 0; }
+
+.aside {
+  display: flex; flex-direction: column; gap: 12px; position: sticky; top: 0;
+}
+.aside .fset__body { grid-template-columns: 1fr; }
+.aside .meta-row {
+  display: flex; justify-content: space-between;
+  font-size: var(--isa-fs-meta);
+  color: var(--isa-text-muted);
+  border-top: 1px dashed var(--isa-border);
+  padding-top: 6px;
+}
+.aside .meta-row:first-of-type { border-top: 0; padding-top: 0; }
+.aside .meta-row b { color: var(--isa-text); font-weight: 500; }
+
+/* Inline rows (TabularInline) */
+.inline-tbl-wrap { padding: 0; }
+.inline-tbl-wrap .tbl th { background: var(--isa-bg-muted); }
+.inline-tbl-wrap .tbl td input,
+.inline-tbl-wrap .tbl td select {
+  width: 100%; padding: 4px 7px;
+  font-size: var(--isa-fs-meta);
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--isa-text);
+  border-radius: 3px;
+}
+.inline-tbl-wrap .tbl td input:hover,
+.inline-tbl-wrap .tbl td select:hover {
+  border-color: var(--isa-border); background: var(--isa-bg);
+}
+.inline-tbl-wrap .tbl td input:focus,
+.inline-tbl-wrap .tbl td select:focus {
+  border-color: var(--isa-accent);
+  background: #fff;
+  outline: 0;
+}
+.inline-tbl-wrap .add-row {
+  padding: 8px 14px;
+  border-top: 1px solid var(--isa-border);
+  background: var(--isa-bg-muted);
+}
+
+.form-foot {
+  position: sticky; bottom: 0;
+  margin: 14px -22px -28px;
+  padding: 12px 22px;
+  background: var(--isa-bg-panel);
+  border-top: 1px solid var(--isa-border);
+  display: flex; gap: 10px; align-items: center;
+}
+.form-foot .spacer { flex: 1; }
+
+/* ============ Página: Login ============ */
+.login {
+  height: 100vh;
+  display: grid;
+  place-items: center;
+  background:
+    radial-gradient(1200px 600px at 80% 100%, var(--isa-accent-soft), transparent 60%),
+    var(--isa-bg);
+}
+.login__card {
+  background: var(--isa-bg-panel);
+  border: 1px solid var(--isa-border);
+  border-radius: var(--isa-radius-lg);
+  box-shadow: var(--isa-shadow-2);
+  padding: 30px 32px;
+  width: 360px;
+}
+.login__brand {
+  display: flex; align-items: center; gap: 10px; margin-bottom: 18px;
+}
+.login__mark {
+  width: 36px; height: 36px;
+  border-radius: var(--isa-radius);
+  background: var(--isa-accent-dark);
+  color: #fff;
+  display: grid; place-items: center;
+  font-weight: 700;
+}
+.login__title { margin: 0; font-size: 18px; font-weight: 600; }
+.login__sub {
+  font-size: var(--isa-fs-label);
+  letter-spacing: .08em; text-transform: uppercase;
+  color: var(--isa-accent-dark); font-weight: 700;
+}
+.login .btn--primary { width: 100%; justify-content: center; padding: 9px; }
+
+.view { display: none; }
+.view.is-active { display: block; }
+.view--login { display: none; height: 100vh; }
+.view--login.is-active { display: grid; place-items: center; }
+
+/* ============ Reset utilities ============ */
+.row { display: flex; gap: 8px; align-items: center; }
+.gap { flex: 1; }
+.muted { color: var(--isa-text-muted); }
+.mono  { font-family: var(--isa-mono); }
+.small { font-size: var(--isa-fs-meta); }
+</style>
+</head>
+<body>
+
+<!-- ========================================================== LOGIN -->
+<section class="view view--login" data-view="login">
+  <div class="login__card">
+    <div class="login__brand">
+      <div class="login__mark">M</div>
+      <div>
+        <p class="login__title" style="margin:0">MIS Core</p>
+        <p class="login__sub" style="margin:0">Backend Admin</p>
+      </div>
+    </div>
+    <div class="field" style="margin-bottom:10px">
+      <label>Usuário</label>
+      <input type="text" value="ermirio" />
+    </div>
+    <div class="field" style="margin-bottom:14px">
+      <label>Senha</label>
+      <input type="text" value="••••••••" />
+    </div>
+    <button class="btn btn--primary">Entrar</button>
+    <p class="small muted" style="margin-top:14px; text-align:center">
+      Acesso restrito · Indaiatuba · Unidade Norte
+    </p>
+  </div>
+</section>
+
+<!-- =========================================================== APP -->
+<div class="view is-active" data-view="dashboard">
+  <div class="layout">
+    <!-- ===================== Sidebar ===================== -->
+    <aside class="sb">
+      <div class="sb__header">
+        <div class="sb__brand-mark">M</div>
+        <div class="sb__brand-text">
+          <span class="sb__brand-name">MIS Core</span>
+          <span class="sb__brand-sub">Backend</span>
+        </div>
+      </div>
+
+      <nav class="sb__primary">
+        <a class="sb__link is-active" data-go="dashboard"><span class="ico">⌂</span> Início</a>
+        <a class="sb__link"><span class="ico">⊕</span> Adições recentes</a>
+        <a class="sb__link"><span class="ico">↻</span> Histórico</a>
+      </nav>
+
+      <nav class="sb__group">
+        <p class="sb__section-title">Hierarquia</p>
+        <a class="sb__link"><span class="ico">🏭</span> Fábricas <span class="count">2</span></a>
+        <a class="sb__link"><span class="ico">▦</span> Áreas <span class="count">5</span></a>
+        <a class="sb__link"><span class="ico">📦</span> Produtos <span class="count">28</span></a>
+        <a class="sb__link"><span class="ico">↪</span> Histórico SKU <span class="count">132</span></a>
+      </nav>
+
+      <nav class="sb__group">
+        <p class="sb__section-title">Equipamentos</p>
+        <a class="sb__link"><span class="ico">━</span> Linhas de produção <span class="count">10</span></a>
+        <a class="sb__link is-active" data-go="changelist"><span class="ico">⚙</span> Equipamentos <span class="count">42</span></a>
+        <a class="sb__link"><span class="ico">⌗</span> Tags de coleta <span class="count">186</span></a>
+        <a class="sb__link"><span class="ico">⊙</span> Sensores <span class="count">94</span></a>
+        <a class="sb__link"><span class="ico">🔌</span> Conexões OPC <span class="count">3</span></a>
+      </nav>
+
+      <nav class="sb__group">
+        <p class="sb__section-title">Operação</p>
+        <a class="sb__link"><span class="ico">⌚</span> Turnos <span class="count">3</span></a>
+        <a class="sb__link"><span class="ico">📅</span> Calendário <span class="count">365</span></a>
+        <a class="sb__link"><span class="ico">▶</span> Eventos de estado</a>
+        <a class="sb__link"><span class="ico">⏸</span> Eventos de parada</a>
+        <a class="sb__link"><span class="ico">📋</span> Ordens de produção</a>
+      </nav>
+
+      <nav class="sb__group">
+        <p class="sb__section-title">Analytics</p>
+        <a class="sb__link"><span class="ico">📊</span> Métricas de produção</a>
+        <a class="sb__link"><span class="ico">⚠</span> Defeitos</a>
+        <a class="sb__link"><span class="ico">📈</span> Registros por turno</a>
+        <a class="sb__link"><span class="ico">🎯</span> Iniciativas estratégicas</a>
+        <a class="sb__link"><span class="ico">🧠</span> Perfis Analytics</a>
+      </nav>
+
+      <div class="sb__footer">
+        <div class="sb__user">
+          <div class="sb__user-avatar">EC</div>
+          <div class="sb__user-info">
+            <div class="sb__user-name">Ermírio C.</div>
+            <div class="sb__user-meta">Superuser · Sair</div>
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- ===================== Main ===================== -->
+    <main class="main">
+      <div class="adminbar"></div>
+      <header class="topbar">
+        <div class="topbar__bc">
+          <a href="#">MIS Core</a><span class="sep">›</span>
+          <b>Início</b>
+          <span class="topbar__pill">Admin</span>
+        </div>
+        <div class="topbar__actions">
+          <div class="topbar__search">
+            <span>🔎</span>
+            <input type="search" placeholder="Buscar tudo…  (tecla /)" />
+          </div>
+          <button class="btn">↗ Voltar ao frontend</button>
+        </div>
+      </header>
+
+      <div class="content">
+
+        <!-- ===================== DASHBOARD ===================== -->
+        <section class="panel-dashboard">
+          <div class="page-h">
+            <div>
+              <h1>Painel de gestão</h1>
+              <p class="page-h__sub">Visão geral · 27/abr/2026 · 14:08 (BRT)</p>
+            </div>
+            <div class="row">
+              <button class="btn">↺ Atualizar</button>
+              <button class="btn btn--primary">+ Nova ordem</button>
+            </div>
+          </div>
+
+          <div class="kpi-strip">
+            <div class="kpi">
+              <div class="kpi__lbl">Linhas ativas</div>
+              <div class="kpi__val">10<span class="muted small"> / 10</span></div>
+              <div class="kpi__delta kpi__delta--ok">▲ 100% disponíveis</div>
+            </div>
+            <div class="kpi">
+              <div class="kpi__lbl">Equipamentos</div>
+              <div class="kpi__val">42</div>
+              <div class="kpi__delta">36 em RUN · 4 em SETUP · 2 em FAULT</div>
+            </div>
+            <div class="kpi">
+              <div class="kpi__lbl">OPC UA</div>
+              <div class="kpi__val">3<span class="muted small"> servidores</span></div>
+              <div class="kpi__delta kpi__delta--ok">▲ Heartbeats ok há 12s</div>
+            </div>
+            <div class="kpi">
+              <div class="kpi__lbl">Cadastros pendentes</div>
+              <div class="kpi__val">7</div>
+              <div class="kpi__delta kpi__delta--bad">▼ 3 sensores sem tag</div>
+            </div>
+          </div>
+
+          <div class="apps">
+            <div class="app-card">
+              <div class="app-card__head">
+                <div class="app-card__icon">🏭</div>
+                <div>
+                  <div class="app-card__title">Hierarquia</div>
+                  <div class="app-card__sub">Fábrica → Área → Linha → Equip.</div>
+                </div>
+              </div>
+              <ul class="app-card__list">
+                <li>
+                  <a href="#">Fábricas</a>
+                  <span class="count">2</span>
+                  <span class="actions"><button class="btn btn--sm">+ Add</button></span>
+                </li>
+                <li>
+                  <a href="#">Áreas</a>
+                  <span class="count">5</span>
+                  <span class="actions"><button class="btn btn--sm">+ Add</button></span>
+                </li>
+                <li>
+                  <a href="#">Produtos</a>
+                  <span class="count">28</span>
+                  <span class="actions"><button class="btn btn--sm">+ Add</button></span>
+                </li>
+                <li>
+                  <a href="#">Histórico de SKU</a>
+                  <span class="count">132</span>
+                </li>
+              </ul>
+            </div>
+
+            <div class="app-card">
+              <div class="app-card__head">
+                <div class="app-card__icon">⚙</div>
+                <div>
+                  <div class="app-card__title">Equipamentos &amp; Sensores</div>
+                  <div class="app-card__sub">Bens físicos e instrumentação</div>
+                </div>
+              </div>
+              <ul class="app-card__list">
+                <li>
+                  <a href="#" data-go="changelist">Linhas de produção</a>
+                  <span class="count">10</span>
+                  <span class="actions"><button class="btn btn--sm">+ Add</button></span>
+                </li>
+                <li>
+                  <a href="#" data-go="changelist">Equipamentos</a>
+                  <span class="count">42</span>
+                  <span class="actions"><button class="btn btn--sm">+ Add</button></span>
+                </li>
+                <li>
+                  <a href="#">Tags de coleta</a>
+                  <span class="count">186</span>
+                  <span class="actions"><button class="btn btn--sm">+ Add</button></span>
+                </li>
+                <li>
+                  <a href="#">Sensores</a>
+                  <span class="count">94</span>
+                </li>
+                <li>
+                  <a href="#">Conexões OPC</a>
+                  <span class="count">3</span>
+                </li>
+              </ul>
+            </div>
+
+            <div class="app-card">
+              <div class="app-card__head">
+                <div class="app-card__icon">⌚</div>
+                <div>
+                  <div class="app-card__title">Operação</div>
+                  <div class="app-card__sub">Turnos, ordens, eventos</div>
+                </div>
+              </div>
+              <ul class="app-card__list">
+                <li><a href="#">Turnos</a><span class="count">3</span></li>
+                <li><a href="#">Calendário</a><span class="count">365</span></li>
+                <li><a href="#">Eventos de estado</a><span class="count">12,4k</span></li>
+                <li><a href="#">Eventos de parada</a><span class="count">3,1k</span></li>
+                <li><a href="#">Ordens de produção</a><span class="count">218</span></li>
+              </ul>
+            </div>
+
+            <div class="app-card">
+              <div class="app-card__head">
+                <div class="app-card__icon">📊</div>
+                <div>
+                  <div class="app-card__title">Analytics</div>
+                  <div class="app-card__sub">KPIs, métricas, perfis</div>
+                </div>
+              </div>
+              <ul class="app-card__list">
+                <li><a href="#">Métricas de produção</a><span class="count">86,5k</span></li>
+                <li><a href="#">Defeitos</a><span class="count">412</span></li>
+                <li><a href="#">Registros por turno</a><span class="count">2,8k</span></li>
+                <li><a href="#">Iniciativas estratégicas</a><span class="count">14</span></li>
+                <li><a href="#">Perfis Analytics</a><span class="count">9</span></li>
+              </ul>
+            </div>
+
+            <div class="app-card">
+              <div class="app-card__head">
+                <div class="app-card__icon">⚐</div>
+                <div>
+                  <div class="app-card__title">Atividade recente</div>
+                  <div class="app-card__sub">Últimas ações do admin</div>
+                </div>
+              </div>
+              <ul class="app-card__list">
+                <li><span class="muted small mono">14:02</span>&nbsp;<a href="#">Equipamento ENC-01</a> alterado</li>
+                <li><span class="muted small mono">13:48</span>&nbsp;<a href="#">TagColeta DiscoEnchimento</a> adicionado</li>
+                <li><span class="muted small mono">12:30</span>&nbsp;<a href="#">OrdemProducao OP-2026-0418</a> concluída</li>
+                <li><span class="muted small mono">11:55</span>&nbsp;<a href="#">Conexão OPC L06</a> editada</li>
+              </ul>
+            </div>
+
+            <div class="app-card">
+              <div class="app-card__head">
+                <div class="app-card__icon">🛠</div>
+                <div>
+                  <div class="app-card__title">Manutenção</div>
+                  <div class="app-card__sub">Tarefas e import/export</div>
+                </div>
+              </div>
+              <ul class="app-card__list">
+                <li><a href="#">Importar Equipamentos (XLSX)</a></li>
+                <li><a href="#">Exportar Tags de coleta</a></li>
+                <li><a href="#">Recalcular OEE (último turno)</a></li>
+                <li><a href="#">Sincronizar OPs</a></li>
+              </ul>
+            </div>
+          </div>
+        </section>
+
+        <!-- ===================== CHANGELIST ===================== -->
+        <section class="panel-changelist" hidden>
+          <div class="page-h">
+            <div>
+              <div class="topbar__bc" style="margin-bottom:4px">
+                <a href="#" data-go="dashboard">Início</a><span class="sep">›</span>
+                <a href="#">Equipamentos</a><span class="sep">›</span>
+                <b>Equipamentos</b>
+              </div>
+              <h1>Equipamentos</h1>
+              <p class="page-h__sub">42 equipamentos cadastrados em 10 linhas</p>
+            </div>
+            <div class="row">
+              <button class="btn">⤓ Exportar</button>
+              <button class="btn">⤒ Importar</button>
+              <button class="btn btn--primary">+ Adicionar equipamento</button>
+            </div>
+          </div>
+
+          <div class="toolbar">
+            <input type="search" placeholder="Buscar nome, código, tag…" />
+            <select>
+              <option>Tipo: todos</option>
+              <option>ENCHEDORA</option>
+              <option>BALANÇA</option>
+              <option>ENCAIXOTADORA</option>
+              <option>ENVOLVEDORA</option>
+            </select>
+            <select>
+              <option>Linha: todas</option>
+              <option>L01 — Envase 01</option>
+              <option>L06 — Envase 06</option>
+            </select>
+            <select>
+              <option>Status: todos</option>
+              <option>RUN</option>
+              <option>SETUP</option>
+              <option>FAULT</option>
+            </select>
+            <span class="spacer"></span>
+            <span class="small muted">Selecione uma ação ▾</span>
+            <select>
+              <option>— Ações em massa —</option>
+              <option>Marcar como ativo</option>
+              <option>Marcar como inativo</option>
+              <option>Exportar selecionados (CSV)</option>
+              <option>Excluir</option>
+            </select>
+            <button class="btn btn--sm">Aplicar</button>
+          </div>
+
+          <div class="tbl-wrap">
+            <table class="tbl">
+              <thead>
+                <tr>
+                  <th style="width:30px"><input type="checkbox" /></th>
+                  <th>Nome</th>
+                  <th>Código</th>
+                  <th>Tipo</th>
+                  <th>Linha</th>
+                  <th class="num">Ordem</th>
+                  <th>Status</th>
+                  <th class="num">Vel. nominal</th>
+                  <th class="num">Meta OEE</th>
+                  <th style="width:90px"></th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr class="is-selected">
+                  <td><input type="checkbox" checked /></td>
+                  <td><a href="#" data-go="form"><b>Enchedora_06</b></a></td>
+                  <td class="code">ENC-06</td>
+                  <td>Enchedora</td>
+                  <td>L06 — Envase 06</td>
+                  <td class="num">1</td>
+                  <td><span class="dot dot--ok"></span><span class="tag tag--ok">RUN</span></td>
+                  <td class="num">100,0</td>
+                  <td class="num">85,0%</td>
+                  <td><button class="btn btn--sm">Editar</button></td>
+                </tr>
+                <tr>
+                  <td><input type="checkbox" /></td>
+                  <td><a href="#">Balanca_06</a></td>
+                  <td class="code">BAL-06</td>
+                  <td>Balança</td>
+                  <td>L06 — Envase 06</td>
+                  <td class="num">2</td>
+                  <td><span class="dot dot--ok"></span><span class="tag tag--ok">RUN</span></td>
+                  <td class="num">80,0</td>
+                  <td class="num">85,0%</td>
+                  <td><button class="btn btn--sm">Editar</button></td>
+                </tr>
+                <tr>
+                  <td><input type="checkbox" /></td>
+                  <td><a href="#">Encaixotadora_06</a></td>
+                  <td class="code">ECX-06</td>
+                  <td>Encaixotadora</td>
+                  <td>L06 — Envase 06</td>
+                  <td class="num">3</td>
+                  <td><span class="dot dot--warn"></span><span class="tag tag--warn">SETUP</span></td>
+                  <td class="num">60,0</td>
+                  <td class="num">85,0%</td>
+                  <td><button class="btn btn--sm">Editar</button></td>
+                </tr>
+                <tr>
+                  <td><input type="checkbox" /></td>
+                  <td><a href="#">Envolvedora_06</a></td>
+                  <td class="code">ENV-06</td>
+                  <td>Envolvedora</td>
+                  <td>L06 — Envase 06</td>
+                  <td class="num">4</td>
+                  <td><span class="dot dot--bad"></span><span class="tag tag--bad">FAULT</span></td>
+                  <td class="num">50,0</td>
+                  <td class="num">85,0%</td>
+                  <td><button class="btn btn--sm">Editar</button></td>
+                </tr>
+                <tr>
+                  <td><input type="checkbox" /></td>
+                  <td><a href="#">Enchedora_09</a></td>
+                  <td class="code">ENC-09</td>
+                  <td>Enchedora</td>
+                  <td>L09 — Envase 09</td>
+                  <td class="num">1</td>
+                  <td><span class="dot dot--ok"></span><span class="tag tag--ok">RUN</span></td>
+                  <td class="num">100,0</td>
+                  <td class="num">85,0%</td>
+                  <td><button class="btn btn--sm">Editar</button></td>
+                </tr>
+                <tr>
+                  <td><input type="checkbox" /></td>
+                  <td><a href="#">Balanca_09</a></td>
+                  <td class="code">BAL-09</td>
+                  <td>Balança</td>
+                  <td>L09 — Envase 09</td>
+                  <td class="num">2</td>
+                  <td><span class="dot dot--ok"></span><span class="tag tag--ok">RUN</span></td>
+                  <td class="num">80,0</td>
+                  <td class="num">85,0%</td>
+                  <td><button class="btn btn--sm">Editar</button></td>
+                </tr>
+                <tr>
+                  <td><input type="checkbox" /></td>
+                  <td><a href="#">Encaixotadora_09</a></td>
+                  <td class="code">ECX-09</td>
+                  <td>Encaixotadora</td>
+                  <td>L09 — Envase 09</td>
+                  <td class="num">3</td>
+                  <td><span class="dot dot--off"></span><span class="tag">OFF</span></td>
+                  <td class="num">60,0</td>
+                  <td class="num">—</td>
+                  <td><button class="btn btn--sm">Editar</button></td>
+                </tr>
+              </tbody>
+            </table>
+            <div class="changelist-foot">
+              <span>1 selecionado · mostrando 1–7 de 42</span>
+              <div class="pagination">
+                <span class="pg">‹</span>
+                <span class="pg is-active">1</span>
+                <span class="pg">2</span>
+                <span class="pg">3</span>
+                <span class="pg">4</span>
+                <span class="pg">5</span>
+                <span class="pg">›</span>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ===================== FORM (DETAIL) ===================== -->
+        <section class="panel-form" hidden>
+          <div class="page-h">
+            <div>
+              <div class="topbar__bc" style="margin-bottom:4px">
+                <a href="#" data-go="dashboard">Início</a><span class="sep">›</span>
+                <a href="#" data-go="changelist">Equipamentos</a><span class="sep">›</span>
+                <b>Enchedora_06</b>
+              </div>
+              <h1>Enchedora_06 <span class="tag tag--ok" style="vertical-align:middle">RUN</span></h1>
+              <p class="page-h__sub">Última alteração: 14:02 hoje · por Ermírio C.</p>
+            </div>
+            <div class="row">
+              <button class="btn">↺ Histórico</button>
+              <button class="btn">📋 Duplicar</button>
+              <button class="btn btn--danger">🗑 Excluir</button>
+            </div>
+          </div>
+
+          <div class="form-grid">
+            <div>
+              <!-- Informações básicas -->
+              <div class="fset">
+                <div class="fset__head">
+                  <h3>Informações básicas</h3>
+                  <span class="desc">Identificação e localização do ativo</span>
+                </div>
+                <div class="fset__body">
+                  <div class="field">
+                    <label>Linha <span class="req">*</span></label>
+                    <select><option>L06 — Envase 06</option></select>
+                  </div>
+                  <div class="field">
+                    <label>Tipo <span class="req">*</span></label>
+                    <select>
+                      <option>Enchedora</option>
+                      <option>Balança</option>
+                      <option>Encaixotadora</option>
+                      <option>Envolvedora</option>
+                    </select>
+                  </div>
+                  <div class="field">
+                    <label>Nome <span class="req">*</span></label>
+                    <input type="text" value="Enchedora_06" />
+                  </div>
+                  <div class="field">
+                    <label>Código <span class="req">*</span></label>
+                    <input type="text" value="ENC-06" />
+                  </div>
+                  <div class="field">
+                    <label>Ordem na linha</label>
+                    <input type="number" value="1" />
+                  </div>
+                  <div class="field">
+                    <label>Status</label>
+                    <select>
+                      <option>RUN — Em produção</option>
+                      <option>SETUP</option>
+                      <option>FAULT</option>
+                      <option>OFF</option>
+                    </select>
+                  </div>
+                  <div class="field full">
+                    <label>Localização</label>
+                    <input type="text" value="Galpão A · Linha 06 · Estação 1" />
+                  </div>
+                </div>
+              </div>
+
+              <!-- Velocidades e metas -->
+              <div class="fset">
+                <div class="fset__head">
+                  <h3>Velocidades e metas</h3>
+                  <span class="desc">Parâmetros de performance</span>
+                </div>
+                <div class="fset__body">
+                  <div class="field">
+                    <label>Velocidade nominal (un/min)</label>
+                    <input type="number" value="100" />
+                  </div>
+                  <div class="field">
+                    <label>Velocidade máxima (un/min)</label>
+                    <input type="number" value="120" />
+                  </div>
+                  <div class="field">
+                    <label>Meta OEE (%)</label>
+                    <input type="number" value="85" />
+                    <span class="help">Padrão WCM: 85% para envase, 80% para empacotamento.</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Inline: Tags de coleta -->
+              <div class="fset">
+                <div class="fset__head">
+                  <h3>Tags de coleta OPC <span class="tag tag--info">3 inline</span></h3>
+                  <span class="desc">Variáveis lidas via OPC UA neste equipamento</span>
+                </div>
+                <div class="fset__body" style="grid-template-columns: 1fr; padding: 0">
+                  <div class="inline-tbl-wrap">
+                    <table class="tbl">
+                      <thead>
+                        <tr>
+                          <th>Métrica</th>
+                          <th>NodeId</th>
+                          <th>Tipo</th>
+                          <th>Unidade</th>
+                          <th class="num">Fator</th>
+                          <th>Ativa</th>
+                          <th></th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <tr>
+                          <td><input type="text" value="DiscoEnchimentoPercentualAberto" /></td>
+                          <td><input type="text" value="ns=2;s=PackagingBox_L06_SENZANI_VARPE.PLC L06 Senzani.DiscoEnchimentoPercentualAberto" /></td>
+                          <td>
+                            <select><option>Float</option><option>Int</option><option>Bool</option></select>
+                          </td>
+                          <td><input type="text" value="%" /></td>
+                          <td class="num"><input type="number" value="1.00" /></td>
+                          <td><input type="checkbox" checked /></td>
+                          <td><button class="btn btn--sm">🗑</button></td>
+                        </tr>
+                        <tr>
+                          <td><input type="text" value="StatusUnifos" /></td>
+                          <td><input type="text" value="ns=2;s=PackagingBox_L06_SENZANI_VARPE.PLC L06 Senzani.StatusUnifos" /></td>
+                          <td>
+                            <select><option>Int</option><option>Float</option><option>Bool</option></select>
+                          </td>
+                          <td><input type="text" value="—" /></td>
+                          <td class="num"><input type="number" value="1.00" /></td>
+                          <td><input type="checkbox" checked /></td>
+                          <td><button class="btn btn--sm">🗑</button></td>
+                        </tr>
+                        <tr>
+                          <td><input type="text" value="ContagemSaida" /></td>
+                          <td><input type="text" value="ns=2;s=PackagingBox_L06_SENZANI_VARPE.PLC L06 Senzani.ContagemSaida" /></td>
+                          <td>
+                            <select><option>Int</option><option>Float</option></select>
+                          </td>
+                          <td><input type="text" value="un" /></td>
+                          <td class="num"><input type="number" value="1.00" /></td>
+                          <td><input type="checkbox" checked /></td>
+                          <td><button class="btn btn--sm">🗑</button></td>
+                        </tr>
+                      </tbody>
+                    </table>
+                    <div class="add-row">
+                      <button class="btn btn--sm">+ Adicionar tag de coleta</button>
+                      <span class="small muted" style="margin-left:8px">Tip: cole o NodeId completo do OPC UA Expert</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Inline: Sensores -->
+              <div class="fset">
+                <div class="fset__head">
+                  <h3>Sensores físicos <span class="tag tag--info">2 inline</span></h3>
+                  <span class="desc">Sensores associados ao equipamento</span>
+                </div>
+                <div class="fset__body" style="grid-template-columns: 1fr; padding: 0">
+                  <div class="inline-tbl-wrap">
+                    <table class="tbl">
+                      <thead>
+                        <tr>
+                          <th>Código</th>
+                          <th>Nome</th>
+                          <th>Tipo</th>
+                          <th>Tag InfluxDB</th>
+                          <th>Unid.</th>
+                          <th>Ativo</th>
+                          <th></th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <tr>
+                          <td><input value="ENC06-T01" /></td>
+                          <td><input value="Termopar nozzle" /></td>
+                          <td><select><option>Temperatura</option></select></td>
+                          <td><input value="L06.enc.t_nozzle" /></td>
+                          <td><input value="°C" style="width:60px" /></td>
+                          <td><input type="checkbox" checked /></td>
+                          <td><button class="btn btn--sm">🗑</button></td>
+                        </tr>
+                        <tr>
+                          <td><input value="ENC06-P01" /></td>
+                          <td><input value="Pressão linha pó" /></td>
+                          <td><select><option>Pressão</option></select></td>
+                          <td><input value="L06.enc.p_po" /></td>
+                          <td><input value="bar" style="width:60px" /></td>
+                          <td><input type="checkbox" checked /></td>
+                          <td><button class="btn btn--sm">🗑</button></td>
+                        </tr>
+                      </tbody>
+                    </table>
+                    <div class="add-row">
+                      <button class="btn btn--sm">+ Adicionar sensor</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Aside -->
+            <div class="aside">
+              <div class="fset">
+                <div class="fset__head"><h3>Estado</h3></div>
+                <div class="fset__body">
+                  <div class="field">
+                    <label>Estado atual</label>
+                    <div class="row">
+                      <span class="dot dot--ok"></span>
+                      <span class="tag tag--ok">RUN — em produção</span>
+                    </div>
+                    <span class="help">Atualizado há 4s via OPC.</span>
+                  </div>
+                  <div class="meta-row"><span>Última leitura</span><b class="mono">14:08:12</b></div>
+                  <div class="meta-row"><span>Última falha</span><b class="mono">há 6h13min</b></div>
+                  <div class="meta-row"><span>Tags ativas</span><b>3 / 3</b></div>
+                </div>
+              </div>
+
+              <div class="fset">
+                <div class="fset__head"><h3>Limites de processo</h3></div>
+                <div class="fset__body" style="grid-template-columns: 1fr 1fr">
+                  <div class="field">
+                    <label>T mín (°C)</label>
+                    <input type="number" value="22" />
+                  </div>
+                  <div class="field">
+                    <label>T máx (°C)</label>
+                    <input type="number" value="65" />
+                  </div>
+                  <div class="field">
+                    <label>P mín (bar)</label>
+                    <input type="number" value="0.8" />
+                  </div>
+                  <div class="field">
+                    <label>P máx (bar)</label>
+                    <input type="number" value="2.5" />
+                  </div>
+                </div>
+              </div>
+
+              <div class="fset">
+                <div class="fset__head"><h3>Auditoria</h3></div>
+                <div class="fset__body">
+                  <div class="meta-row"><span>Criado em</span><b class="mono">10/jan/2025</b></div>
+                  <div class="meta-row"><span>Criado por</span><b>admin</b></div>
+                  <div class="meta-row"><span>Última edição</span><b class="mono">14:02 hoje</b></div>
+                  <div class="meta-row"><span>Editado por</span><b>Ermírio C.</b></div>
+                  <div class="meta-row"><span>Versão</span><b class="mono">#28</b></div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="form-foot">
+            <button class="btn btn--ghost">← Voltar à lista</button>
+            <span class="small muted">Auto-save desligado · não há rascunho não salvo</span>
+            <span class="spacer"></span>
+            <button class="btn">Salvar e adicionar outro</button>
+            <button class="btn">Salvar e continuar editando</button>
+            <button class="btn btn--primary">💾 Salvar</button>
+          </div>
+        </section>
+
+      </div>
+    </main>
+  </div>
+</div>
+
+<!-- ===================== Demo switcher ===================== -->
+<div class="demo-switch" role="tablist" aria-label="Telas da POC">
+  <button class="is-active" data-target="dashboard">Dashboard</button>
+  <button data-target="changelist">Lista (Equipamentos)</button>
+  <button data-target="form">Detalhe / Form</button>
+  <button data-target="login">Login</button>
+</div>
+
+<script>
+(function(){
+  const buttons = document.querySelectorAll('.demo-switch button');
+  const panels  = {
+    dashboard:  document.querySelector('.panel-dashboard'),
+    changelist: document.querySelector('.panel-changelist'),
+    form:       document.querySelector('.panel-form'),
+  };
+  const loginView = document.querySelector('[data-view="login"]');
+  const appView   = document.querySelector('[data-view="dashboard"]');
+
+  function showPanel(name){
+    if (name === 'login') {
+      loginView.classList.add('is-active');
+      appView.classList.remove('is-active');
+      return;
+    }
+    loginView.classList.remove('is-active');
+    appView.classList.add('is-active');
+    Object.entries(panels).forEach(([k, el]) => {
+      if (!el) return;
+      el.hidden = (k !== name);
+    });
+  }
+
+  buttons.forEach(btn => {
+    btn.addEventListener('click', () => {
+      buttons.forEach(b => b.classList.remove('is-active'));
+      btn.classList.add('is-active');
+      showPanel(btn.dataset.target);
+    });
+  });
+
+  // links com data-go simulam navegação dentro da app
+  document.addEventListener('click', e => {
+    const t = e.target.closest('[data-go]');
+    if (!t) return;
+    e.preventDefault();
+    const target = t.dataset.go;
+    if (panels[target] || target === 'login') {
+      buttons.forEach(b => b.classList.toggle('is-active', b.dataset.target === target));
+      showPanel(target);
+      document.querySelector('.content').scrollTop = 0;
+    }
+  });
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,26 @@
+{% extends "admin/change_list.html" %}
+{% load admin_mis i18n %}
+
+{% comment %}
+  Override mínimo da changelist nativa: mantém TUDO que o Django gera
+  (search box, list_filter, ações, paginação, import_export) — só
+  re-veste com a topbar/sidebar do MIS via base_site.html.
+{% endcomment %}
+
+{% block topbar_crumb %}{{ cl.opts.verbose_name_plural|capfirst }}{% endblock %}
+
+{% block content_title %}
+<div class="mis-page-h">
+  <div>
+    <p class="mis-bc" style="margin-bottom:4px">
+      <a href="{% admin_url 'index' %}">Início</a>
+      <span class="sep">›</span>
+      <a href="{% url 'admin:app_list' app_label=cl.opts.app_label %}">{{ cl.opts.app_config.verbose_name }}</a>
+      <span class="sep">›</span>
+      <b>{{ cl.opts.verbose_name_plural|capfirst }}</b>
+    </p>
+    <h1>{{ cl.opts.verbose_name_plural|capfirst }}</h1>
+    <p class="mis-page-h__sub">{{ cl.result_count }} registro{{ cl.result_count|pluralize:"s" }}</p>
+  </div>
+</div>
+{% endblock %}

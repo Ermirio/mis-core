@@ -1,0 +1,52 @@
+{% load admin_mis %}
+{% grouped_apps as buckets %}
+
+<aside class="mis-sb" aria-label="Navegação do admin">
+  <div class="mis-sb__header">
+    <div class="mis-sb__brand-mark">M</div>
+    <div class="mis-sb__brand">
+      <span class="mis-sb__brand-name">MIS Core</span>
+      <span class="mis-sb__brand-sub">Backend</span>
+    </div>
+  </div>
+
+  <div class="mis-sb__scroll">
+    <nav class="mis-sb__group">
+      <a href="{% admin_url 'index' %}"
+         class="mis-sb__link {% if request.path == '/mis-core-admin/' or request.path|path_starts_with:'/mis-core-admin/index' %}is-active{% endif %}">
+        <span class="ico">⌂</span> Início
+      </a>
+    </nav>
+
+    {% for bucket in buckets %}
+    <nav class="mis-sb__group">
+      <p class="mis-sb__section-title">{{ bucket.label }}</p>
+      {% for model in bucket.models %}
+        <a href="{{ model.admin_url }}"
+           class="mis-sb__link {% if model.admin_url and request.path|path_starts_with:model.admin_url %}is-active{% endif %}"
+           title="{{ model.name }}">
+          <span class="ico">{{ model.icon }}</span>
+          <span>{{ model.name }}</span>
+          {% if model.count %}<span class="count">{{ model.count }}</span>{% endif %}
+        </a>
+      {% endfor %}
+    </nav>
+    {% endfor %}
+  </div>
+
+  <div class="mis-sb__footer">
+    <div class="mis-sb__user">
+      <div class="mis-sb__user-avatar">{{ user.username|slice:":2"|upper }}</div>
+      <div class="mis-sb__user-info">
+        <div class="mis-sb__user-name">{{ user.get_short_name|default:user.username }}</div>
+        <div class="mis-sb__user-meta">
+          {% if user.is_superuser %}Superuser ·{% endif %}
+          <a href="{% admin_url 'logout' %}">Sair</a>
+        </div>
+      </div>
+    </div>
+    <div class="mis-sb__version" title="Versão da imagem">
+      v{{ MIS_VERSION }} · {{ MIS_GIT_HASH }}
+    </div>
+  </div>
+</aside>

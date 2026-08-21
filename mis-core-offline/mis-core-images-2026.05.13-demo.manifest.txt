@@ -1,0 +1,15 @@
+MIS Core Offline Image Pack
+version=2026.05.13-demo
+git_hash=85efa65
+build_time=2026-05-13T13:23:02Z
+host_target=192.168.70.160:8080
+
+images:
+- mis-core-frontend:2026.05.13-demo id=sha256:dab3b6fb23f604324bb6867cd60def3e26e3063db7a7dfd37fa480158f103e65 size_bytes=30387877
+- mis-core-django:2026.05.13-demo id=sha256:3911c7c65a9d1438628c5378ee69c7ccc733bda5042a9a290313ad3e4649ee2c size_bytes=172049437
+- mis-core-flask:2026.05.13-demo id=sha256:cc763e08a0b665c902d84e5b956625914d8d44abf70dfab10b93ab8b9d709492 size_bytes=276930654
+- mis-core-fastapi:2026.05.13-demo id=sha256:c7e008273fe28be50aa7f13f54e16db3d5aa486f8728ffd737965c2d307cbfdc size_bytes=269454817
+- mis-core-coletor:2026.05.13-demo id=sha256:665ed597c42efc2eb431969b3790924cfc2ef718c8a32db130681345add0d533 size_bytes=130569815
+- mysql:8.0 id=sha256:d0304ed9fdb64a3f6c7ad11a5fb4f13abfc10e6dfa3f288d652e7320c34df7f9 size_bytes=233592821
+- influxdb:1.8-alpine id=sha256:2601e27d6b7eac276017d7ea48d2685d52639cea974744b5877924376283a4cd size_bytes=59528113
+- chronograf:1.8 id=sha256:91a11019d5082212a0e21051c3273cc6559e8b17ddcbbc9c5d4adee10a58c845 size_bytes=69898228
