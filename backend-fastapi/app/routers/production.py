@@ -112,6 +112,23 @@ def _is_fresh(point: dict[str, Any], max_age_s: int = 300) -> bool:
     return (datetime.now(timezone.utc) - ts).total_seconds() <= max_age_s
 
 
+def _point_age_s(point: dict[str, Any]) -> float | None:
+    ts = _point_dt(point)
+    if not ts:
+        return None
+    return max(0.0, (datetime.now(timezone.utc) - ts).total_seconds())
+
+
+def _point_ingested_at(point: dict[str, Any]) -> str | None:
+    value = point.get("timestamp_medicao")
+    if value is None:
+        return None
+    try:
+        return datetime.fromtimestamp(float(value), timezone.utc).isoformat()
+    except (TypeError, ValueError, OSError):
+        return None
+
+
 async def _django_get(path: str, params: dict[str, Any] | None = None) -> Any:
     settings = get_settings()
     base = settings.django_api_url.rstrip("/")
@@ -408,6 +425,7 @@ async def get_equipamento_dados(
         }
 
     is_fresh = _is_fresh(point)
+    data_age_s = _point_age_s(point)
     estado_codigo = (
         int(_num(point, "last_estado_maquina", default=999))
         if is_fresh
@@ -422,14 +440,22 @@ async def get_equipamento_dados(
 
     return {
         "equipamento": codigo,
-        "velocidade_atual": _num(point, "last_velocidade_atual", "last_velocidade"),
+        # Um valor vencido é histórico, não uma medição atual. Neutralizar os
+        # campos operacionais evita cards impossíveis como Offline + 282 ppm.
+        "velocidade_atual": (
+            _num(point, "last_velocidade_atual", "last_velocidade")
+            if is_fresh
+            else 0.0
+        ),
         "estado_atual": ESTADOS_MAQUINA.get(estado_codigo, str(estado_codigo)),
         "estado_atual_id": estado_codigo,
         "comunicacao_online": is_fresh,
         "pecas_produzidas": produzido_turno,
         "refugos": refugo_turno,
-        "oee_atual": _num(point, "last_oee_realtime"),
+        "oee_atual": _num(point, "last_oee_realtime") if is_fresh else 0.0,
         "timestamp": point.get("time"),
+        "ingested_at": _point_ingested_at(point),
+        "data_age_s": round(data_age_s, 1) if data_age_s is not None else None,
     }
 
 

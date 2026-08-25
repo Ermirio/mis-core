@@ -83,6 +83,9 @@ interface FullEquipmentStatus {
     velocidade_atual?: number;
     oee?: number;
     status?: string;
+    comunicacao_online?: boolean;
+    ingested_at?: string | null;
+    data_age_s?: number | null;
 }
 
 const LineDeepView: React.FC = () => {
@@ -170,40 +173,11 @@ const LineDeepView: React.FC = () => {
 
     const mergeStatusFallback = (
         tempoReal: Partial<EquipamentoCompleto> | null,
-        fallback?: FullEquipmentStatus,
+        _fallback?: FullEquipmentStatus,
     ): Partial<EquipamentoCompleto> | null => {
-        if (!fallback) return tempoReal;
-
-        const estadoAtual = safeString(tempoReal?.medicoes?.estado, '');
-        const estadoFallback = safeString(fallback.estado, '');
-        const shouldUseFallbackState = !estadoAtual || ['Desconhecido', 'Offline', 'Sem dados'].includes(estadoAtual);
-
-        return {
-            medicoes: {
-                velocidade_atual: safeNumber(tempoReal?.medicoes?.velocidade_atual ?? fallback.velocidade_atual, 0),
-                estado: shouldUseFallbackState ? estadoFallback : estadoAtual,
-                pecas_produzidas_equipamento: safeNumber(tempoReal?.medicoes?.pecas_produzidas_equipamento, 0),
-                cuc: safeString(tempoReal?.medicoes?.cuc, 'N/A'),
-                sku_codigo: safeString(tempoReal?.medicoes?.sku_codigo, 'N/A'),
-                descricao: safeString(tempoReal?.medicoes?.descricao, 'Produto Genérico'),
-                ordem_producao: safeString(tempoReal?.medicoes?.ordem_producao, 'N/A'),
-                formato_gramas: safeNumber(tempoReal?.medicoes?.formato_gramas, 0),
-                planejado_op: safeNumber(tempoReal?.medicoes?.planejado_op, 0),
-                produzido_op: safeNumber(tempoReal?.medicoes?.produzido_op, 0),
-                produzido_turno: safeNumber(tempoReal?.medicoes?.produzido_turno, 0),
-                descarte_turno: safeNumber(tempoReal?.medicoes?.descarte_turno, 0),
-                refugo_turno: safeNumber(tempoReal?.medicoes?.refugo_turno, 0),
-                pecas_ruins_turno: safeNumber(tempoReal?.medicoes?.pecas_ruins_turno, 0),
-                diferenca_op: safeNumber(tempoReal?.medicoes?.diferenca_op, 0),
-                toneladas_op: safeNumber(tempoReal?.medicoes?.toneladas_op, 0),
-                oee: safeNumber(tempoReal?.medicoes?.oee ?? fallback.oee, 0),
-                pecas_boas: safeNumber(tempoReal?.medicoes?.pecas_boas, 0),
-                pecas_ruins: safeNumber(tempoReal?.medicoes?.pecas_ruins, 0),
-                timestamp: safeString(tempoReal?.medicoes?.timestamp, new Date().toISOString()),
-            },
-            status: shouldUseFallbackState ? estadoFallback : safeString(tempoReal?.status, fallback.status || 'Offline'),
-            timestamp: tempoReal?.timestamp,
-        };
+        // Evento/métrica SQL é histórico e não pode ressuscitar um estado OPC
+        // vencido. Sem resposta realtime comprovadamente online, fica Offline.
+        return tempoReal;
     };
 
     const fetchTempoReal = async (codigoEquipamento: string, linhaCodigo: string): Promise<Partial<EquipamentoCompleto> | null> => {
@@ -222,10 +196,11 @@ const LineDeepView: React.FC = () => {
 
             const dadosOp = respOp ? await respOp.json() : {};
             const dadosEq = respEq ? await respEq.json() : {};
+            const comunicacaoOnline = dadosEq.comunicacao_online === true;
 
             const medicoes: MedicoesCombinadas = {
-                velocidade_atual: safeNumber(dadosEq.velocidade_atual, 0),
-                estado: safeString(dadosEq.estado_atual, 'Desconhecido'),
+                velocidade_atual: comunicacaoOnline ? safeNumber(dadosEq.velocidade_atual, 0) : 0,
+                estado: comunicacaoOnline ? safeString(dadosEq.estado_atual, 'Desconhecido') : 'Offline',
                 pecas_produzidas_equipamento: safeNumber(dadosEq.pecas_produzidas, 0),
                 cuc: safeString(dadosOp.cuc, 'N/A'),
                 sku_codigo: safeString(dadosOp.sku, 'N/A'),
@@ -240,15 +215,15 @@ const LineDeepView: React.FC = () => {
                 pecas_ruins_turno: safeNumber(dadosOp.pecas_ruins_turno ?? dadosOp.descarte_turno, 0),
                 diferenca_op: safeNumber(dadosOp.diferenca_op, 0),
                 toneladas_op: safeNumber(dadosOp.toneladas_op, 0),
-                oee: safeNumber(dadosOp.oee || dadosEq.oee_atual, 0),
+                oee: comunicacaoOnline ? safeNumber(dadosOp.oee || dadosEq.oee_atual, 0) : 0,
                 pecas_boas: safeNumber(dadosOp.pecas_boas, 0),
                 pecas_ruins: safeNumber(dadosOp.pecas_ruins, 0),
-                timestamp: safeString(dadosEq.timestamp, new Date().toISOString())
+                timestamp: safeString(dadosEq.ingested_at || dadosEq.timestamp, '')
             };
 
             return {
                 medicoes,
-                status: safeString(dadosEq.estado_atual, 'Offline'),
+                status: comunicacaoOnline ? safeString(dadosEq.estado_atual, 'Offline') : 'Offline',
                 timestamp: dadosEq.timestamp
             };
         } catch (error) {

@@ -136,7 +136,8 @@ class EquipamentoColetorSerializer(serializers.ModelSerializer):
     class Meta:
         model = Equipamento
         fields = [
-            'id', 'nome', 'codigo', 'tipo', 'tipo_display', 'linha', 'linha_codigo', 'linha_nome',
+            'id', 'uuid', 'slug', 'nome', 'codigo', 'tipo', 'tipo_display',
+            'linha', 'linha_codigo', 'linha_nome',
             'velocidade_nominal', 'velocidade_maxima', 'meta_oee',
             'temperatura_min', 'temperatura_max', 'pressao_min', 'pressao_max',
             'tags_coleta', 'conexao_detalhes'

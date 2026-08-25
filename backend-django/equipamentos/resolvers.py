@@ -51,6 +51,19 @@ class EquipamentoAmbiguo(Exception):
         )
 
 
+class EquipamentoIdentityConflict(ValueError):
+    """O payload trouxe identificadores que apontam para equipamentos distintos."""
+
+    def __init__(self, *, slug: str, codigo: str, linha_codigo: str):
+        super().__init__(
+            "Identidade de equipamento inconsistente: "
+            f"slug={slug!r} não corresponde a {linha_codigo}.{codigo}."
+        )
+        self.slug = slug
+        self.codigo = codigo
+        self.linha_codigo = linha_codigo
+
+
 def _parse_uuid(value: object) -> Optional[_uuid_module.UUID]:
     if value is None:
         return None
@@ -151,10 +164,31 @@ def resolver_de_payload(payload: dict) -> Equipamento:
       equipamento_id, equipamento_uuid, equipamento_slug,
       equipamento_codigo, linha_codigo.
     """
+    slug = payload.get('equipamento_slug') or payload.get('slug')
+    codigo = payload.get('equipamento_codigo') or payload.get('codigo')
+    linha_codigo = payload.get('linha_codigo')
+
+    # Nunca deixe a prioridade do slug esconder um conflito de identidade.
+    # O coletor envia slug + código + linha; os três precisam apontar para a
+    # mesma PK antes de qualquer escrita no InfluxDB.
+    if slug and codigo and linha_codigo:
+        por_slug = resolver_equipamento(slug=slug)
+        por_codigo_linha = resolver_equipamento(
+            codigo=codigo,
+            linha_codigo=linha_codigo,
+        )
+        if por_slug.pk != por_codigo_linha.pk:
+            raise EquipamentoIdentityConflict(
+                slug=slug,
+                codigo=codigo,
+                linha_codigo=linha_codigo,
+            )
+        return por_slug
+
     return resolver_equipamento(
         equipamento_id=payload.get('equipamento_id'),
         uuid=payload.get('equipamento_uuid') or payload.get('uuid'),
-        slug=payload.get('equipamento_slug') or payload.get('slug'),
-        codigo=payload.get('equipamento_codigo') or payload.get('codigo'),
-        linha_codigo=payload.get('linha_codigo'),
+        slug=slug,
+        codigo=codigo,
+        linha_codigo=linha_codigo,
     )

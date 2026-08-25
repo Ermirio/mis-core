@@ -1867,7 +1867,11 @@ def _processar_item_ingestao(item: dict, influx_client, engine) -> bool:
       - legacy: `equipamento_codigo` sozinho (só funciona se único globalmente)
     """
     try:
-        from .resolvers import resolver_de_payload, EquipamentoAmbiguo
+        from .resolvers import (
+            resolver_de_payload,
+            EquipamentoAmbiguo,
+            EquipamentoIdentityConflict,
+        )
         from .models import Equipamento as _Eq
         try:
             equipamento = resolver_de_payload(item)
@@ -1877,6 +1881,9 @@ def _processar_item_ingestao(item: dict, influx_client, engine) -> bool:
                 "Coletor precisa enviar equipamento_slug ou linha_codigo.",
                 exc.codigo, len(exc.opcoes),
             )
+            return False
+        except EquipamentoIdentityConflict as exc:
+            logger.error("dados/inserir: %s Payload rejeitado.", exc)
             return False
         except _Eq.DoesNotExist:
             logger.warning(
@@ -1927,7 +1934,18 @@ def _processar_item_ingestao(item: dict, influx_client, engine) -> bool:
         if cont_in > 0:
             desc = max(desc, cont_in - cont, 0)
 
-        vel_real = m.get('velocidade_atual') or m.get('velocidade_real') or m.get('velocidade')
+        # Zero é uma leitura OPC válida (equipamento parado), não ausência de
+        # dado. A cadeia com ``or`` descartava o zero e recalculava velocidade
+        # pelo contador, podendo exibir máquina em movimento quando estava
+        # parada. Só fazemos fallback quando a chave realmente não veio.
+        vel_real = next(
+            (
+                m.get(field)
+                for field in ('velocidade_atual', 'velocidade_real', 'velocidade')
+                if m.get(field) is not None
+            ),
+            None,
+        )
         if vel_real is not None:
             vel_calc = int(float(vel_real))
         else:
