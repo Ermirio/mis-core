@@ -37,3 +37,15 @@ class CookieJWTAuthentication(JWTAuthentication):
         # enforce_csrf(request)
 
         return self.get_user(validated_token), validated_token
+
+    def get_user(self, validated_token):
+        user = super().get_user(validated_token)
+        # Bloqueia imediatamente um usuário expirado, mesmo que o JWT de
+        # acesso tenha sido emitido antes da expiração/revogação.
+        from equipamentos.access_policy import access_is_valid
+        if not access_is_valid(user):
+            raise exceptions.AuthenticationFailed(
+                'Acesso expirado. Solicite a revalidação a um administrador.',
+                code='user_access_expired',
+            )
+        return user

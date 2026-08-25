@@ -24,6 +24,10 @@ class EquipamentosConfig(AppConfig):
         Executado quando o Django termina de carregar o app.
         Inicia o scheduler de sincronização em background.
         """
+        # Registra sinais de segurança em todos os processos (gunicorn,
+        # management commands e desenvolvimento), independentemente do scheduler.
+        from . import signals  # noqa: F401
+
         # Evita iniciar o scheduler duas vezes (Django recarrega em desenvolvimento)
         import os
         if os.environ.get('RUN_MAIN') != 'true':

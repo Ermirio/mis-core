@@ -2,7 +2,8 @@ from django.contrib import admin
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from analytics.views import AnalyticsProfileViewSet
-from config.auth_views import CookieTokenObtainPairView, CookieTokenRefreshView, LogoutView
+from config.auth_views import CookieTokenObtainPairView, CookieTokenRefreshView, CurrentUserView, LogoutView
+from equipamentos import auth_gateway_views
 from config.version_view import version_view
 
 # Router para analytics
@@ -25,6 +26,8 @@ urlpatterns = [
     path('api/auth/login/', CookieTokenObtainPairView.as_view(), name='token_obtain_pair'),
     path('api/auth/refresh/', CookieTokenRefreshView.as_view(), name='token_refresh'),
     path('api/auth/logout/', LogoutView.as_view(), name='auth_logout'),
+    path('api/auth/me/', CurrentUserView.as_view(), name='auth_me'),
+    path('api/auth/admin-tools/', auth_gateway_views.check_admin_tools, name='auth_admin_tools'),
 
     path('api/', include('equipamentos.urls')),
     path('api/bi/', include('equipamentos.urls_bi')),  # Endpoints de BI (side-by-side)

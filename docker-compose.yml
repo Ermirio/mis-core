@@ -257,8 +257,7 @@ services:
     image: chronograf:1.8
     container_name: mis-core-chronograf
     restart: unless-stopped
-    ports:
-      - "${CHRONOGRAF_PORT:-8888}:8888"
+    # UI administrativa sem porta pública; acesso somente pelo gateway Django.
     environment:
       <<: *common-env
       INFLUXDB_URL: http://influxdb:8086
@@ -277,8 +276,7 @@ services:
     image: grafana/grafana:10.4.2
     container_name: mis-core-grafana
     restart: unless-stopped
-    ports:
-      - "${GRAFANA_PORT:-3001}:3000"
+    # UI administrativa sem porta pública; acesso somente pelo gateway Django.
     environment:
       <<: *common-env
       GF_SECURITY_ADMIN_USER: "${GRAFANA_ADMIN_USER:-admin}"
@@ -329,7 +327,7 @@ services:
     ports:
       - "${EMQX_MQTT_PORT:-1883}:1883"
       - "${EMQX_WS_PORT:-8083}:8083"
-      - "${EMQX_DASHBOARD_PORT:-18083}:18083"
+      # Dashboard 18083 permanece privado; MQTT/WS industriais continuam expostos.
     environment:
       <<: *common-env
       EMQX_DASHBOARD__DEFAULT_USERNAME: "${EMQX_ADMIN_USER:-admin}"

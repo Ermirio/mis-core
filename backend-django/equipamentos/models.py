@@ -1,3 +1,6 @@
+from datetime import timedelta
+
+from django.conf import settings
 from django.db import models, transaction
 from django.core.validators import MinValueValidator, MaxValueValidator
 from django.utils import timezone
@@ -1972,6 +1975,72 @@ class GoldenStateVarSnapshot(models.Model):
 
     def __str__(self):
         return f"{self.run} · {self.nome_amigavel}"
+
+
+def default_user_access_expiry():
+    """Validade inicial de usuários operacionais."""
+    return timezone.now() + timedelta(days=120)
+
+
+class UserAccessPolicy(models.Model):
+    """Validade de acesso dos usuários do MIS Core.
+
+    Administradores (staff/superuser) não expiram. Usuários operacionais
+    precisam ser revalidados por um administrador a cada 120 dias.
+    """
+
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='mis_access_policy',
+        verbose_name='Usuário',
+    )
+    expires_at = models.DateTimeField(
+        default=default_user_access_expiry,
+        null=True,
+        blank=True,
+        verbose_name='Acesso válido até',
+    )
+    revalidated_at = models.DateTimeField(null=True, blank=True, verbose_name='Revalidado em')
+    revalidated_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='mis_access_revalidations',
+        verbose_name='Revalidado por',
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Validade de usuário'
+        verbose_name_plural = 'Validades de usuários'
+        ordering = ['expires_at', 'user__username']
+
+    def __str__(self):
+        return f'{self.user.username} — {self.status_label}'
+
+    @property
+    def is_expired(self):
+        if self.user.is_staff or self.user.is_superuser:
+            return False
+        return self.expires_at is None or self.expires_at <= timezone.now()
+
+    @property
+    def status_label(self):
+        if self.user.is_staff or self.user.is_superuser:
+            return 'Administrador — não expira'
+        return 'Expirado' if self.is_expired else 'Válido'
+
+    def revalidate(self, actor, days=120):
+        if self.user.is_staff or self.user.is_superuser:
+            self.expires_at = None
+        else:
+            self.expires_at = timezone.now() + timedelta(days=days)
+        self.revalidated_at = timezone.now()
+        self.revalidated_by = actor
+        self.save(update_fields=['expires_at', 'revalidated_at', 'revalidated_by', 'updated_at'])
 
 
 class NodeRedUser(models.Model):

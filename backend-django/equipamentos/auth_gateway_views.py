@@ -22,16 +22,19 @@ from __future__ import annotations
 import json
 import logging
 
-from django.contrib.auth.decorators import login_required
 from django.http import HttpResponse, HttpResponseForbidden, JsonResponse
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated
+
+from .access_policy import access_is_valid, is_mis_admin
 
 logger = logging.getLogger(__name__)
 
 
-def _check(request, perm_codename: str) -> HttpResponse:
+def _check(request, perm_codename: str | None = None) -> HttpResponse:
     """Lógica comum: precisa estar logado E ter a permissão.
     Retorna 401 (sem sessão) ou 403 (sem permissão) — nginx trata
     cada código diferente: 401 → redireciona para login.
@@ -42,7 +45,9 @@ def _check(request, perm_codename: str) -> HttpResponse:
     """
     if not request.user.is_authenticated:
         return HttpResponse(status=401)
-    if request.user.is_superuser or request.user.has_perm(f'equipamentos.{perm_codename}'):
+    # Ferramentas administrativas são reservadas a administradores do MIS.
+    # Permissões legadas individuais não bastam mais para atravessar o gateway.
+    if access_is_valid(request.user) and is_mis_admin(request.user):
         resp = HttpResponse(status=200)
         resp['X-MIS-User'] = request.user.username
         return resp
@@ -63,6 +68,13 @@ def check_chronograf(request):
 
 def check_emqx(request):
     return _check(request, 'access_emqx')
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def check_admin_tools(request):
+    """Subrequest JWT-aware usado pelo nginx em todas as ferramentas."""
+    return _check(request)
 
 
 # -----------------------------------------------------------------------------

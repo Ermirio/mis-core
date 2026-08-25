@@ -1,4 +1,6 @@
 from django.contrib import admin, messages
+from django.contrib.auth.admin import UserAdmin
+from django.contrib.auth.models import User
 from django import forms
 from django.core.exceptions import PermissionDenied
 from django.forms.models import BaseInlineFormSet
@@ -19,8 +21,9 @@ from .models import (
     Fabrica, Area, Produto, HistoricoSKU, OrdemProducao, RegistroProducaoTurno,
     StrategicInitiative, EventoParada,
     GoldenStateRun, GoldenStateVarSnapshot,
-    NodeRedSnapshot, NodeRedUser,
+    NodeRedSnapshot, NodeRedUser, UserAccessPolicy,
 )
+from .access_policy import is_mis_admin
 
 from import_export.admin import ImportExportModelAdmin
 from .resources import (
@@ -1508,3 +1511,83 @@ class NodeRedUserAdmin(admin.ModelAdmin):
             'classes': ('collapse',),
         }),
     )
+
+
+@admin.register(UserAccessPolicy)
+class UserAccessPolicyAdmin(admin.ModelAdmin):
+    list_display = ['user', 'status', 'expires_at', 'revalidated_at', 'revalidated_by']
+    list_filter = ['expires_at', 'revalidated_at']
+    search_fields = ['user__username', 'user__first_name', 'user__last_name', 'user__email']
+    readonly_fields = ['revalidated_at', 'revalidated_by', 'created_at', 'updated_at']
+    actions = ['revalidate_120_days']
+
+    @admin.display(description='Status')
+    def status(self, obj):
+        return obj.status_label
+
+    @admin.action(description='Revalidar usuários selecionados por 120 dias')
+    def revalidate_120_days(self, request, queryset):
+        count = 0
+        for policy in queryset.select_related('user'):
+            policy.revalidate(request.user)
+            count += 1
+        self.message_user(request, f'{count} usuário(s) revalidado(s).', messages.SUCCESS)
+
+    def has_module_permission(self, request):
+        return is_mis_admin(request.user)
+
+    def has_view_permission(self, request, obj=None):
+        return is_mis_admin(request.user)
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return is_mis_admin(request.user)
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+    def save_model(self, request, obj, form, change):
+        if obj.user.is_staff or obj.user.is_superuser:
+            obj.expires_at = None
+        obj.revalidated_at = timezone.now()
+        obj.revalidated_by = request.user
+        super().save_model(request, obj, form, change)
+
+
+class SecureUserAdmin(UserAdmin):
+    """Impede que um staff comum eleve privilégios administrativos."""
+
+    PRIVILEGED_FIELDS = {'is_staff', 'is_superuser', 'groups', 'user_permissions'}
+
+    def get_fieldsets(self, request, obj=None):
+        fieldsets = super().get_fieldsets(request, obj)
+        if request.user.is_superuser:
+            return fieldsets
+        secured = []
+        for title, options in fieldsets:
+            fields = tuple(field for field in options.get('fields', ()) if field not in self.PRIVILEGED_FIELDS)
+            secured.append((title, {**options, 'fields': fields}))
+        return tuple(secured)
+
+    def get_readonly_fields(self, request, obj=None):
+        fields = list(super().get_readonly_fields(request, obj))
+        if not request.user.is_superuser:
+            fields.extend(['is_staff', 'is_superuser'])
+        return tuple(dict.fromkeys(fields))
+
+    def save_model(self, request, obj, form, change):
+        if not request.user.is_superuser:
+            if obj.pk:
+                original = User.objects.get(pk=obj.pk)
+                obj.is_staff = original.is_staff
+                obj.is_superuser = original.is_superuser
+            else:
+                obj.is_staff = False
+                obj.is_superuser = False
+        super().save_model(request, obj, form, change)
+
+
+admin.site.unregister(User)
+admin.site.register(User, SecureUserAdmin)

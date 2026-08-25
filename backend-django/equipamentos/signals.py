@@ -2,10 +2,11 @@ import logging
 from datetime import timedelta
 
 from decouple import config
+from django.contrib.auth import get_user_model
 from django.db.models.signals import post_delete, post_save
 from django.dispatch import receiver
 
-from .models import GoldenStateRun, MetricaProducao, TurnoProducao
+from .models import GoldenStateRun, MetricaProducao, TurnoProducao, UserAccessPolicy
 
 logger = logging.getLogger(__name__)
 
@@ -61,3 +62,11 @@ def auto_capturar_golden_state(sender, instance: MetricaProducao, created, **kwa
             logger.debug("AUTO ja existia para %s; ignorando.", instance.linha.codigo)
         else:
             logger.warning("Falha ao auto-capturar Golden State: %s", exc)
+
+
+@receiver(post_save, sender=get_user_model())
+def maintain_user_access_policy(sender, instance, **kwargs):
+    policy, _ = UserAccessPolicy.objects.get_or_create(user=instance)
+    if (instance.is_staff or instance.is_superuser) and policy.expires_at is not None:
+        policy.expires_at = None
+        policy.save(update_fields=['expires_at', 'updated_at'])

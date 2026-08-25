@@ -38,6 +38,13 @@ type RealtimeEquipment = {
   linha_id?: string | number | null;
 };
 
+type CurrentUser = {
+  username: string;
+  is_admin: boolean;
+  is_staff: boolean;
+  is_superuser: boolean;
+};
+
 // Mock status/OEE per line — shown when Flask /realtime/all is unavailable
 const MOCK_LINE_STATES: Record<string, { state: LineState; oee: number | null }> = {
   "ENV-01": { state: 'ok',   oee: 87 },
@@ -241,12 +248,22 @@ const SidebarV2: React.FC<SidebarProps> = ({ collapsed, onToggle }) => {
   const [linhas, setLinhas] = useState<Linha[]>([]);
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState("");
+  const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
   // lineStates: maps codigo → { state, oee }. Starts with mock, gets overwritten by real data.
   // IMPORTANTE: NAO inicializar com MOCK_LINE_STATES — quando o backend nao
   // retorna nada, queremos refletir isso na UI (sem dados ficticios).
   const [lineStates, setLineStates] = useState<Record<string, { state: LineState; oee: number | null }>>({});
   const searchRef = useRef<HTMLInputElement>(null);
   const { health } = useSystemHealth();
+
+  useEffect(() => {
+    let alive = true;
+    fetch(`${DJANGO_API_URL}/auth/me/`, { credentials: 'include' })
+      .then(response => response.ok ? response.json() : null)
+      .then(data => { if (alive) setCurrentUser(data); })
+      .catch(() => { if (alive) setCurrentUser(null); });
+    return () => { alive = false; };
+  }, []);
 
   // ---- fetch linhas from Django ----
   // Sem fallback para MOCK: se a API responde vazio (modo producao limpo) a
@@ -534,19 +551,21 @@ const SidebarV2: React.FC<SidebarProps> = ({ collapsed, onToggle }) => {
               encaminha para a maquina .160. Critico para Node-RED, senao
               cai no Node-RED ANTIGO da maquina .71 pelo /nodered/.
        */}
-      <nav className="sbv2__tools" aria-label="Ferramentas">
-        {!collapsed && <p className="sbv2__section-title">Ferramentas</p>}
-        <SmartToolLink kind="grafana"    icon="📈" label="Grafana"    collapsed={collapsed} />
-        <SmartToolLink kind="chronograf" icon="⏱️" label="Chronograf" collapsed={collapsed} />
-        <SmartToolLink kind="nodered"    icon="🔌" label="Node-RED"   collapsed={collapsed} />
-        <SmartToolLink kind="emqx"       icon="📡" label="EMQX"       collapsed={collapsed} />
-        <SmartToolLink
-          kind="portainer"
-          icon={<Container size={17} strokeWidth={1.8} />}
-          label="Portainer"
-          collapsed={collapsed}
-        />
-      </nav>
+      {currentUser?.is_admin && (
+        <nav className="sbv2__tools" aria-label="Ferramentas administrativas">
+          {!collapsed && <p className="sbv2__section-title">Ferramentas</p>}
+          <SmartToolLink kind="grafana"    icon="📈" label="Grafana"    collapsed={collapsed} />
+          <SmartToolLink kind="chronograf" icon="⏱️" label="Chronograf" collapsed={collapsed} />
+          <SmartToolLink kind="nodered"    icon="🔌" label="Node-RED"   collapsed={collapsed} />
+          <SmartToolLink kind="emqx"       icon="📡" label="EMQX"       collapsed={collapsed} />
+          <SmartToolLink
+            kind="portainer"
+            icon={<Container size={17} strokeWidth={1.8} />}
+            label="Portainer"
+            collapsed={collapsed}
+          />
+        </nav>
+      )}
 
       {/* ---- Footer ---- */}
       <footer className="sbv2__footer">
@@ -662,14 +681,6 @@ const ToolLink: React.FC<{
 // É o que evita o bug "cliquei em Node-RED e abriu o do .71 em vez do .160".
 type ToolKind = 'grafana' | 'chronograf' | 'nodered' | 'emqx' | 'portainer';
 
-const TOOL_PORTS: Record<ToolKind, number> = {
-  grafana: 3001,
-  chronograf: 8888,
-  nodered: 0,        // Node-RED: sempre via gateway /nodered/ (auth Django)
-  emqx: 18083,
-  portainer: 0,      // Portainer: sem porta pública; sempre via gateway interno
-};
-
 const TOOL_PROXY_PATHS: Record<ToolKind, string> = {
   grafana: '/mc-grafana/',
   chronograf: '/mc-chronograf/',
@@ -678,37 +689,14 @@ const TOOL_PROXY_PATHS: Record<ToolKind, string> = {
   portainer: '/mc-portainer/',
 };
 
-function isDirectOTAccess(hostname: string): boolean {
-  // localhost / 127.x.x.x — acesso local.
-  if (hostname === 'localhost' || hostname.startsWith('127.')) return true;
-  // IPs privados — rede interna (incluindo a OT da máquina .160).
-  if (hostname.startsWith('192.168.70.')) return true;  // rede OT do MIS Core
-  if (hostname.startsWith('10.')) return false;          // corporativa via NAT — proxy
-  // Outros (hub.mis.local, IP do proxy central, etc.) → via proxy.
-  return false;
-}
-
 const SmartToolLink: React.FC<{
   kind: ToolKind;
   icon: React.ReactNode;
   label: string;
   collapsed: boolean;
 }> = ({ kind, icon, label, collapsed }) => {
-  const host = typeof window !== 'undefined' ? window.location.hostname : 'localhost';
-  let href: string;
-  if (kind === 'nodered') {
-    // Node-RED SEMPRE passa pelo gateway de auth (rede OT direta ou via proxy).
-    // No standalone, é /nodered/ no nginx interno; via proxy, /mc-nodered/.
-    href = isDirectOTAccess(host) ? '/nodered/' : TOOL_PROXY_PATHS.nodered;
-  } else if (kind === 'portainer') {
-    // O Portainer nunca expoe uma porta do host. O mesmo path funciona no
-    // nginx interno e no Hub central, preservando o WebSocket da ferramenta.
-    href = TOOL_PROXY_PATHS.portainer;
-  } else if (isDirectOTAccess(host)) {
-    href = `http://${host}:${TOOL_PORTS[kind]}/`;
-  } else {
-    href = TOOL_PROXY_PATHS[kind];
-  }
+  // Toda ferramenta passa pelo gateway Django; não há exceção por IP/porta.
+  const href = TOOL_PROXY_PATHS[kind];
   return (
     <a
       href={href}
