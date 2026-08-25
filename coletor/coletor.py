@@ -504,7 +504,15 @@ class ColetorOPC:
 
                 # Logica Heartbeat seria comparar timestamp, mas por simplicidade
                 # assumimos que se LEU, está OK (o nível acima cuida de stale data)
-            
+            else:
+                # Sem uma tag opcional de monitoramento, ainda precisamos fazer
+                # I/O real. Apenas possuir um objeto ``Client`` não comprova que
+                # o socket/sessão OPC continua ativo; ``get_node`` também é uma
+                # operação local e não detecta cliente desconectado. Ler o estado
+                # padrão do servidor permite que o watchdog reconheça a queda e
+                # execute ``_reconectar_url`` automaticamente.
+                await client.get_node('i=2259').read_value()
+
             return True
         except Exception as e:
             logger.warning(f"⚠️ Falha Saúde Conexão {url}: {e}")

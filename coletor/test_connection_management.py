@@ -24,9 +24,32 @@ class MissingNode:
         raise BadNodeIdUnknown()
 
 
+class ValueNode:
+    def __init__(self, value=0):
+        self.value = value
+
+    async def read_value(self):
+        return self.value
+
+
+class DisconnectedNode:
+    async def read_value(self):
+        raise ConnectionError('client is disconnected')
+
+
 class FakeClient:
     def get_node(self, _node_id):
         return MissingNode()
+
+
+class ServerStateClient:
+    def __init__(self, node):
+        self.node = node
+        self.requested_node_ids = []
+
+    def get_node(self, node_id):
+        self.requested_node_ids.append(node_id)
+        return self.node
 
 
 class FakeResponse:
@@ -84,6 +107,28 @@ class ConnectionManagementTest(unittest.IsolatedAsyncioTestCase):
 
         self.assertTrue(healthy)
         self.assertTrue(info['_tag_mon_disabled'])
+
+    async def test_without_monitoring_tag_reads_server_state(self):
+        collector = self.new_collector()
+        url = 'opc.tcp://192.168.70.156:49320'
+        client = ServerStateClient(ValueNode())
+        collector.clientes_opc[url] = client
+        collector.conexoes_info[url] = {'tag_monitoramento': None}
+
+        healthy = await collector.verificar_saude_conexao(url)
+
+        self.assertTrue(healthy)
+        self.assertEqual(client.requested_node_ids, ['i=2259'])
+
+    async def test_without_monitoring_tag_detects_disconnected_client(self):
+        collector = self.new_collector()
+        url = 'opc.tcp://192.168.70.156:49320'
+        collector.clientes_opc[url] = ServerStateClient(DisconnectedNode())
+        collector.conexoes_info[url] = {'tag_monitoramento': None}
+
+        healthy = await collector.verificar_saude_conexao(url)
+
+        self.assertFalse(healthy)
 
     async def test_timestamp_change_does_not_reload_configuration(self):
         collector = self.new_collector()
