@@ -157,7 +157,9 @@ const LineDeepView: React.FC = () => {
 
     const fetchFullEquipmentStatus = async (linhaNumericId: number): Promise<Record<string, FullEquipmentStatus>> => {
         try {
-            const response = await fetch(`${DJANGO_API_URL}/full_equipment_status/`);
+            const response = await fetch(
+                `${DJANGO_API_URL}/full_equipment_status/?linha_id=${encodeURIComponent(linhaNumericId)}`
+            );
             if (!response.ok) return {};
 
             const data = await response.json();
@@ -268,7 +270,7 @@ const LineDeepView: React.FC = () => {
 
         try {
             // Tentativa 1: Buscar por código exato
-            let response = await fetch(`${DJANGO_API_URL}/linhas/?codigo=${encodeURIComponent(identifier)}`);
+            let response = await fetch(`${DJANGO_API_URL}/linhas/?compact=1&codigo=${encodeURIComponent(identifier)}`);
             let data = await response.json();
             let results = safeArray(data.results || data);
 
@@ -279,7 +281,7 @@ const LineDeepView: React.FC = () => {
             }
 
             // Tentativa 2: Buscar por nome/search
-            response = await fetch(`${DJANGO_API_URL}/linhas/?search=${encodeURIComponent(identifier)}`);
+            response = await fetch(`${DJANGO_API_URL}/linhas/?compact=1&search=${encodeURIComponent(identifier)}`);
             data = await response.json();
             results = safeArray(data.results || data);
 
@@ -337,7 +339,7 @@ const LineDeepView: React.FC = () => {
             // 2. Buscar configuração de equipamentos
             let currentEquipamentosConfig: EquipamentoConfig[] = [];
             try {
-                const resEquipamentos = await fetch(`${DJANGO_API_URL}/equipamentos/?linha=${linhaIdNumeric}`);
+                const resEquipamentos = await fetch(`${DJANGO_API_URL}/equipamentos/?compact=1&linha=${linhaIdNumeric}`);
                 if (resEquipamentos.ok) {
                     const dataEq = await resEquipamentos.json();
                     currentEquipamentosConfig = safeArray(dataEq.results || dataEq);

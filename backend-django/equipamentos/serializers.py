@@ -123,6 +123,18 @@ class EquipamentoSerializer(serializers.ModelSerializer):
         ]
 
 
+class EquipamentoCompactSerializer(EquipamentoSerializer):
+    """Payload enxuto para telas operacionais que não editam tags/sensores."""
+
+    class Meta:
+        model = Equipamento
+        fields = [
+            'id', 'nome', 'codigo', 'tipo', 'linha', 'linha_nome', 'linha_codigo',
+            'velocidade_nominal', 'ordem_na_linha',
+            'estado_configurado', 'fonte_estado', 'tags_estado',
+        ]
+
+
 class EquipamentoColetorSerializer(serializers.ModelSerializer):
     """Serializer otimizado para o endpoint de configuração do coletor"""
     tags_coleta = serializers.SerializerMethodField()
@@ -193,6 +205,17 @@ class LinhaProducaoSerializer(serializers.ModelSerializer):
     class Meta:
         model = LinhaProducao
         fields = '__all__'
+
+
+class LinhaProducaoCompactSerializer(LinhaProducaoSerializer):
+    """Identidade da linha sem expandir equipamentos, sensores e tags."""
+
+    class Meta:
+        model = LinhaProducao
+        fields = [
+            'id', 'nome', 'codigo', 'ativa',
+            'area_nome', 'fabrica_id', 'fabrica_codigo', 'fabrica_nome',
+        ]
 
 
 

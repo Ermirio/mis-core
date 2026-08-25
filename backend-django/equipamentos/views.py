@@ -22,7 +22,8 @@ from .models import (
     Produto, HistoricoSKU, StrategicInitiative, RegistroProducaoTurno
 )
 from .serializers import (
-    LinhaProducaoSerializer, EquipamentoSerializer, SensorSerializer,
+    LinhaProducaoSerializer, LinhaProducaoCompactSerializer,
+    EquipamentoSerializer, EquipamentoCompactSerializer, SensorSerializer,
     MetricaProducaoSerializer, DefeitoSerializer, ConexaoOPCSerializer,
     TagColetaSerializer, EquipamentoColetorSerializer, MetricaConsolidadaInputSerializer,
     TurnoProducaoSerializer, CalendarioProducaoSerializer,
@@ -35,6 +36,11 @@ from .projections import calculate_projection
 class LinhaProducaoViewSet(viewsets.ModelViewSet):
     queryset = LinhaProducao.objects.all()
     serializer_class = LinhaProducaoSerializer
+
+    def get_serializer_class(self):
+        if self.request.query_params.get('compact') in ('1', 'true'):
+            return LinhaProducaoCompactSerializer
+        return super().get_serializer_class()
 
     def get_queryset(self):
         queryset = super().get_queryset()
@@ -87,6 +93,11 @@ class LinhaProducaoViewSet(viewsets.ModelViewSet):
 class EquipamentoViewSet(viewsets.ModelViewSet):
     queryset = Equipamento.objects.select_related('linha').prefetch_related('sensores', 'tags_coleta')
     serializer_class = EquipamentoSerializer
+
+    def get_serializer_class(self):
+        if self.request.query_params.get('compact') in ('1', 'true'):
+            return EquipamentoCompactSerializer
+        return super().get_serializer_class()
 
     def get_queryset(self):
         queryset = super().get_queryset()
@@ -398,18 +409,22 @@ class EventoEstadoEquipamentoViewSet(viewsets.ModelViewSet):
         if equipamento_codigo:
             queryset = queryset.filter(equipamento__codigo=equipamento_codigo)
 
-        # Filtro por linha (via equipamento -> linha)
+        # Materializar os IDs evita que o MySQL faça table scan dos eventos
+        # ao combinar o filtro indireto da linha com a janela de tempo.
         linha_id = self.request.query_params.get('linha_id')
         if linha_id:
-            queryset = queryset.filter(equipamento__linha_id=linha_id)
+            equipamento_ids = list(
+                Equipamento.objects.filter(linha_id=linha_id).values_list('id', flat=True)
+            )
+            queryset = queryset.filter(equipamento_id__in=equipamento_ids)
 
-        # Filtro por período (suporta inicio/fim e data_inicio/data_fim)
+        # Interseção de intervalos: evento.inicio <= janela.fim e
+        # (evento.fim >= janela.inicio ou evento ainda aberto). Além de ser
+        # mais simples, usa o índice composto (equipamento_id, inicio).
         inicio = self.request.query_params.get('inicio') or self.request.query_params.get('data_inicio')
         if inicio:
-            # Filtra eventos que começaram APÓS a data OU que ainda estavam abertos (fim >= inicio ou fim nulo)
             queryset = queryset.filter(
-                Q(inicio__gte=inicio) |
-                (Q(inicio__lt=inicio) & (Q(fim__gte=inicio) | Q(fim__isnull=True)))
+                Q(fim__gte=inicio) | Q(fim__isnull=True)
             )
 
         fim = self.request.query_params.get('fim') or self.request.query_params.get('data_fim')
@@ -1092,6 +1107,9 @@ def get_full_equipment_status(request):
     """
     try:
         equipamentos = Equipamento.objects.all().select_related('linha')
+        linha_id = request.query_params.get('linha_id')
+        if linha_id:
+            equipamentos = equipamentos.filter(linha_id=linha_id)
         resultado = []
 
         for eq in equipamentos:
