@@ -67,6 +67,6 @@ def auto_capturar_golden_state(sender, instance: MetricaProducao, created, **kwa
 @receiver(post_save, sender=get_user_model())
 def maintain_user_access_policy(sender, instance, **kwargs):
     policy, _ = UserAccessPolicy.objects.get_or_create(user=instance)
-    if (instance.is_staff or instance.is_superuser) and policy.expires_at is not None:
+    if instance.is_superuser and policy.expires_at is not None:
         policy.expires_at = None
         policy.save(update_fields=['expires_at', 'updated_at'])

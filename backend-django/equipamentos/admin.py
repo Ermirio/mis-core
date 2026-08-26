@@ -1549,7 +1549,7 @@ class UserAccessPolicyAdmin(admin.ModelAdmin):
         return False
 
     def save_model(self, request, obj, form, change):
-        if obj.user.is_staff or obj.user.is_superuser:
+        if obj.user.is_superuser:
             obj.expires_at = None
         obj.revalidated_at = timezone.now()
         obj.revalidated_by = request.user

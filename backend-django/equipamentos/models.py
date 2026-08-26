@@ -1985,8 +1985,8 @@ def default_user_access_expiry():
 class UserAccessPolicy(models.Model):
     """Validade de acesso dos usuários do MIS Core.
 
-    Administradores (staff/superuser) não expiram. Usuários operacionais
-    precisam ser revalidados por um administrador a cada 120 dias.
+    Somente superusuários não expiram. Usuários staff e operacionais
+    precisam ser revalidados por um superusuário a cada 120 dias.
     """
 
     user = models.OneToOneField(
@@ -2023,18 +2023,18 @@ class UserAccessPolicy(models.Model):
 
     @property
     def is_expired(self):
-        if self.user.is_staff or self.user.is_superuser:
+        if self.user.is_superuser:
             return False
         return self.expires_at is None or self.expires_at <= timezone.now()
 
     @property
     def status_label(self):
-        if self.user.is_staff or self.user.is_superuser:
-            return 'Administrador — não expira'
+        if self.user.is_superuser:
+            return 'Superusuário — não expira'
         return 'Expirado' if self.is_expired else 'Válido'
 
     def revalidate(self, actor, days=120):
-        if self.user.is_staff or self.user.is_superuser:
+        if self.user.is_superuser:
             self.expires_at = None
         else:
             self.expires_at = timezone.now() + timedelta(days=days)

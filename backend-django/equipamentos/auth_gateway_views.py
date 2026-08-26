@@ -45,9 +45,14 @@ def _check(request, perm_codename: str | None = None) -> HttpResponse:
     """
     if not request.user.is_authenticated:
         return HttpResponse(status=401)
-    # Ferramentas administrativas são reservadas a administradores do MIS.
-    # Permissões legadas individuais não bastam mais para atravessar o gateway.
-    if access_is_valid(request.user) and is_mis_admin(request.user):
+    # Superusers atravessam qualquer gateway. Usuários comuns/staff podem
+    # atravessar somente quando a permissão específica foi concedida no
+    # Django Admin. A visibilidade dos atalhos no frontend é uma decisão
+    # separada e continua exclusiva de superuser.
+    authorized = is_mis_admin(request.user)
+    if perm_codename:
+        authorized = authorized or request.user.has_perm(f'equipamentos.{perm_codename}')
+    if access_is_valid(request.user) and authorized:
         resp = HttpResponse(status=200)
         resp['X-MIS-User'] = request.user.username
         return resp
@@ -73,7 +78,19 @@ def check_emqx(request):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def check_admin_tools(request):
-    """Subrequest JWT-aware usado pelo nginx em todas as ferramentas."""
+    """Subrequest JWT-aware; resolve a permissão pela rota original."""
+    original_uri = request.headers.get('X-Original-URI', '')
+    route_permissions = (
+        (('/nodered/', '/mc-nodered/'), 'access_nodered'),
+        (('/grafana/', '/mc-grafana/'), 'access_grafana'),
+        (('/chronograf/', '/mc-chronograf/'), 'access_chronograf'),
+        (('/emqx/', '/mc-emqx/'), 'access_emqx'),
+    )
+    for prefixes, permission in route_permissions:
+        if original_uri.startswith(prefixes):
+            return _check(request, permission)
+    # Portainer e qualquer rota administrativa não mapeada permanecem
+    # exclusivas para superuser.
     return _check(request)
 
 

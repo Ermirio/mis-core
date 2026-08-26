@@ -1,6 +1,6 @@
 from datetime import timedelta
 
-from django.contrib.auth.models import User
+from django.contrib.auth.models import Permission, User
 from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
@@ -26,6 +26,31 @@ class UserAccessPolicyTests(TestCase):
         user = User.objects.create_user('operator', password='safe-password')
         self.client.force_authenticate(user)
         response = self.client.get(reverse('auth_admin_tools'))
+        self.assertEqual(response.status_code, 403)
+
+    def test_staff_user_is_not_a_mis_admin_and_keeps_expiration(self):
+        staff = User.objects.create_user('staff-user', password='safe-password', is_staff=True)
+        policy = UserAccessPolicy.objects.get(user=staff)
+        self.assertIsNotNone(policy.expires_at)
+
+        self.client.force_authenticate(staff)
+        response = self.client.get(reverse('auth_admin_tools'))
+        self.assertEqual(response.status_code, 403)
+
+        response = self.client.get(reverse('auth_me'))
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(response.data['is_admin'])
+        self.assertNotIn('users', response.data)
+
+    def test_staff_with_explicit_nodered_permission_can_cross_gateway(self):
+        staff = User.objects.create_user('nodered-user', password='safe-password', is_staff=True)
+        staff.user_permissions.add(Permission.objects.get(codename='access_nodered'))
+        self.client.force_authenticate(staff)
+
+        response = self.client.get(reverse('auth_admin_tools'), HTTP_X_ORIGINAL_URI='/nodered/')
+        self.assertEqual(response.status_code, 200)
+
+        response = self.client.get(reverse('auth_admin_tools'), HTTP_X_ORIGINAL_URI='/grafana/')
         self.assertEqual(response.status_code, 403)
 
     def test_expired_user_cannot_login(self):

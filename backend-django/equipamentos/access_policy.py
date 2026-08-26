@@ -6,7 +6,8 @@ from .models import UserAccessPolicy
 
 
 def is_mis_admin(user) -> bool:
-    return bool(user and user.is_authenticated and user.is_active and (user.is_staff or user.is_superuser))
+    """Administrative MIS capabilities belong exclusively to superusers."""
+    return bool(user and user.is_authenticated and user.is_active and user.is_superuser)
 
 
 def ensure_access_policy(user) -> UserAccessPolicy | None:
