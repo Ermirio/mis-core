@@ -558,6 +558,7 @@ const SidebarV2: React.FC<SidebarProps> = ({ collapsed, onToggle }) => {
           <SmartToolLink kind="chronograf" icon="⏱️" label="Chronograf" collapsed={collapsed} />
           <SmartToolLink kind="nodered"    icon="🔌" label="Node-RED"   collapsed={collapsed} />
           <SmartToolLink kind="emqx"       icon="📡" label="EMQX"       collapsed={collapsed} />
+          <SmartToolLink kind="kepserver"  icon="🏭" label="Kepserver"  collapsed={collapsed} />
           <SmartToolLink
             kind="portainer"
             icon={<Container size={17} strokeWidth={1.8} />}
@@ -679,7 +680,7 @@ const ToolLink: React.FC<{
 //     do proxy que apontam para os legados na máquina .71).
 //
 // É o que evita o bug "cliquei em Node-RED e abriu o do .71 em vez do .160".
-type ToolKind = 'grafana' | 'chronograf' | 'nodered' | 'emqx' | 'portainer';
+type ToolKind = 'grafana' | 'chronograf' | 'nodered' | 'emqx' | 'portainer' | 'kepserver';
 
 const TOOL_PROXY_PATHS: Record<ToolKind, string> = {
   grafana: '/mc-grafana/',
@@ -687,6 +688,7 @@ const TOOL_PROXY_PATHS: Record<ToolKind, string> = {
   nodered: '/mc-nodered/',
   emqx: '/mc-emqx/',
   portainer: '/mc-portainer/',
+  kepserver: '/kepserver-manager/',
 };
 
 const SmartToolLink: React.FC<{
