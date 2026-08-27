@@ -217,7 +217,9 @@ SIMPLE_JWT = {
     'BLACKLIST_AFTER_ROTATION': False,
     'AUTH_COOKIE': 'access_token',
     'AUTH_COOKIE_DOMAIN': config('SESSION_COOKIE_DOMAIN', default=None),
-    'AUTH_COOKIE_SECURE': not DEBUG,
+    # O gateway OT atual é acessado por HTTP em IP privado. Permitir override
+    # explícito sem atrelar cookies seguros ao DEBUG (produção continua DEBUG=False).
+    'AUTH_COOKIE_SECURE': config('AUTH_COOKIE_SECURE', default=not DEBUG, cast=bool),
     'AUTH_COOKIE_HTTP_ONLY': True,
     'AUTH_COOKIE_PATH': (FORCE_SCRIPT_NAME or '') + '/',
     'AUTH_COOKIE_SAMESITE': 'Lax',

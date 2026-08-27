@@ -37,9 +37,9 @@ axios.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response && error.response.status === 401) {
-      if (window.location.pathname !== '/login') {
+      if (!window.location.pathname.endsWith('/login')) {
         localStorage.removeItem('user'); // Exemplo
-        window.location.href = '/login';
+        window.location.href = `${import.meta.env.BASE_URL}login`;
       }
     }
     return Promise.reject(error);

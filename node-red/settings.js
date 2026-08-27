@@ -109,6 +109,11 @@ module.exports = {
      *   "read"  → somente leitura
      *   array   → ["flows.read", "flows.write", "nodes.read", ...] (granular)
      */
+    /*
+     * O editor nao possui porta publicada e /nodered/ ja e protegido pelo
+     * auth_request do gateway MIS Core. Manter adminAuth aqui criava um
+     * segundo login independente depois da sessao MIS ja autorizada.
+     *
     adminAuth: {
         type: "credentials",
         users: function (username) {
@@ -179,6 +184,7 @@ module.exports = {
         // com "Cannot read properties of null (reading 'then')").
         default: function () { return Promise.resolve(null); },
     },
+    */
 
     /** The following property can be used to enable HTTPS
      * This property can be either an object, containing both a (private) key

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router-dom';
 import axios from 'axios';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -11,8 +11,29 @@ const Login = () => {
     const [password, setPassword] = useState('');
     const [error, setError] = useState('');
     const [loading, setLoading] = useState(false);
-    const navigate = useNavigate();
     const [searchParams] = useSearchParams();
+
+    const getSafeReturnUrl = () => {
+        const nextUrl = searchParams.get('next');
+        const allowedPrefixes = [
+            '/mis-core/',
+            '/kepserver-manager/',
+            '/mc-',
+            '/grafana/',
+            '/chronograf/',
+            '/nodered/',
+        ];
+
+        if (
+            nextUrl &&
+            !nextUrl.startsWith('//') &&
+            allowedPrefixes.some((prefix) => nextUrl.startsWith(prefix))
+        ) {
+            return nextUrl;
+        }
+
+        return import.meta.env.BASE_URL;
+    };
 
     const handleLogin = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -30,15 +51,9 @@ const Login = () => {
             });
 
             if (res.status === 200) {
-                // Verifica se há um destino de retorno (ex: ?next=/mis-ai/)
-                const nextUrl = searchParams.get('next');
-                if (nextUrl && nextUrl.startsWith('/')) {
-                    // Redireciona para o app de origem (navegação absoluta, fora do React Router)
-                    window.location.href = nextUrl;
-                } else {
-                    // Fallback: redireciona para o painel principal do MIS Core
-                    navigate('/');
-                }
+                // Navegação absoluta e local: preserva o app de origem e nunca
+                // cai na raiz `/`, que pertence à landing page do MIS Hub.
+                window.location.assign(getSafeReturnUrl());
             }
         } catch (err: any) {
             console.error(err);
