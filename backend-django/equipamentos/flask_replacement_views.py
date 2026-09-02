@@ -28,7 +28,9 @@ from rest_framework.response import Response
 
 from . import golden_state_queue as gs_queue
 from .models import LinhaProducao, Equipamento, EventoEstadoEquipamento, EstadoEquipamento
+from .influx_repository import LinhaInflux
 from .production_engine import ProductionEngine
+from .production_plan_client import planned_tons_for_shift, product_context_for_sku
 from .turno_helpers import obter_turno_atual, calcular_inicio_turno, calcular_fim_turno
 from .utils import get_meta_turno
 from .waste_dashboard_views import query_influxdb
@@ -287,6 +289,97 @@ def _equipment_identity_where(codigo: str, *, slug: str | None = None, linha_cod
     if not eq or not line_value:
         raise ValueError("Consulta de equipamento exige codigo e linha_codigo.")
     return f"\"equipment\" = '{eq}' AND \"line\" = '{line_value}'"
+
+
+def _select_line_process_stage(equipments, process_by_equipment):
+    """Consolida o último estágio produtivo sem duplicar máquinas seriais.
+
+    Equipamentos com a mesma ``ordem_na_linha`` representam caminhos
+    paralelos e são somados. Entre estágios seriais, usa somente o estágio
+    mais a jusante que possui medição válida.
+    """
+    production_stages: dict[int, list[tuple[str, float]]] = {}
+    rate_stages: dict[int, list[tuple[str, float]]] = {}
+    for equipment in equipments:
+        values = process_by_equipment.get(equipment.codigo, {})
+        stage = int(equipment.ordem_na_linha or 0)
+        ton = max(0.0, float(values.get('ton') or 0))
+        speed = max(0.0, float(values.get('vel') or 0))
+        fmt = max(0.0, float(values.get('fmt') or 0))
+        if ton > 0:
+            production_stages.setdefault(stage, []).append((equipment.codigo, ton))
+        if speed > 0 and fmt > 0:
+            rate = (speed * 60 * fmt) / 1_000_000.0
+            rate_stages.setdefault(stage, []).append((equipment.codigo, rate))
+
+    production_stage = max(production_stages, default=None)
+    production_equipments: list[str] = []
+    production_tons = 0.0
+    if production_stage is not None:
+        production_equipments = [
+            code for code, _ in production_stages[production_stage]
+        ]
+        production_tons = sum(
+            value for _, value in production_stages[production_stage]
+        )
+
+    rate_stage = max(rate_stages, default=None)
+    rate_tons_hour = 0.0
+    if rate_stage is not None:
+        rate_tons_hour = sum(value for _, value in rate_stages[rate_stage])
+
+    return {
+        'production_tons': production_tons,
+        'production_stage': production_stage,
+        'production_equipments': production_equipments,
+        'rate_tons_hour': rate_tons_hour,
+        'rate_stage': rate_stage,
+    }
+
+
+def _select_line_product_context(equipments, context_by_equipment):
+    """Escolhe um contexto coerente, vindo de uma única máquina da linha.
+
+    O Influx pode devolver o último valor de cada campo a partir de séries
+    diferentes quando a consulta agrega a linha inteira. Isso mistura SKU,
+    descrição e formato de equipamentos distintos. Priorizamos a máquina com
+    o conjunto mais completo e, em empate, o estágio mais a montante.
+    """
+    ordered = sorted(
+        equipments,
+        key=lambda equipment: (int(equipment.ordem_na_linha or 0), equipment.codigo),
+    )
+    best = None
+    best_score = -1
+    for equipment in ordered:
+        values = context_by_equipment.get(equipment.codigo)
+        if not values:
+            continue
+        sku = str(values.get('sku') or '').strip()
+        description = str(values.get('descricao') or '').strip()
+        op = str(values.get('op') or '').strip()
+        cuc = str(values.get('cuc') or '').strip()
+        try:
+            fmt = max(0.0, float(values.get('formato') or 0))
+        except (TypeError, ValueError):
+            fmt = 0.0
+        score = (
+            (8 if sku else 0)
+            + (4 if description else 0)
+            + (2 if fmt > 0 else 0)
+            + (1 if op or cuc else 0)
+        )
+        if score > best_score:
+            best_score = score
+            best = {
+                'sku': sku or 'N/A',
+                'op': op or 'N/A',
+                'descricao': description or 'N/A',
+                'cuc': cuc or 'N/A',
+                'formato': fmt,
+                'equipment': equipment.codigo,
+            }
+    return best
 
 
 def _influx_client():
@@ -627,49 +720,119 @@ def flask_linha_ole_realtime(request, linha_nome: str):
         if not eqs:
             return Response({'error': 'Linha sem equipamentos cadastrados'}, status=404)
 
-        primeiro_eq = eqs[0].codigo
-        ultimo_eq = eqs[-1].codigo
-
-        # Produção real (toneladas) = último valor de toneladas_turno do
-        # último equipamento. Fallback: penúltimo, depois MAX da linha.
-        client = _influx_client()
+        # A identidade do equipamento só é única dentro da linha. Os códigos
+        # E001, E002... se repetem em várias linhas; toda leitura deste card
+        # precisa partir do filtro hierárquico canônico.
+        line_repo = LinhaInflux(linha)
+        client = line_repo.client
+        line_where = line_repo.where()
         producao_real_ton = 0.0
         taxa_instantanea = 0.0
 
-        def _last_value(equipment_code: str, field: str) -> float:
-            q = f"SELECT last({field}) as v FROM production WHERE \"equipment\" = '{equipment_code}'"
-            pts = list(client.query(q).get_points())
-            if pts and pts[0].get('v') is not None:
-                try:
-                    return float(pts[0]['v'])
-                except (TypeError, ValueError):
-                    return 0.0
-            return 0.0
+        # O processo pode ter máquinas paralelas na mesma etapa (mesma
+        # ordem_na_linha). Consolida a etapa mais a jusante que possui um
+        # contador real, somando somente os paralelos dessa etapa. Isso evita
+        # tanto somar contadores seriais duplicados quanto perder sublinhas.
+        q_process = (
+            "SELECT last(toneladas_turno) as ton, "
+            "last(velocidade_atual) as vel, last(formato_gramas) as fmt "
+            f"FROM production WHERE {line_where} AND time > now() - 5m "
+            'GROUP BY "equipment"'
+        )
+        process_by_equipment: dict[str, dict[str, float]] = {}
+        try:
+            for (_, tags), points in client.query(q_process).items():
+                code = str((tags or {}).get('equipment') or '')
+                point = next(iter(points), None)
+                if not code or not point:
+                    continue
+                process_by_equipment[code] = {
+                    'ton': max(0.0, float(point.get('ton') or 0)),
+                    'vel': max(0.0, float(point.get('vel') or 0)),
+                    'fmt': max(0.0, float(point.get('fmt') or 0)),
+                }
+        except Exception:
+            logger.exception('Falha ao consolidar processo da linha %s', line_norm)
 
-        producao_real_ton = _last_value(ultimo_eq, 'toneladas_turno')
-        if producao_real_ton == 0 and len(eqs) > 1:
-            producao_real_ton = _last_value(eqs[-2].codigo, 'toneladas_turno')
+        process_snapshot = _select_line_process_stage(eqs, process_by_equipment)
+        producao_real_ton = process_snapshot['production_tons']
+        taxa_instantanea = process_snapshot['rate_tons_hour']
+        production_source_stage = process_snapshot['production_stage']
+        production_source_equipments = process_snapshot['production_equipments']
 
-        # Velocidade do primeiro equipamento (dita ritmo)
-        vel = _last_value(primeiro_eq, 'velocidade_atual')
-        fmt = _last_value(primeiro_eq, 'formato_gramas')
-        if fmt > 0 and vel > 0:
-            taxa_instantanea = (vel * 60 * fmt) / 1_000_000.0
+        # Contexto do produto é consolidado no escopo da linha e vem de uma
+        # única máquina, evitando misturar SKU, descrição e formato de séries
+        # diferentes. Dados antigos não são apresentados como produto atual.
+        q_ctx = (
+            "SELECT last(sku_codigo) as sku, last(ordem_producao) as op, "
+            "last(descricao) as descricao, last(cuc) as cuc, "
+            "last(formato_gramas) as fmt FROM production "
+            f"WHERE {line_where} AND time > now() - 5m "
+            'GROUP BY "equipment"'
+        )
+        line_context = {
+            'sku': 'N/A', 'op': 'N/A', 'descricao': 'N/A',
+            'cuc': 'N/A', 'formato': 0.0, 'equipment': None,
+        }
+        try:
+            context_by_equipment = {}
+            for (_, tags), points in client.query(q_ctx).items():
+                code = str((tags or {}).get('equipment') or '')
+                point = next(iter(points), None)
+                if code and point:
+                    context_by_equipment[code] = {
+                        'sku': point.get('sku'),
+                        'op': point.get('op'),
+                        'descricao': point.get('descricao'),
+                        'cuc': point.get('cuc'),
+                        'formato': point.get('fmt'),
+                    }
+            selected_context = _select_line_product_context(eqs, context_by_equipment)
+            if selected_context:
+                line_context = selected_context
+        except Exception:
+            logger.exception('Falha ao carregar contexto da linha %s', line_norm)
 
-        # Meta de turno: helper já existente (PR 4) com fallback para meta padrão
+        product_master = product_context_for_sku(line_context['sku'])
+        context_source = 'telemetria_linha'
+        if product_master:
+            line_context['sku'] = product_master['sku']
+            if product_master.get('description'):
+                line_context['descricao'] = product_master['description']
+            if product_master.get('format_grams'):
+                line_context['formato'] = float(product_master['format_grams'])
+            context_source = product_master['source']
+
+        fmt = line_context['formato']
+
+        # Meta do turno: plano corporativo dinâmico; calendário local é fallback.
         turno_atual = obter_turno_atual()
         meta_toneladas = 0.0
+        meta_fonte = 'sem_meta'
+        plano_snapshot = None
+        plano_itens = 0
+        plano_skus = 0
         tempo_decorrido = 0.0
         tempo_total_turno = 0.0
         if turno_atual:
-            hoje = timezone.localtime(timezone.now()).date()
-            meta = get_meta_turno(linha, hoje, turno_atual)  # em unidades
-            # Converte unidades para toneladas usando formato do primeiro eq
-            if meta and fmt > 0:
-                meta_toneladas = (meta * fmt) / 1_000_000.0
-
             inicio = calcular_inicio_turno(turno_atual)
             fim = calcular_fim_turno(turno_atual)
+            dia_producao = inicio.date()
+            plano = planned_tons_for_shift(linha, dia_producao, turno_atual)
+            if plano:
+                meta_toneladas = plano['planned_tons']
+                meta_fonte = 'plano_corporativo'
+                plano_snapshot = plano['snapshot_ts']
+                plano_itens = plano['items']
+                plano_skus = plano['skus']
+            else:
+                meta = get_meta_turno(linha, dia_producao, turno_atual)  # unidades
+                if meta and fmt > 0:
+                    meta_toneladas = (meta * fmt) / 1_000_000.0
+                    meta_fonte = 'calendario_local'
+                elif linha.meta_toneladas_turno:
+                    meta_toneladas = float(linha.meta_toneladas_turno)
+                    meta_fonte = 'linha_local'
             now = timezone.localtime(timezone.now())
             tempo_total_turno = (fim - inicio).total_seconds()
             tempo_decorrido = min((now - inicio).total_seconds(), tempo_total_turno)
@@ -691,26 +854,6 @@ def flask_linha_ole_realtime(request, linha_nome: str):
                 saldo = meta_toneladas - producao_real_ton
                 ritmo_necessario = max(0.0, saldo / tempo_restante_h)
 
-        # Contexto (OP, SKU, etc) do primeiro equipamento
-        q_ctx = (
-            f"SELECT last(sku_codigo) as sku, last(ordem_producao) as op, "
-            f"last(descricao) as descricao, last(cuc) as cuc, "
-            f"last(formato_gramas) as fmt FROM production "
-            f"WHERE \"equipment\" = '{primeiro_eq}'"
-        )
-        line_context = {'sku': 'N/A', 'op': 'N/A', 'descricao': 'N/A', 'cuc': 'N/A', 'formato': 0.0}
-        try:
-            pts = list(client.query(q_ctx).get_points())
-            if pts:
-                p = pts[0]
-                line_context['sku'] = str(p.get('sku') or 'N/A')
-                line_context['op'] = str(p.get('op') or 'N/A')
-                line_context['descricao'] = str(p.get('descricao') or 'N/A')
-                line_context['cuc'] = str(p.get('cuc') or 'N/A')
-                line_context['formato'] = float(p.get('fmt') or 0)
-        except Exception:
-            pass
-
         # Equipamentos online: ponto nos últimos 2 min
         q_online = (
             f"SELECT count(estado_maquina) AS n FROM production "
@@ -731,6 +874,10 @@ def flask_linha_ole_realtime(request, linha_nome: str):
             'ritmo_necessario': round(ritmo_necessario, 1),
             'taxa_instantanea': round(taxa_instantanea, 1),
             'meta_turno': round(meta_toneladas, 1),
+            'meta_fonte': meta_fonte,
+            'plano_snapshot': plano_snapshot,
+            'plano_itens': plano_itens,
+            'plano_skus': plano_skus,
             'tempo_decorrido_perc': round(
                 (tempo_decorrido / tempo_total_turno * 100) if tempo_total_turno > 0 else 0, 1
             ),
@@ -741,6 +888,11 @@ def flask_linha_ole_realtime(request, linha_nome: str):
             'descricao': line_context['descricao'],
             'cuc': line_context['cuc'],
             'formato': line_context['formato'],
+            'contexto_escopo': line_norm,
+            'contexto_fonte': context_source,
+            'contexto_fonte_equipamento': line_context['equipment'],
+            'producao_fonte_ordem': production_source_stage,
+            'producao_fonte_equipamentos': production_source_equipments,
         })
     except Exception as e:
         logger.exception('flask_linha_ole_realtime falhou')
