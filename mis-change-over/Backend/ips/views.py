@@ -870,7 +870,8 @@ def trocar_sku(request):
                 'EAN_Esperado': produto.ean,     # Usa o campo 'ean' do modelo Produto
                 'DUN14_Esperado': produto.dun14,  # Usa o campo 'dun14' do modelo Produto
                 'Filme_Esperado': produto.filme,        # Lê o campo "Filme" do seu Produto
-                'NumeroOP_Esperado': produto.numero_op  # Lê o campo "Numero op" do seu Produto
+                'NumeroOP_Esperado': produto.numero_op,  # Lê o campo "Numero op" do seu Produto
+                'Formato_Esperado': formato.gramas  # Peso nominal em gramas (ex.: 2200 = 2,2 kg)
             }
 
             # Preparar dados das variáveis para escrita (linha 847)
